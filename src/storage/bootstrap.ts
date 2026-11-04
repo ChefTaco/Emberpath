@@ -24,6 +24,10 @@ async function bootstrapOpenRouterProvider(apiKey: string | undefined): Promise<
     return null;
   }
 
+  // Environment seed values never replace an existing operator-owned provider.
+  const existing = await prisma.provider.findUnique({ where: { slug: OPENROUTER_PROVIDER_SLUG } });
+  if (existing) return existing.id;
+
   const providerPayload = {
     slug: OPENROUTER_PROVIDER_SLUG,
     name: 'OpenRouter',
@@ -37,7 +41,7 @@ async function bootstrapOpenRouterProvider(apiKey: string | undefined): Promise<
   const provider = await prisma.provider.upsert({
     where: { slug: OPENROUTER_PROVIDER_SLUG },
     create: buildProviderCreateData(providerPayload),
-    update: buildProviderCreateData(providerPayload),
+    update: {},
   });
 
   await prisma.providerModel.upsert({
@@ -89,11 +93,7 @@ async function bootstrapRoutingProfiles(): Promise<void> {
         enabled: true,
         maxContextWindow: 200000,
       },
-      update: {
-        displayName: 'OpenAI Codex Spark',
-        enabled: true,
-        maxContextWindow: 200000,
-      },
+      update: {},
     });
   }
 
@@ -114,26 +114,13 @@ async function bootstrapRoutingProfiles(): Promise<void> {
       continue;
     }
 
-    if (alias.providerSlug && providerId && !existing.providerId) {
-      await prisma.modelAlias.update({
-        where: { alias: alias.alias },
-        data: {
-          provider: { connect: { id: providerId } },
-        },
-      });
-    }
+
   }
 
   for (const rule of ROUTING_PROFILE_RULES) {
     await prisma.routeRule.upsert({
       where: { name: rule.name },
-      update: {
-        kind: rule.kind,
-        priority: rule.priority,
-        matchJson: rule.matchJson,
-        actionJson: rule.actionJson,
-        enabled: true,
-      },
+      update: {},
       create: {
         name: rule.name,
         kind: rule.kind,
@@ -153,7 +140,7 @@ export async function bootstrapStorage(): Promise<void> {
     if (!isAllowedAdminUser(username)) continue;
     await prisma.adminUser.upsert({
       where: { username },
-      update: { displayName: username },
+      update: {},
       create: {
         username,
         displayName: username,

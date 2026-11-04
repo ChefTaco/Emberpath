@@ -13,6 +13,9 @@ export async function syncBuiltinApiDocs(adminBaseUrl: string): Promise<void> {
     });
 
     if (existing) {
+      const desired = { implemented: entry.implemented, title: entry.title,
+        summary: entry.summary, rationale: entry.rationale ?? null, docJson: JSON.stringify(entry) };
+      if (Object.entries(desired).every(([key,value]) => existing[key as keyof typeof desired] === value)) continue;
       await prisma.apiDocEntry.update({
         where: { id: existing.id },
         data: {
@@ -40,9 +43,10 @@ export async function syncBuiltinApiDocs(adminBaseUrl: string): Promise<void> {
     });
   }
 
-  await prisma.runtimeSetting.upsert({
-    where: { key: 'openapi.document' },
-    update: { valueJson: JSON.stringify(buildRouterOpenApiDocument(adminBaseUrl)) },
-    create: { key: 'openapi.document', valueJson: JSON.stringify(buildRouterOpenApiDocument(adminBaseUrl)) },
+  const valueJson = JSON.stringify(buildRouterOpenApiDocument(adminBaseUrl));
+  const existingDocument = await prisma.runtimeSetting.findUnique({ where: { key: 'openapi.document' } });
+  if (existingDocument?.valueJson !== valueJson) await prisma.runtimeSetting.upsert({
+    where: { key: 'openapi.document' }, update: { valueJson },
+    create: { key: 'openapi.document', valueJson },
   });
 }
