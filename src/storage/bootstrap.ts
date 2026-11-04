@@ -4,6 +4,7 @@ import { loadEnv } from '../config/env.js';
 import { encryptText, hashValue } from '../security/crypto.js';
 import { EXTERNALLY_MANAGED_PASSWORD_HASH, isAllowedAdminUser } from '../security/os-auth.js';
 import { prisma } from './client.js';
+import { initialAdminIdentities } from './initial-admins.js';
 import { buildProviderCreateData } from '../providers/runtime.js';
 
 const defaultRuntimeSettings: Record<string, unknown> = {
@@ -136,12 +137,22 @@ async function bootstrapRoutingProfiles(): Promise<void> {
 export async function bootstrapStorage(): Promise<void> {
   const env = loadEnv();
 
-  for (const username of env.HIVE_ROUTER_ADMIN_USERS.split(',').map((user) => user.trim()).filter(Boolean)) {
+  const usernames = env.HIVE_ROUTER_ADMIN_USERS.split(',').map((user) => user.trim()).filter(Boolean);
+  const initial = initialAdminIdentities(env.EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON ?? '[]', usernames);
+  // Validate every requested binding before creating anything. Existing IDs are
+  // preserved; a name match is never permission to replace an account identity.
+  for (const [username, localId] of initial) {
+    const existing = await prisma.adminUser.findUnique({ where: { username } });
+    const owner = await prisma.adminUser.findUnique({ where: { id: localId } });
+    if ((existing && existing.id !== localId) || (owner && owner.username !== username)) throw new Error('Initial model account binding conflicts with an existing identity; use reviewed account linking');
+  }
+  for (const username of usernames) {
     if (!isAllowedAdminUser(username)) continue;
     await prisma.adminUser.upsert({
       where: { username },
       update: {},
       create: {
+        ...(initial.has(username) ? { id: initial.get(username)! } : {}),
         username,
         displayName: username,
         passwordHash: EXTERNALLY_MANAGED_PASSWORD_HASH,

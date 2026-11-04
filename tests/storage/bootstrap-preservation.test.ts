@@ -9,6 +9,7 @@ vi.stubEnv('DATABASE_URL', 'file:' + join(temporary, 'router.db'));
 vi.stubEnv('HIVE_HOME', temporary);
 vi.stubEnv('HIVE_ROUTER_SECRET', randomBytes(32).toString('hex'));
 vi.stubEnv('HIVE_ROUTER_ADMIN_USERS', 'admin');
+vi.stubEnv('EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON', JSON.stringify([{username:'admin',localId:'synthetic-stable-model-account'}]));
 vi.stubEnv('OPENROUTER_API_KEY', 'obviously-fake-test-provider-key');
 const { ensureSqliteSchema } = await import('../../src/storage/schema.js');
 await ensureSqliteSchema();
@@ -22,6 +23,7 @@ afterAll(async () => {
 });
 it('repeated startup retains operator route edits, disabled models, credentials and display names', async () => {
   await bootstrapStorage();
+  expect((await prisma.adminUser.findUniqueOrThrow({where:{username:'admin'}})).id).toBe('synthetic-stable-model-account');
   const rule = await prisma.routeRule.findFirstOrThrow();
   await prisma.routeRule.update({
     where: { id: rule.id },
@@ -75,4 +77,12 @@ it('documentation synchronization is idempotent for an unchanged generated contr
     docs: await prisma.apiDocEntry.findMany(),
     settings: await prisma.runtimeSetting.findMany(),
   }).toEqual(before);
+});
+
+it('refuses a changed initial identity instead of relinking the existing username', async () => {
+  const retained = 'synthetic-retained-model-account';
+  await prisma.adminUser.update({ where: { username: 'admin' }, data: { id: retained } });
+  const before = await prisma.adminUser.findMany();
+  await expect(bootstrapStorage()).rejects.toThrow(/conflicts with an existing identity/);
+  expect(await prisma.adminUser.findMany()).toEqual(before);
 });

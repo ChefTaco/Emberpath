@@ -1,5 +1,8 @@
 # Changelog
 
+- Support explicit initial model-console IDs for fresh suite initialization;
+  preserve existing identities and reject conflicting bindings before creation.
+
 ## Unreleased ecosystem extraction
 
 Preserve existing provider credentials, route edits, alias bindings, model settings

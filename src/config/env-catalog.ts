@@ -59,6 +59,7 @@ export const routerEnvCatalog: EnvVarSpec[] = [
   { name: 'HIVE_HOME', required: false, secret: false, default: '~/.hive', description: 'Base directory for Hive state. The Router keeps its data in $HIVE_HOME/router unless DATA_DIR is set.' },
   { name: 'HIVE_ROUTER_SECRET', required: true, secret: true, generate: 'hex32', description: 'Signs admin sessions and encrypts stored provider credentials. At least 32 characters. Keep it stable across restarts.' },
   { name: 'HIVE_ROUTER_ADMIN_USERS', required: false, secret: false, default: 'admin', description: 'Comma-separated account names allowed to sign in to the console. Set it explicitly.' },
+  { name: 'EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON', required: false, secret: false, default: '[]', description: 'Explicit username/localId bindings for new console accounts. Existing accounts must already have the exact configured ID; never relinks by username or email.' },
   { name: 'HIVE_ROUTER_AUTH_MODE', required: false, secret: false, default: 'os', description: 'os: verify OS passwords through PAM (Linux, needs pamtester). iam-oidc: sign in through Hive IAM.' },
   { name: 'HIVE_ROUTER_OS_AUTH_COMMAND', required: false, secret: false, description: 'Command that replaces pamtester in os mode. It receives the username as its argument and the password on stdin; exit 0 accepts.' },
   { name: 'HOST', required: false, secret: false, default: '127.0.0.1', description: 'Default bind address for both listeners. Use 0.0.0.0 to listen on all interfaces.' },

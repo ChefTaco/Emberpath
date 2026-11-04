@@ -114,6 +114,7 @@ export const envSchema = z.object({
   REQUIRE_TLS: booleanStringSchema,
   HIVE_ROUTER_SECRET: z.string().min(32),
   HIVE_ROUTER_ADMIN_USERS: z.string().default('admin'),
+  EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON: z.string().optional(),
   HIVE_ROUTER_OS_AUTH_COMMAND: z.string().optional(),
   HIVE_ROUTER_METRICS_TOKEN: optionalSecretSchema,
   HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH: z.string().optional(),

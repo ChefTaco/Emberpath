@@ -1,5 +1,13 @@
 # Emberpath
 
+New suite deployments may preallocate console account IDs with
+`EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON`, for example
+`[{"username":"admin","localId":"synthetic-new-model-admin"}]`.
+Each username must be in the configured administrator allowlist. Startup creates
+only missing accounts and preserves all existing IDs, display names and
+credentials. Conflicting bindings fail instead of merging accounts. Existing
+installations use explicit reviewed Oathweave issuer/subject account links.
+
 Part of the Hive:Magnus ecosystem. This repository starts from a reviewed public
 Hive source snapshot; `provenance.json` records its revision and original hashes.
 
