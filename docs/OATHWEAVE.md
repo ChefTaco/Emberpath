@@ -23,3 +23,8 @@ replacement identity to impersonate a legacy account.
 The integration is under development. A passing unit suite does not authorize
 production adoption. Restore rehearsal, permissions, native clients, and browser
 workflow parity must pass before switching an existing installation.
+
+Direct model-resource credentials cannot invoke the retained IAM, Memory or Hive
+proxy/coordinator paths, even if an operator mistakenly grants broad permissions.
+Use each owning product API. Suite lifecycle operations belong to Hive/Magnus.
+Native compatibility paths remain available while migration and parity are pending.

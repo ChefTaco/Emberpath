@@ -25,6 +25,8 @@ export interface AuthenticatedAdmin {
   iamSubject?: string;
   sessionId?: string;
   authenticatedAt?: number;
+  /** Direct resource credentials cannot invoke retained suite proxy/coordinator APIs. */
+  resourceAuthorization?: boolean;
 }
 
 function getJwtSecret(): Uint8Array {
@@ -151,6 +153,9 @@ export async function requireAdminAuth(
   if (!user) {
     return context.json({ error: 'Unauthorized' }, 401);
   }
+  if (user.resourceAuthorization && context.req.path.startsWith('/api-docs/')) {
+    return context.json({ error: 'PRODUCT_API_REQUIRED', message: 'Use the permission-protected /api/docs routes.' }, 403);
+  }
 
   context.set('adminUser', user.user);
   context.set('adminRoles', user.roles);
@@ -171,7 +176,7 @@ export async function verifyAdminSession(
       const localId=linkedLocalId(parseAccountLinks(process.env.EMBERPATH_OATHWEAVE_IDENTITIES_JSON??'[]'),identity);
       const user=await prisma.adminUser.findUnique({where:{id:localId}});
       if(!user)return null;
-      return {user,roles:identity.roles,permissions:identity.permissions,authMode:'iam-oidc',iamSubject:identity.subject,
+      return {user,roles:identity.roles,permissions:identity.permissions,authMode:'iam-oidc',iamSubject:identity.subject,resourceAuthorization:true,
         sessionId:identity.sessionId,...(identity.authenticatedAt!==undefined?{authenticatedAt:identity.authenticatedAt}:{})};
     } catch { return null; }
   }

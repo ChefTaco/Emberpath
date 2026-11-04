@@ -987,6 +987,9 @@ async function attachAdminSessionAndEnforcePermission(context: AdminContext, nex
   }
   const principal = await verifyAdminSession(context);
   if (!principal) return context.json({ error: 'Unauthorized' }, 401);
+  if (principal.resourceAuthorization && ['/api/iam','/api/memory','/api/hive'].some(prefix=>pathname===prefix || pathname.startsWith(prefix+'/'))) {
+    return context.json({error:'PRODUCT_API_REQUIRED',message:'Use the owning product API or the Hive installation controller for this operation.'},403);
+  }
   context.set('adminUser', principal.user);
   context.set('adminRoles', principal.roles);
   context.set('adminPermissions', principal.permissions);
@@ -2775,7 +2778,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
     const providers = await prisma.provider.findMany({ orderBy: { name: 'asc' } });
     return context.json({
       docs: builtinApiDocs,
-      providers,
+      providers: providers.map(({ id, slug, name, kind, baseUrl, enabled }) => ({ id, slug, name, kind, baseUrl, enabled })),
     });
   });
 
@@ -2793,7 +2796,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
     const entries = builtinApiDocs.filter((entry) => entry.providerKind === provider.kind || entry.scope === 'router');
     return context.json({
-      provider: sanitizeProvider({ ...provider, models: [] }),
+      provider: { id: provider.id, slug: provider.slug, name: provider.name, kind: provider.kind, baseUrl: provider.baseUrl, enabled: provider.enabled },
       docs: entries,
     });
   });
