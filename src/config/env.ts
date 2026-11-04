@@ -62,6 +62,7 @@ const defaultIamProxyScopes = [
 ].join(' ');
 
 export const envSchema = z.object({
+  HIVE_REHEARSAL: z.enum(['true', 'false']).default('false').transform(value => value === 'true'),
   HIVE_AUTO_MIGRATE: z.string().default('false'),
   HIVE_UPDATE_CHECK: z.string().default('false'),
   HIVE_AUTO_UPGRADE: z.string().default('false'),

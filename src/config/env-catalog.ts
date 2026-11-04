@@ -54,6 +54,7 @@ export const HEALTH_PATH = '/health';
 export const READY_PATH = '/health/ready';
 
 export const routerEnvCatalog: EnvVarSpec[] = [
+  { name: 'HIVE_REHEARSAL', required: false, secret: false, default: 'false', description: 'Isolated restore only: disable external provider probes, update checks and trace/receipt retention. Readiness checks storage and reports providers as unchecked.' },
   { name: 'NODE_ENV', required: false, secret: false, default: 'development', description: 'development, test or production. production requires TLS and rejects the insecure-TLS escape hatches.' },
   { name: 'LOG_LEVEL', required: false, secret: false, default: 'info', description: 'debug, info, warn or error.' },
   { name: 'HIVE_HOME', required: false, secret: false, default: '~/.hive', description: 'Base directory for Hive state. The Router keeps its data in $HIVE_HOME/router unless DATA_DIR is set.' },

@@ -23,6 +23,7 @@ function json(response: ServerResponse, status: number, body: unknown): void {
 
 function testEnv(): Env {
   return {
+    HIVE_REHEARSAL: false,
     NODE_ENV: 'test',
     HIVE_AUTO_MIGRATE:'false', HIVE_UPDATE_CHECK:'false', HIVE_AUTO_UPGRADE:'false', HIVE_UI_UPGRADE:'false', HIVE_COMPOSE_UPGRADE_SUPERVISOR:'false',
     LOG_LEVEL: 'error',

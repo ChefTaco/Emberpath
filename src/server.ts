@@ -53,8 +53,8 @@ function listen(
 }
 
 export async function startServer(): Promise<void> {
-  (await import('./release/runtime.js')).startUpdateChecks((await import('./config/paths.js')).packageInfo().version);
   const env = loadEnv();
+  if (!env.HIVE_REHEARSAL) (await import('./release/runtime.js')).startUpdateChecks((await import('./config/paths.js')).packageInfo().version);
 
   await routerMigration([], true);
   await prisma.$connect();
@@ -107,7 +107,7 @@ export async function startServer(): Promise<void> {
   });
 
   await runProviderHealthSweep();
-  const healthInterval = setInterval(() => {
+  const healthInterval = env.HIVE_REHEARSAL ? undefined : setInterval(() => {
     void runProviderHealthSweep().catch((error) => {
       log('error', 'Provider health sweep failed', {
         error: error instanceof Error ? error.message : String(error),

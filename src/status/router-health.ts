@@ -24,6 +24,7 @@ export interface RouterDependencyReport {
   providers: {
     configured: number;
     healthy: number;
+    checked: boolean;
   };
 }
 
@@ -59,7 +60,9 @@ export async function buildRouterDependencyReport(): Promise<RouterDependencyRep
   const healthy = providerHealth.filter((entry) => entry.healthy).length;
   const providerCheck: RouterDependencyCheck = configured === 0
     ? { name: 'providers', status: 'warn', message: 'no enabled providers configured' }
-    : { name: 'providers', status: healthy > 0 ? 'pass' : 'fail', message: healthy + '/' + configured + ' enabled providers healthy' };
+    : env.HIVE_REHEARSAL
+      ? { name: 'providers', status: 'warn', message: 'External providers are not checked during isolated restore rehearsal' }
+      : { name: 'providers', status: healthy > 0 ? 'pass' : 'fail', message: healthy + '/' + configured + ' enabled providers healthy' };
 
   const jwks = getSecurityExporterJwksStatus(env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS);
   const jwksCheck: RouterDependencyCheck = {
@@ -70,12 +73,12 @@ export async function buildRouterDependencyReport(): Promise<RouterDependencyRep
       : `${Math.ceil(jwks.remainingMs / 1_000)}s trusted-key lifetime remaining (${jwks.state})`,
   };
   const checks = [databaseCheck, providerCheck, jwksCheck];
-  const ready = databaseCheck.status === 'pass' && (configured === 0 || healthy > 0);
+  const ready = databaseCheck.status === 'pass' && (env.HIVE_REHEARSAL || configured === 0 || healthy > 0);
 
   return {
     ...metadata(packageRoot),
     status: ready ? 'ready' : 'degraded',
     checks,
-    providers: { configured, healthy },
+    providers: { configured, healthy, checked: !env.HIVE_REHEARSAL },
   };
 }

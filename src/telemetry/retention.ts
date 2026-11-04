@@ -7,6 +7,7 @@ import { log } from './logger.js';
 const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
 
 export async function pruneExpiredTraces(now = new Date()): Promise<number> {
+  if (loadEnv().HIVE_REHEARSAL) return 0;
   await prisma.actorEnrollment.updateMany({ where: { receiptExpiresAt: { lt: now }, encryptedSecrets: { not: null } }, data: { encryptedSecrets: null, receiptExpiresAt: null } });
   // Lifecycle journal timestamps are numeric milliseconds shared with direct SQLite writers.
   await prisma.$executeRaw`UPDATE ActorLifecycleOperation SET encryptedSecrets = NULL, receiptExpiresAt = NULL WHERE receiptExpiresAt <= ${now.getTime()}`;
@@ -20,7 +21,8 @@ export async function pruneExpiredTraces(now = new Date()): Promise<number> {
   return expired.length;
 }
 
-export function startTraceRetention(): NodeJS.Timeout {
+export function startTraceRetention(): NodeJS.Timeout | undefined {
+  if (loadEnv().HIVE_REHEARSAL) return undefined;
   void pruneExpiredTraces().then((count) => {
     if (count > 0) log('info', 'Pruned expired traces', { count });
   }).catch((error) => log('error', 'Trace retention failed', { error: error instanceof Error ? error.message : String(error) }));

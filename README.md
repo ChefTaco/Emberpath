@@ -518,3 +518,10 @@ the selected deployment. When the service certificate uses a DNS name, set
 bundle when needed. Probes retain certificate verification. Runtime state belongs
 in `/data`; mount only product-owned protected configuration in `/config`.
 Images are local candidates until registry publication and release acceptance.
+
+For isolated restore rehearsal, set `HIVE_REHEARSAL=true` on the candidate only.
+This disables provider health probes, update checks and trace/credential-receipt
+retention. Readiness checks the local database and reports external providers as
+unchecked (`providers.checked=false`); it does not certify inference connectivity.
+Normal operation defaults to `false` and retains provider readiness requirements.
+Hive verifies external discovery, generation and streaming separately before enrollment.

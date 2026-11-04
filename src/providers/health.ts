@@ -1,7 +1,9 @@
 import { getProviderAdapter, listProviderRuntimes, updateProviderHealth } from './index.js';
 import { providerHealthGauge } from '../telemetry/metrics.js';
+import { loadEnv } from '../config/env.js';
 
 export async function runProviderHealthSweep(): Promise<Array<{ providerId: string; healthy: boolean; error?: string | undefined }>> {
+  if (loadEnv().HIVE_REHEARSAL) return [];
   const providers = await listProviderRuntimes();
   const results = await Promise.all(
     providers.map(async (provider) => {

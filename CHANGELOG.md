@@ -1,5 +1,8 @@
 # Changelog
 
+- Disable external provider probes, update checks and trace/receipt retention
+  during isolated restore rehearsals; report providers as unchecked and retain
+  normal provider readiness checks outside rehearsal mode.
 - Support explicit initial model-console IDs for fresh suite initialization;
   preserve existing identities and reject conflicting bindings before creation.
 
