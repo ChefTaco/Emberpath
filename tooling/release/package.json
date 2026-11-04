@@ -1,0 +1,21 @@
+{
+  "name": "hive-release-internal",
+  "version": "1.2.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --emitDeclarationOnly",
+    "test": "tsx --test tests/*.test.ts",
+    "pretest": "node ../../scripts/build-release-runtime.mjs packages/hive"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

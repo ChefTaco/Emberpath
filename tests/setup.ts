@@ -1,0 +1,14 @@
+process.env.NODE_ENV ??= 'test';
+process.env.LOG_LEVEL ??= 'error';
+process.env.API_PORT ??= '443';
+process.env.ADMIN_PORT ??= '9443';
+process.env.PUBLIC_API_URL ??= 'https://localhost:443';
+process.env.PUBLIC_ADMIN_URL ??= 'https://localhost:9443';
+process.env.DATABASE_URL ??= 'file:./data/test-router.db';
+process.env.DATA_DIR ??= './data/test';
+process.env.TRACE_DIR ??= './data/test/traces';
+process.env.HIVE_ROUTER_SECRET ??= 'hive-router-test-secret-1234567890';
+process.env.HIVE_ROUTER_ADMIN_USERS ??= 'admin';
+process.env.PROMETHEUS_PREFIX ??= 'hive_router_test_';
+process.env.DEFAULT_TRACE_RETENTION_DAYS ??= '7';
+process.env.CAPTURE_BINARY_MEDIA ??= 'false';

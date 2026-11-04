@@ -1,0 +1,421 @@
+{
+  "components": {
+    "securitySchemes": {
+      "adminSession": {
+        "in": "cookie",
+        "name": "hive_router_admin",
+        "type": "apiKey"
+      },
+      "resourceBearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Model routing and administration baseline. Complete request/response schema coverage remains pending.",
+    "title": "Emberpath API",
+    "version": "1.2.2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/chat": {
+      "post": {
+        "operationId": "post__api_chat",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Native Ollama chat route"
+      }
+    },
+    "/api/docs/index": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Documentation"
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Authenticated API documentation"
+      }
+    },
+    "/api/docs/openapi.json": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Documentation"
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Authenticated API documentation"
+      }
+    },
+    "/api/docs/providers/{providerId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "providerId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Documentation"
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Authenticated API documentation"
+      }
+    },
+    "/api/embed": {
+      "post": {
+        "operationId": "post__api_embed",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Native Ollama embedding route"
+      }
+    },
+    "/api/generate": {
+      "post": {
+        "operationId": "post__api_generate",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Native Ollama completion route"
+      }
+    },
+    "/api/hive/updates": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission, recent authentication or origin check failed"
+          },
+          "409": {
+            "description": "Upgrade plan changed or coordinator is unavailable"
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Available same-major Hive release and configuration changes"
+      }
+    },
+    "/api/hive/upgrades/apply": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "202": {
+            "description": "Upgrade accepted"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission, recent authentication or origin check failed"
+          },
+          "409": {
+            "description": "Upgrade plan changed or coordinator is unavailable"
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Apply the exact reviewed plan with recent operator authentication"
+      }
+    },
+    "/api/hive/upgrades/plan": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission, recent authentication or origin check failed"
+          },
+          "409": {
+            "description": "Upgrade plan changed or coordinator is unavailable"
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Prepare a reviewed release upgrade plan"
+      }
+    },
+    "/api/hive/upgrades/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission, recent authentication or origin check failed"
+          },
+          "409": {
+            "description": "Upgrade plan changed or coordinator is unavailable"
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Durable upgrade coordinator outcome"
+      }
+    },
+    "/api/ps": {
+      "get": {
+        "operationId": "get__api_ps",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "List active Ollama model runners"
+      }
+    },
+    "/api/pull": {
+      "post": {
+        "operationId": "post__api_pull",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Policy-gated Ollama model pull"
+      }
+    },
+    "/api/show": {
+      "post": {
+        "operationId": "post__api_show",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Show Ollama model metadata"
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "operationId": "get__api_tags",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Enumerate Ollama models"
+      }
+    },
+    "/detokenize": {
+      "post": {
+        "operationId": "post__detokenize",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Native vLLM detokenize route"
+      }
+    },
+    "/pooling": {
+      "post": {
+        "operationId": "post__pooling",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Deferred native pooling route"
+      }
+    },
+    "/tokenize": {
+      "post": {
+        "operationId": "post__tokenize",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Native vLLM tokenize route"
+      }
+    },
+    "/v1/audio/transcriptions": {
+      "post": {
+        "operationId": "post__v1_audio_transcriptions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible audio transcription proxy endpoint"
+      }
+    },
+    "/v1/audio/translations": {
+      "post": {
+        "operationId": "post__v1_audio_translations",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible audio translation proxy endpoint"
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "operationId": "post__v1_chat_completions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible chat proxy endpoint"
+      }
+    },
+    "/v1/completions": {
+      "post": {
+        "operationId": "post__v1_completions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible completions proxy endpoint"
+      }
+    },
+    "/v1/embeddings": {
+      "post": {
+        "operationId": "post__v1_embeddings",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible embeddings proxy endpoint"
+      }
+    },
+    "/v1/images/generations": {
+      "post": {
+        "operationId": "post__v1_images_generations",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible image generation proxy endpoint"
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "get__v1_models",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Aggregated model registry across configured providers"
+      }
+    },
+    "/v1/moderations": {
+      "post": {
+        "operationId": "post__v1_moderations",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible moderation proxy endpoint"
+      }
+    },
+    "/v1/responses": {
+      "post": {
+        "operationId": "post__v1_responses",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "OpenAI-compatible responses proxy endpoint"
+      }
+    },
+    "/version": {
+      "get": {
+        "operationId": "get__version",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "summary": "Native vLLM version route"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://models.example.com"
+    }
+  ]
+}

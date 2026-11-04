@@ -1,0 +1,312 @@
+generator client {
+  provider            = "prisma-client"
+  // Generated into the source tree so tsc compiles it into dist/ and the
+  // published package ships a ready client: npm consumers never run prisma.
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum ProviderKind {
+  OPENAI
+  CODEX
+  OPENAI_GENERIC
+  OPENROUTER
+  ANTHROPIC
+  OLLAMA
+  LLAMACPP
+  VLLM
+}
+
+enum AuthMode {
+  NONE
+  BEARER
+  API_KEY
+  HEADER
+}
+
+enum TraceOutcome {
+  SUCCEEDED
+  FAILED
+  DENIED
+  STREAM_FAILED
+}
+
+enum RouteRuleKind {
+  MODEL_ALIAS
+  PROVIDER_PREFERENCE
+  CAPABILITY
+  SAFETY
+  PASSTHROUGH
+  LOCAL_ONLY
+}
+
+model Provider {
+  id                   String          @id @default(cuid())
+  slug                 String          @unique
+  name                 String
+  kind                 ProviderKind
+  baseUrl              String
+  authMode             AuthMode        @default(BEARER)
+  authHeaderName       String          @default("Authorization")
+  encryptedAuthSecret  String?
+  defaultHeadersJson   String?
+  capabilityJson       String?
+  passthroughJson      String?
+  tlsInsecure          Boolean         @default(false)
+  timeoutMs            Int             @default(120000)
+  maxRetries           Int             @default(1)
+  concurrency          Int             @default(16)
+  priority             Int             @default(100)
+  weight               Int             @default(100)
+  failoverGroup        String?
+  enabled              Boolean         @default(true)
+  lastHealthStatus     String?
+  lastHealthError      String?
+  lastHealthAt         DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  models               ProviderModel[]
+  aliases              ModelAlias[]
+  traces               Trace[]
+  apiDocs              ApiDocEntry[]
+}
+
+model ProviderModel {
+  id               String   @id @default(cuid())
+  providerId       String
+  model            String
+  displayName      String?
+  enabled          Boolean  @default(true)
+  maxContextWindow Int?
+  capabilityJson   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, model])
+}
+
+model ModelAlias {
+  id            String    @id @default(cuid())
+  alias         String    @unique
+  providerId    String?
+  upstreamModel String
+  enabled       Boolean   @default(true)
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  provider      Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+}
+
+model RouteRule {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  kind        RouteRuleKind
+  priority    Int           @default(100)
+  enabled     Boolean       @default(true)
+  matchJson   String
+  actionJson  String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model HeuristicRule {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  category    String
+  pattern     String
+  score       Int      @default(10)
+  enabled     Boolean  @default(true)
+  actionJson  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ClientApiKey {
+  expiresAt DateTime?
+  id          String   @id @default(cuid())
+  name        String
+  keyPrefix   String
+  keyHash     String
+  enabled     Boolean  @default(true)
+  metadataJson String?
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  traces      Trace[]
+}
+
+model AdminUser {
+  id           String         @id @default(cuid())
+  username     String         @unique
+  displayName  String?
+  passwordHash String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  sessions     AdminSession[]
+  auditEvents  AuditEvent[]
+}
+
+model AdminSession {
+  id         String    @id @default(cuid())
+  sessionId  String    @unique
+  userId     String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  user       AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Trace {
+  id                  String         @id @default(cuid())
+  requestId           String         @unique
+  method              String
+  path                String
+  endpointKind        String
+  routeKey            String
+  statusCode          Int?
+  outcome             TraceOutcome   @default(SUCCEEDED)
+  estimatedUsage      Boolean        @default(false)
+  providerId          String?
+  providerKind        String?
+  providerModel       String?
+  clientApiKeyId      String?
+  decisionJson        String
+  requestHeadersJson  String?
+  responseHeadersJson String?
+  requestMetaJson     String?
+  responseMetaJson    String?
+  usageJson           String?
+  retentionJson       String?
+  requestBodyPath     String?
+  responseBodyPath    String?
+  reasoningBodyPath   String?
+  startedAt           DateTime       @default(now())
+  endedAt             DateTime?
+  durationMs          Int?
+  createdAt           DateTime       @default(now())
+  provider            Provider?      @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  clientApiKey        ClientApiKey?  @relation(fields: [clientApiKeyId], references: [id], onDelete: SetNull)
+  events              TraceEvent[]
+}
+
+model TraceEvent {
+  id         String   @id @default(cuid())
+  traceId     String
+  type       String
+  phase      String?
+  message    String?
+  dataJson   String?
+  occurredAt DateTime @default(now())
+  trace      Trace    @relation(fields: [traceId], references: [id], onDelete: Cascade)
+}
+
+model ApiDocEntry {
+  id          String    @id @default(cuid())
+  providerId  String?
+  route       String
+  method      String
+  scope       String
+  implemented Boolean   @default(true)
+  title       String
+  summary     String?
+  rationale   String?
+  docJson     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  provider    Provider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+}
+
+model AuditEvent {
+  id          String     @id @default(cuid())
+  actorType   String
+  adminUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadataJson String?
+  createdAt   DateTime   @default(now())
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([action, id])
+}
+
+model RuntimeSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  valueJson String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model QuotaBucket {
+  id       String @id
+  requests Int @default(0)
+  tokens   Int @default(0)
+}
+
+model QuotaReservation {
+  id             String @id
+  clientApiKeyId String
+  traceId        String? @unique
+  dayKey         String
+  monthKey       String
+  reservedTokens Int
+  actualTokens   Int?
+  costUsd        Float?
+  priceSource    String?
+  estimated      Boolean @default(true)
+  createdAt      DateTime @default(now())
+  @@index([clientApiKeyId, createdAt])
+}
+
+model ActorEnrollment {
+  actorId String @id
+  ownerId String
+  requestHash String
+  requestJson String
+  credentialExpiresAt DateTime?
+  iamId String?
+  routerKeyId String?
+  memoryId String?
+  encryptedSecrets String?
+  receiptExpiresAt DateTime?
+  leaseUntil DateTime?
+  status String @default("pending")
+  updatedAt DateTime @updatedAt
+}
+
+model ActorLifecycleOperation {
+  id String @id
+  bindingKey String
+  actorId String
+  ownerId String
+  action String
+  identifiersJson String
+  stepsJson String @default("{}")
+  encryptedSecrets String?
+  receiptExpiresAt DateTime?
+  status String @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([bindingKey, status])
+}
+
+model ActorLifecycleLease {
+  bindingKey String @id
+  token String
+  leaseUntil DateTime
+}
+
+model QuotaLedgerState {
+  id String @id
+  cutoverAt DateTime
+  historicalCoverage String
+}

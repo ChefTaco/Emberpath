@@ -1,0 +1,296 @@
+{
+  "name": "@hivemagnus/emberpath",
+  "version": "1.2.2",
+  "description": "Emberpath: OpenAI-compatible model routing, providers, quotas and telemetry.",
+  "keywords": [
+    "hive",
+    "openai",
+    "llm",
+    "ai-gateway",
+    "model-router",
+    "proxy",
+    "ollama",
+    "vllm",
+    "llama.cpp",
+    "anthropic",
+    "observability",
+    "self-hosted"
+  ],
+  "homepage": "https://github.com/ChefTaco/Emberpath#readme",
+  "bugs": {
+    "url": "https://github.com/ChefTaco/hive/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ChefTaco/Emberpath.git"
+  },
+  "license": "Apache-2.0",
+  "author": "ChefTaco",
+  "type": "module",
+  "bin": {
+    "hive-router": "dist/src/index.js",
+    "emberpath": "dist/src/index.js"
+  },
+  "files": [
+    "dist/src/**/*.js",
+    "README.md",
+    "LICENSE",
+    "dist/src/release/*"
+  ],
+  "engines": {
+    "node": "^24.22.1 || ^26.13.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "node scripts/ensure-prisma-client.mjs && tsx watch src/index.ts",
+    "build": "npm run build:server",
+    "build:server": "npm run db:generate && npm run db:generate-bootstrap && tsc --project tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/src/index.js', 0o755)\"",
+    "start": "node dist/src/index.js",
+    "cli": "node scripts/ensure-prisma-client.mjs && tsx src/cli.ts",
+    "clean": "rm -rf dist ui/dist coverage tsconfig.tsbuildinfo ui/tsconfig.tsbuildinfo playwright-report test-results",
+    "typecheck": "npm run db:generate && npm run contracts:check && tsc --project tsconfig.json --noEmit",
+    "test": "node scripts/ensure-prisma-client.mjs && npm run db:check-bootstrap && vitest run --passWithNoTests",
+    "test:watch": "node scripts/ensure-prisma-client.mjs && vitest",
+    "test:e2e": "playwright test",
+    "smoke:ollama": "node scripts/ensure-prisma-client.mjs && tsx scripts/smoke-ollama.ts",
+    "smoke:llamacpp": "node scripts/ensure-prisma-client.mjs && tsx scripts/smoke-llamacpp.ts",
+    "db:generate": "prisma generate --config prisma.config.ts",
+    "db:ensure": "node scripts/ensure-prisma-client.mjs",
+    "db:push": "prisma db push --config prisma.config.ts",
+    "db:migrate": "prisma migrate dev --config prisma.config.ts",
+    "db:studio": "prisma studio --config prisma.config.ts",
+    "prepack": "npm run clean && npm run build",
+    "prepublishOnly": "npm run typecheck && npm run build && npm test",
+    "db:generate-bootstrap": "node --experimental-strip-types scripts/generate-sqlite-bootstrap.ts",
+    "db:check-bootstrap": "node --experimental-strip-types scripts/generate-sqlite-bootstrap.ts --check",
+    "eval:decisions": "node scripts/ensure-prisma-client.mjs && tsx scripts/eval-decisions.ts",
+    "test:routing-contract": "node scripts/ensure-prisma-client.mjs && vitest run tests/routing",
+    "baseline:routing": "node scripts/ensure-prisma-client.mjs && tsx scripts/baseline-routing.ts",
+    "smoke:jev": "node scripts/ensure-prisma-client.mjs && tsx scripts/smoke-jev.ts",
+    "contracts:generate": "tsx scripts/generate-ui-contracts.ts",
+    "contracts:check": "tsx scripts/generate-ui-contracts.ts --check",
+    "prebuild": "node scripts/build-release-runtime.mjs",
+    "pretypecheck": "node scripts/build-release-runtime.mjs",
+    "pretest": "node scripts/build-release-runtime.mjs",
+    "postbuild": "node scripts/build-release-runtime.mjs --copy",
+    "scan:secrets": "bash scripts/scan-secrets.sh",
+    "check:private": "bash scripts/check-private-data.sh",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "bootstrap": "npm ci --ignore-scripts && npm --prefix tooling/release ci --ignore-scripts && npm run hooks:install",
+    "generate:openapi": "tsx scripts/openapi.ts --write",
+    "check:openapi": "tsx scripts/openapi.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@prisma/adapter-better-sqlite3": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "better-sqlite3": "^12.8.0",
+    "dotenv": "^17.3.1",
+    "hono": "4.13.13",
+    "jose": "^6.1.1",
+    "prom-client": "^15.1.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.1",
+    "prisma": "^7.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.2",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "@hono/node-server": "2.1.5",
+    "deepmerge-ts": "8.0.0",
+    "fast-uri": "3.1.9",
+    "hono": "4.13.13",
+    "valibot": "1.4.2",
+    "mysql2": "3.24.3"
+  },
+  "hiveRelease": {
+    "schema": 1,
+    "version": "1.2.2",
+    "engineProtocol": 1,
+    "engines": {
+      "node": "^24.22.1 || ^26.13.0"
+    },
+    "components": {
+      "@hivemagnus/hive": "1.2.2",
+      "@hivemagnus/hive-router": "1.2.2",
+      "@hivemagnus/hive-iam-server": "1.2.2",
+      "@hivemagnus/hivemem-server": "1.2.2",
+      "@hivemagnus/hive-skills": "1.2.2"
+    },
+    "optionalComponents": [
+      "skills"
+    ],
+    "testedSdks": {
+      "@hivemagnus/hive-iam-sdk": "1.0.3",
+      "@hivemagnus/hivemem-sdk": "1.0.3"
+    },
+    "minUpgradeFrom": {
+      "@hivemagnus/hive": "1.1.0",
+      "@hivemagnus/hive-router": "1.0.3",
+      "@hivemagnus/hive-iam-server": "1.0.3",
+      "@hivemagnus/hivemem-server": "1.0.3",
+      "@hivemagnus/hive-skills": "1.1.0"
+    },
+    "requiredIntermediates": [],
+    "newRequiredEnv": [],
+    "newOptionalEnv": [
+      {
+        "name": "HIVE_NPM_DEPLOY_TARGETS",
+        "component": "launcher",
+        "secret": false,
+        "description": "Optional repository deploy:npm target inventory; real values belong in a private operator env file."
+      }
+    ],
+    "removedEnv": [],
+    "migrations": [
+      {
+        "component": "iam",
+        "id": "20260227021829_init",
+        "checksum": "27a51b34e024f2340c9aacad43aa0fee3d8ce511bcebddfa7dc0d16e49d2bffa",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260302172332_add_mfa_fields_and_ip_allowlist",
+        "checksum": "b41e07b8301e527ef4c6339364947ec56ad33e7628ad0c68bc8b14dfb82d464b",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260302175254_add_password_policy",
+        "checksum": "5d58dd2f1dff32e8bf7de7da3c597f2dbeaff927055b1ce35384579898b24325",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260302205912_add_oauth2_authorization_code",
+        "checksum": "0dfc5794f8361930ec90d63464e0b6d087a6d61f564139937ce694a6e3a8c02e",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260311001958_add_refresh_token_binding",
+        "checksum": "d70b28a4a460b2598d5f67e385f9faef4c11ee4fc8be5d661b6ce33ad0bb7bb9",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260311091616_session_risk_scoring",
+        "checksum": "08c527547472f469e20d822cbabf07702a87b56989fd6c6b91817cdf60e71359",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260311223152_add_client_type",
+        "checksum": "af6dff44a9abb351720e20719b554d21968a1dfb03f50e3d334d99d9836b083a",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260313133733_add_webauthn_credentials",
+        "checksum": "5f430ee58fa2022b65b3645385dcc51b60d7407d8f7f3cd24b3c71eb4aedb417",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260313175124_add_device_trust_and_step_up",
+        "checksum": "918acc0f4977ce57a8abdeda3a35240b03c72705e9b2c02180e557558f2f7f92",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260319135240_add_encrypted_password",
+        "checksum": "6ba0c4d0bb542547a0e3002625fb4485a914ce69da68caddd3799fdee013a1df",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260709000000_remove_password_escrow",
+        "checksum": "acdba54e290004286c433b316bf0d46758dc9d212a43a5fa3db627ce741ef053",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "iam",
+        "id": "20260907101000_actor_enrollment",
+        "checksum": "22619ae6753eb55ca1e05c18c53e6317e6b9680e9d895eb213725bcf45a241ce",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Historical IAM migration; older binaries reject unknown migration history."
+      },
+      {
+        "component": "router",
+        "id": "managed-format-1",
+        "checksum": "9a7c87d16b66aa65a1200c00ba8eca252949bd683d0ae4843fdb2a44c4a4911d",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Adopt existing compatible state and record its format; no destructive conversion."
+      },
+      {
+        "component": "memory",
+        "id": "managed-format-1",
+        "checksum": "ed0f08de635923fe627dcf5e133555911da81f52157552cf8c0f5035e5b1dac7",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Adopt existing compatible state and record its format; no destructive conversion."
+      },
+      {
+        "component": "skills",
+        "id": "managed-format-1",
+        "checksum": "b73f6f050c25fd3a2a31623d703aebc14d7997598f60e35d4d90f0f99a9a4cfe",
+        "impact": "fast",
+        "readableBy": "^1.1.0",
+        "note": "Adopt existing compatible state and record its format; no destructive conversion."
+      }
+    ],
+    "wireCompatibility": {
+      "iam": "^1.0.0",
+      "router": "^1.0.0",
+      "memory": "^1.0.0",
+      "skills": "^1.0.0"
+    },
+    "dataCompatibility": {
+      "iam": "^1.0.3",
+      "router": "^1.0.3",
+      "memory": "^1.0.3",
+      "skills": "^1.1.0"
+    },
+    "summary": "Harden TLS verification, queue error privacy, operator output and URL handling; add verified npm deployment orchestration.",
+    "notesUrl": "https://github.com/ChefTaco/hive/releases/tag/v1.2.2",
+    "breaking": false
+  }
+}
