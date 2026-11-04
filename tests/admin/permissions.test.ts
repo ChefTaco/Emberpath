@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { hasAdminPermission, hasRecentOperatorAuthentication, requiredPermissionForRequest } from '../../src/admin/app.js';
 
 describe('admin permission mapping', () => {
+  it('separates execution of inference requests from read-only routing previews', () => {
+    expect(requiredPermissionForRequest('POST', '/api/testing/run')).toBe('router:testing:write');
+    expect(requiredPermissionForRequest('POST', '/api/testing/run/')).toBe('router:testing:write');
+    expect(requiredPermissionForRequest('POST', '/api/testing/preview')).toBe('router:testing:read');
+  });
   it('allows wildcard and scoped wildcard grants', () => {
     expect(hasAdminPermission(['*'], 'router:keys:write')).toBe(true);
     expect(hasAdminPermission(['router:*'], 'router:providers:write')).toBe(true);

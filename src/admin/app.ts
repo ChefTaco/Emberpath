@@ -955,6 +955,7 @@ export function requiredPermissionForRequest(method: string, path: string): stri
   if (verb === 'OPTIONS') return null;
   if (verb === 'GET' || verb === 'HEAD') return requiredReadPermission(path);
   if (path === '/api/auth/reauthenticate' || path === '/api/auth/logout' || path === '/api/auth/login') return null;
+  if (/^\/api\/testing\/preview\/?$/.test(path)) return 'router:testing:read';
   if (path.startsWith('/api/hive/upgrades/')) return 'hive:upgrades:write';
   if (path.startsWith('/api/iam/users')) return verb === 'DELETE' ? 'iam:users:delete' : 'iam:users:write';
   if (path.startsWith('/api/iam/roles')) return 'iam:roles:write';
