@@ -525,3 +525,18 @@ retention. Readiness checks the local database and reports external providers as
 unchecked (`providers.checked=false`); it does not certify inference connectivity.
 Normal operation defaults to `false` and retains provider readiness requirements.
 Hive verifies external discovery, generation and streaming separately before enrollment.
+
+The provider and model-alias administration operations are described in the owned
+OpenAPI document, including strict write schemas, distinct sanitized read records,
+permissions, discovery and conflict responses. Detailed discovery result coverage
+is explicitly pending. `src/contracts/model-admin.ts` contains only public Zod
+contracts and is also used directly by the native request validators.
+
+After reviewing and committing a contract release, run
+`npm run contracts:browser -- --output NEW_DIRECTORY`. The export reads the exact
+committed source and package version with Git replacement objects disabled. It
+contains the browser-safe source, Apache license, source notice and a provenance
+manifest with the product version, source revision and SHA-256. It never exports
+working-tree edits, private configuration or backend imports, and refuses to
+replace an existing directory. Browser applications vendor a reviewed release
+export and verify its checksum; they do not import sibling backend source.

@@ -2,6 +2,7 @@ import type { ProviderKind } from '../generated/prisma/client.js';
 import { packageInfo } from '../config/paths.js';
 import { z } from 'zod';
 import { actorCredentialSchema } from '../admin/actor-credentials.js';
+import {modelAdminOpenApi} from './model-admin.js';
 
 export interface BuiltinApiDocEntry {
   scope: 'router' | 'provider';
@@ -38,6 +39,7 @@ export const builtinApiDocs: BuiltinApiDocEntry[] = [
 ];
 
 export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string, unknown> {
+  const modelAdmin = modelAdminOpenApi();
   const paths: Record<string, unknown> = Object.fromEntries(
     builtinApiDocs.map((entry) => [
       entry.route,
@@ -77,7 +79,7 @@ export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string,
       description: 'Model routing and administration baseline. Complete request/response schema coverage remains pending.',
     },
     servers: [{ url: adminBaseUrl }],
-    paths,
-    components:{securitySchemes:{resourceBearer:{type:'http',scheme:'bearer',bearerFormat:'JWT'},adminSession:{type:'apiKey',in:'cookie',name:'hive_router_admin'}}},
+    paths: {...paths, ...modelAdmin.paths},
+    components:{schemas: modelAdmin.schemas, securitySchemes:{resourceBearer:{type:'http',scheme:'bearer',bearerFormat:'JWT'},adminSession:{type:'apiKey',in:'cookie',name:'hive_router_admin'}}},
   };
 }

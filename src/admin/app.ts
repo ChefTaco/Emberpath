@@ -2298,7 +2298,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.get('/api/model-aliases', requireAdminAuth, async (context) => {
     const aliases = await prisma.modelAlias.findMany({
-      include: { provider: true },
+      include: { provider: { select: { id: true, slug: true, name: true, kind: true } } },
       orderBy: { alias: 'asc' },
     });
     return context.json({ data: aliases });

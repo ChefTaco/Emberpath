@@ -71,6 +71,7 @@
     "smoke:jev": "node scripts/ensure-prisma-client.mjs && tsx scripts/smoke-jev.ts",
     "contracts:generate": "tsx scripts/generate-ui-contracts.ts",
     "contracts:check": "tsx scripts/generate-ui-contracts.ts --check",
+    "contracts:browser": "tsx scripts/export-browser-contracts.ts",
     "prebuild": "node scripts/build-release-runtime.mjs",
     "pretypecheck": "node scripts/build-release-runtime.mjs",
     "pretest": "node scripts/build-release-runtime.mjs",

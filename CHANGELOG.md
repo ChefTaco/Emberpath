@@ -1,5 +1,9 @@
 # Changelog
 
+- Publish product-owned browser-safe provider and alias contracts and generated
+  OpenAPI operations. Export committed contract bytes with version, revision,
+  checksum and attribution; omit credential storage from nested alias providers.
+
 - Replace a provider's models within its atomic update, preserving all original
   rows and credentials when a save fails. Return a generic conflict for duplicate
   unique records without exposing stored values or database diagnostics.

@@ -1,5 +1,969 @@
 {
   "components": {
+    "schemas": {
+      "ModelAdminError": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "issues": {
+            "items": {},
+            "type": "array"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ModelAlias": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "OPENAI",
+                      "CODEX",
+                      "OPENAI_GENERIC",
+                      "OPENROUTER",
+                      "ANTHROPIC",
+                      "OLLAMA",
+                      "LLAMACPP",
+                      "VLLM"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "slug",
+                  "name",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "upstreamModel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alias",
+          "providerId",
+          "upstreamModel",
+          "enabled",
+          "description",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ModelAliasWrite": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "upstreamModel": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias"
+        ],
+        "type": "object"
+      },
+      "Provider": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "authHeaderName": {
+            "type": "string"
+          },
+          "authMode": {
+            "enum": [
+              "NONE",
+              "BEARER",
+              "API_KEY",
+              "HEADER"
+            ],
+            "type": "string"
+          },
+          "authSecretMasked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baseUrl": {
+            "type": "string"
+          },
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "audio": {
+                "type": "boolean"
+              },
+              "embeddings": {
+                "type": "boolean"
+              },
+              "inputCostPerMillionTokens": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "jsonSchema": {
+                "type": "boolean"
+              },
+              "longContext": {
+                "type": "boolean"
+              },
+              "maxContextWindow": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "outputCostPerMillionTokens": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "passthroughRoutes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "qualityScore": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "boolean"
+              },
+              "streaming": {
+                "type": "boolean"
+              },
+              "supportedRoutes": {
+                "items": {
+                  "enum": [
+                    "v1.models",
+                    "v1.responses",
+                    "v1.chat.completions",
+                    "v1.completions",
+                    "v1.embeddings",
+                    "v1.audio.transcriptions",
+                    "v1.audio.translations",
+                    "v1.images.generations",
+                    "v1.moderations",
+                    "ollama.native",
+                    "vllm.native"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tags": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "throughputTokensPerSecond": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "tools": {
+                "type": "boolean"
+              },
+              "video": {
+                "type": "boolean"
+              },
+              "vision": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "concurrency": {
+            "type": "number"
+          },
+          "defaultHeaders": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "failoverGroup": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "OPENAI",
+              "CODEX",
+              "OPENAI_GENERIC",
+              "OPENROUTER",
+              "ANTHROPIC",
+              "OLLAMA",
+              "LLAMACPP",
+              "VLLM"
+            ],
+            "type": "string"
+          },
+          "lastHealthAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastHealthError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastHealthStatus": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "maxRetries": {
+            "type": "number"
+          },
+          "models": {
+            "items": {
+              "properties": {
+                "capabilityJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "maxContextWindow": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "model": {
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "providerId",
+                "model",
+                "displayName",
+                "enabled",
+                "maxContextWindow",
+                "capabilityJson",
+                "createdAt",
+                "updatedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "timeoutMs": {
+            "type": "number"
+          },
+          "weight": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "kind",
+          "baseUrl",
+          "authMode",
+          "authHeaderName",
+          "authSecretMasked",
+          "defaultHeaders",
+          "capabilities",
+          "timeoutMs",
+          "maxRetries",
+          "concurrency",
+          "priority",
+          "weight",
+          "failoverGroup",
+          "enabled",
+          "lastHealthStatus",
+          "lastHealthError",
+          "lastHealthAt",
+          "models"
+        ],
+        "type": "object"
+      },
+      "ProviderCapability": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "audio": {
+            "type": "boolean"
+          },
+          "embeddings": {
+            "type": "boolean"
+          },
+          "inputCostPerMillionTokens": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "jsonSchema": {
+            "type": "boolean"
+          },
+          "longContext": {
+            "type": "boolean"
+          },
+          "maxContextWindow": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "outputCostPerMillionTokens": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "passthroughRoutes": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "qualityScore": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          },
+          "reasoning": {
+            "type": "boolean"
+          },
+          "streaming": {
+            "type": "boolean"
+          },
+          "supportedRoutes": {
+            "items": {
+              "enum": [
+                "v1.models",
+                "v1.responses",
+                "v1.chat.completions",
+                "v1.completions",
+                "v1.embeddings",
+                "v1.audio.transcriptions",
+                "v1.audio.translations",
+                "v1.images.generations",
+                "v1.moderations",
+                "ollama.native",
+                "vllm.native"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "throughputTokensPerSecond": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "tools": {
+            "type": "boolean"
+          },
+          "video": {
+            "type": "boolean"
+          },
+          "vision": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ProviderModel": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "capabilityJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "maxContextWindow": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "providerId",
+          "model",
+          "displayName",
+          "enabled",
+          "maxContextWindow",
+          "capabilityJson",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ProviderModelWrite": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "capabilityJson": {
+            "additionalProperties": false,
+            "default": {},
+            "properties": {
+              "audio": {
+                "type": "boolean"
+              },
+              "embeddings": {
+                "type": "boolean"
+              },
+              "inputCostPerMillionTokens": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "jsonSchema": {
+                "type": "boolean"
+              },
+              "longContext": {
+                "type": "boolean"
+              },
+              "maxContextWindow": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "outputCostPerMillionTokens": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "passthroughRoutes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "qualityScore": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "boolean"
+              },
+              "streaming": {
+                "type": "boolean"
+              },
+              "supportedRoutes": {
+                "items": {
+                  "enum": [
+                    "v1.models",
+                    "v1.responses",
+                    "v1.chat.completions",
+                    "v1.completions",
+                    "v1.embeddings",
+                    "v1.audio.transcriptions",
+                    "v1.audio.translations",
+                    "v1.images.generations",
+                    "v1.moderations",
+                    "ollama.native",
+                    "vllm.native"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tags": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "throughputTokensPerSecond": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "tools": {
+                "type": "boolean"
+              },
+              "video": {
+                "type": "boolean"
+              },
+              "vision": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "maxContextWindow": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "model": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "type": "object"
+      },
+      "ProviderWrite": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "authHeaderName": {
+            "default": "Authorization",
+            "type": "string"
+          },
+          "authMode": {
+            "default": "BEARER",
+            "enum": [
+              "NONE",
+              "BEARER",
+              "API_KEY",
+              "HEADER"
+            ],
+            "type": "string"
+          },
+          "authSecret": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "format": "uri",
+            "type": "string"
+          },
+          "capabilities": {
+            "additionalProperties": false,
+            "default": {},
+            "properties": {
+              "audio": {
+                "type": "boolean"
+              },
+              "embeddings": {
+                "type": "boolean"
+              },
+              "inputCostPerMillionTokens": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "jsonSchema": {
+                "type": "boolean"
+              },
+              "longContext": {
+                "type": "boolean"
+              },
+              "maxContextWindow": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "outputCostPerMillionTokens": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "passthroughRoutes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "qualityScore": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "reasoning": {
+                "type": "boolean"
+              },
+              "streaming": {
+                "type": "boolean"
+              },
+              "supportedRoutes": {
+                "items": {
+                  "enum": [
+                    "v1.models",
+                    "v1.responses",
+                    "v1.chat.completions",
+                    "v1.completions",
+                    "v1.embeddings",
+                    "v1.audio.transcriptions",
+                    "v1.audio.translations",
+                    "v1.images.generations",
+                    "v1.moderations",
+                    "ollama.native",
+                    "vllm.native"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tags": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "throughputTokensPerSecond": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "tools": {
+                "type": "boolean"
+              },
+              "video": {
+                "type": "boolean"
+              },
+              "vision": {
+                "type": "boolean"
+              }
+            },
+            "type": "object"
+          },
+          "concurrency": {
+            "default": 16,
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "defaultHeaders": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "failoverGroup": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "OPENAI",
+              "CODEX",
+              "OPENAI_GENERIC",
+              "OPENROUTER",
+              "ANTHROPIC",
+              "OLLAMA",
+              "LLAMACPP",
+              "VLLM"
+            ],
+            "type": "string"
+          },
+          "maxRetries": {
+            "default": 1,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "models": {
+            "default": [],
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "capabilityJson": {
+                  "additionalProperties": false,
+                  "default": {},
+                  "properties": {
+                    "audio": {
+                      "type": "boolean"
+                    },
+                    "embeddings": {
+                      "type": "boolean"
+                    },
+                    "inputCostPerMillionTokens": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "jsonSchema": {
+                      "type": "boolean"
+                    },
+                    "longContext": {
+                      "type": "boolean"
+                    },
+                    "maxContextWindow": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "outputCostPerMillionTokens": {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "passthroughRoutes": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "qualityScore": {
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "reasoning": {
+                      "type": "boolean"
+                    },
+                    "streaming": {
+                      "type": "boolean"
+                    },
+                    "supportedRoutes": {
+                      "items": {
+                        "enum": [
+                          "v1.models",
+                          "v1.responses",
+                          "v1.chat.completions",
+                          "v1.completions",
+                          "v1.embeddings",
+                          "v1.audio.transcriptions",
+                          "v1.audio.translations",
+                          "v1.images.generations",
+                          "v1.moderations",
+                          "ollama.native",
+                          "vllm.native"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "tags": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "throughputTokensPerSecond": {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    "tools": {
+                      "type": "boolean"
+                    },
+                    "video": {
+                      "type": "boolean"
+                    },
+                    "vision": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "maxContextWindow": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "model": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "model"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "priority": {
+            "default": 100,
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "slug": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "timeoutMs": {
+            "default": 120000,
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "weight": {
+            "default": 100,
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "kind",
+          "baseUrl"
+        ],
+        "type": "object"
+      }
+    },
     "securitySchemes": {
       "adminSession": {
         "in": "cookie",
@@ -411,6 +1375,599 @@
           }
         ],
         "summary": "Durable upgrade coordinator outcome"
+      }
+    },
+    "/api/model-aliases": {
+      "get": {
+        "operationId": "listModelAliass",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/ModelAlias"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Sanitized native records"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "List ModelAlias records",
+        "x-permission": "router:routing:read"
+      },
+      "post": {
+        "operationId": "createModelAlias",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelAliasWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ModelAlias"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Create a ModelAlias record",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/model-aliases/{id}": {
+      "delete": {
+        "operationId": "deleteModelAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Delete a ModelAlias record",
+        "x-permission": "router:routing:write"
+      },
+      "put": {
+        "operationId": "updateModelAlias",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelAliasWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ModelAlias"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Replace writable ModelAlias settings",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "operationId": "listProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/Provider"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Sanitized native records"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "List Provider records",
+        "x-permission": "router:providers:read"
+      },
+      "post": {
+        "operationId": "createProvider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Provider"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Create a Provider record",
+        "x-permission": "router:providers:write"
+      }
+    },
+    "/api/providers/{id}": {
+      "delete": {
+        "operationId": "deleteProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Deleted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Delete a Provider record",
+        "x-permission": "router:providers:write"
+      },
+      "put": {
+        "operationId": "updateProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Provider"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated record"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Replace writable Provider settings",
+        "x-permission": "router:providers:write"
+      }
+    },
+    "/api/providers/{id}/discover": {
+      "post": {
+        "operationId": "discoverProviderModels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refreshed provider and discovery reconciliation; detailed discovery response schema is not yet exported"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Request validation or selected model is invalid"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required"
+          },
+          "404": {
+            "description": "Provider not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          },
+          "502": {
+            "description": "External provider discovery failed"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Discover models from a configured external provider and reconcile its registry",
+        "x-permission": "router:providers:write"
       }
     },
     "/api/ps": {

@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {SignJWT} from 'jose';
+import {providerReadSchema, modelAliasReadSchema} from '../../src/contracts/model-admin.js';
 
 const directory = mkdtempSync(join(tmpdir(), 'emberpath-provider-atomicity-'));
 vi.stubEnv('DATABASE_URL', 'file:' + join(directory, 'fixture.db'));
@@ -21,7 +22,7 @@ it('provider updates retain all prior models and credentials after parent or nes
   const user = await prisma.adminUser.create({data: {username: 'admin', passwordHash: '!externally-managed'}});
   await prisma.adminSession.create({data: {sessionId: 'fixture-session', userId: user.id, expiresAt: new Date(Date.now() + 60000)}});
   const cookie = 'hive_router_admin=' + await new SignJWT({sid: 'fixture-session', username: 'admin', roles: [],
-    permissions: ['router:providers:write', 'router:routing:write'], authMode: 'iam-oidc'}).setProtectedHeader({alg: 'HS256'}).setSubject(user.id)
+    permissions: ['router:providers:write', 'router:routing:write', 'router:providers:read', 'router:routing:read'], authMode: 'iam-oidc'}).setProtectedHeader({alg: 'HS256'}).setSubject(user.id)
     .setIssuedAt().setExpirationTime('60s').sign(new TextEncoder().encode(process.env.HIVE_ROUTER_SECRET));
   const encrypted = encryptText('obviously-fake-provider-credential');
   const provider = await prisma.provider.create({data: {slug: 'fixture', name: 'Original fixture', kind: 'OPENAI_GENERIC',
@@ -53,4 +54,15 @@ it('provider updates retain all prior models and credentials after parent or nes
   const duplicateBody = await duplicate.json();
   expect(duplicateBody).toEqual({error: 'A record with these unique fields already exists. Review the existing record before saving.'});
   expect(JSON.stringify(duplicateBody)).not.toContain('synthetic-existing');
+  await prisma.modelAlias.create({data: {alias: 'bound-fixture', upstreamModel: 'original', providerId: provider.id}});
+  const aliases = await app.request('/api/model-aliases', {headers: {cookie}});
+  expect(aliases.status).toBe(200);
+  const json = await aliases.json() as {data: Array<{alias: string; provider: unknown}>};
+  for (const row of json.data) expect(() => modelAliasReadSchema.parse(row)).not.toThrow();
+  expect(json.data.find(item => item.alias === 'bound-fixture')?.provider).toEqual({id: provider.id, slug: 'fixture', name: 'Renamed fixture', kind: 'OPENAI_GENERIC'});
+  expect(JSON.stringify(json)).not.toContain(encrypted);
+  expect(JSON.stringify(json)).not.toMatch(/encryptedAuthSecret|defaultHeadersJson|capabilityJson|obviously-fake-provider-credential/);
+  const listed = await app.request('/api/providers', {headers: {cookie}});
+  expect(listed.status).toBe(200);
+  for (const row of (await listed.json() as {data: unknown[]}).data) expect(() => providerReadSchema.parse(row)).not.toThrow();
 });
