@@ -1,5 +1,8 @@
 # Changelog
 
+- Add product-owned idempotent native credential operations with atomic encrypted receipts, exact owner/policy binding, bounded recovery, unchanged credential deadlines and explicit containment. Oathweave coordinates identities through these authorized APIs while native model-key ownership remains in Emberpath.
+
+
 - Disable external provider probes, update checks and trace/receipt retention
   during isolated restore rehearsals; report providers as unchecked and retain
   normal provider readiness checks outside rehearsal mode.

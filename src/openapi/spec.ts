@@ -1,5 +1,7 @@
 import type { ProviderKind } from '../generated/prisma/client.js';
 import { packageInfo } from '../config/paths.js';
+import { z } from 'zod';
+import { actorCredentialSchema } from '../admin/actor-credentials.js';
 
 export interface BuiltinApiDocEntry {
   scope: 'router' | 'provider';
@@ -60,6 +62,13 @@ export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string,
     ['/api/hive/upgrades/apply','post','Apply the exact reviewed plan with recent operator authentication'],
   ]) paths[path!] = {[method!]:{summary,security:[{adminSession:[]}],responses:{'200':{description:'Success'},...(path?.endsWith('/apply')?{'202':{description:'Upgrade accepted'}}:{}),'401':{description:'Authentication required'},'403':{description:'Permission, recent authentication or origin check failed'},'409':{description:'Upgrade plan changed or coordinator is unavailable'}}}};
   for (const path of ['/api/docs/index','/api/docs/openapi.json','/api/docs/providers/{providerId}']) paths[path]={get:{summary:'Authenticated API documentation',security:[{resourceBearer:[]},{adminSession:[]}],...(path.includes('{providerId}')?{parameters:[{name:'providerId',in:'path',required:true,schema:{type:'string'}}]}:{}),responses:{'200':{description:'Documentation'},'401':{description:'Authentication required'}}}};
+  for (const [path, method] of [['/api/client-keys/operations/{operationId}', 'post'], ['/api/client-keys/operations/{operationId}/receipt', 'delete']] as const) paths[path] = { [method]: {
+    summary: method === 'post' ? 'Apply or replay an owned, idempotent native credential operation' : 'Acknowledge an owned credential receipt',
+    security: [{ resourceBearer: [] }, { adminSession: [] }],
+    parameters: [{ name: 'operationId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{64}$' } }],
+    ...(method === 'post' ? { requestBody: { required: true, content: { 'application/json': { schema: z.toJSONSchema(actorCredentialSchema) } } } } : {}),
+    responses: { '200': { description: 'Exact receipt; Cache-Control: no-store', content: { 'application/json': { schema: { type: 'object', properties: { ok: { type: 'boolean' }, resourceId: { type: 'string' }, operationId: { type: 'string' }, apiKey: { type: 'string', writeOnly: true } }, required: ['ok'] } } } }, '401': { description: 'Authentication required' }, '403': { description: 'router:keys:write and recent interactive authentication required' }, '409': { description: 'Operation owner, policy or resource conflict' }, '410': { description: 'Receipt expired or acknowledged; no automatic rotation' } },
+  } };
   return {
     openapi: '3.1.0',
     info: {

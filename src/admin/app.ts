@@ -4,7 +4,7 @@ import { packageRoot as releasePackageRoot } from '../config/paths.js';
 import { compatibilityWarnings, coordinatorRequest, durableUpgradeStatus, home as upgradeHome, ownRelease, projectFile, updateStatus } from '../release/runtime.js';
 import { UpgradeApplyRequest, UpgradePlanRequest } from '../contracts/upgrades.js';
 import { HTTPException } from 'hono/http-exception';
-import { actorJournal, actorJournalWrite } from './actor-journal-runtime.js';
+import { actorJournal, actorJournalWrite, actorCredentials } from './actor-journal-runtime.js';
 import type { ActorLease, ActorStep } from './actor-journal.js';
 import { routingPatchSchema, routingSnapshot, applyRoutingRevision, routingHistory, savedRoutingRevision } from '../routing/revisions.js';
 import { MemoryWriteSchema } from '../contracts/memory-operations.js';
@@ -2497,6 +2497,18 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.get('/api/client-keys', requireAdminAuth, async (context) => {
     const keys = await prisma.clientApiKey.findMany({ orderBy: { createdAt: 'desc' } });
     return context.json({ data: keys.map((key) => sanitizeClientApiKey(key)) });
+  });
+
+  app.post('/api/client-keys/operations/:operationId', requireAdminAuth, async context => {
+    const body: unknown = await context.req.json();
+    const result = await actorJournalWrite(() => actorCredentials().apply(context.get('adminUser')!.id, context.req.param('operationId') ?? '', body));
+    context.header('Cache-Control', 'no-store');
+    await recordAuditEvent({ actorType: 'admin-user', adminUserId: context.get('adminUser')!.id, action: 'client-key.credential-operation', entityType: 'client-key', entityId: String(result.resourceId), metadata: { operationId: context.req.param('operationId') } });
+    return context.json(result);
+  });
+  app.delete('/api/client-keys/operations/:operationId/receipt', requireAdminAuth, async context => {
+    await actorJournalWrite(() => actorCredentials().acknowledge(context.get('adminUser')!.id, context.req.param('operationId') ?? ''));
+    return context.json({ ok: true });
   });
 
   app.post('/api/client-keys', requireAdminAuth, async (context) => {

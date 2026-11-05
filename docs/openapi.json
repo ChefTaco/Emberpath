@@ -31,6 +31,194 @@
         "summary": "Native Ollama chat route"
       }
     },
+    "/api/client-keys/operations/{operationId}": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "enroll",
+                      "rotate",
+                      "disable"
+                    ],
+                    "type": "string"
+                  },
+                  "actorId": {
+                    "maxLength": 32,
+                    "minLength": 2,
+                    "pattern": "^[a-z0-9_-]+$",
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "maxLength": 128,
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "workspaceId": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "pattern": "^[a-z0-9_-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action",
+                  "actorId",
+                  "displayName",
+                  "expiresAt",
+                  "workspaceId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "apiKey": {
+                      "type": "string",
+                      "writeOnly": true
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Exact receipt; Cache-Control: no-store"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "router:keys:write and recent interactive authentication required"
+          },
+          "409": {
+            "description": "Operation owner, policy or resource conflict"
+          },
+          "410": {
+            "description": "Receipt expired or acknowledged; no automatic rotation"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Apply or replay an owned, idempotent native credential operation"
+      }
+    },
+    "/api/client-keys/operations/{operationId}/receipt": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operationId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "apiKey": {
+                      "type": "string",
+                      "writeOnly": true
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Exact receipt; Cache-Control: no-store"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "router:keys:write and recent interactive authentication required"
+          },
+          "409": {
+            "description": "Operation owner, policy or resource conflict"
+          },
+          "410": {
+            "description": "Receipt expired or acknowledged; no automatic rotation"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Acknowledge an owned credential receipt"
+      }
+    },
     "/api/docs/index": {
       "get": {
         "responses": {
