@@ -1,5 +1,7 @@
 # Changelog
 
+## 2.0.1 - 2026-11-05
+
 ### Security
 
 - Remove npm, npx, corepack and yarn and the apt package tooling (apt,

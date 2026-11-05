@@ -5759,7 +5759,7 @@
   "info": {
     "description": "Model routing baseline and owned browser administration request/response contracts. Native provider proxy payloads remain provider-defined.",
     "title": "Emberpath API",
-    "version": "2.0.0"
+    "version": "2.0.1"
   },
   "openapi": "3.1.0",
   "paths": {
