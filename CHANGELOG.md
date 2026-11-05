@@ -1,5 +1,9 @@
 # Changelog
 
+- Replace a provider's models within its atomic update, preserving all original
+  rows and credentials when a save fails. Return a generic conflict for duplicate
+  unique records without exposing stored values or database diagnostics.
+
 - Store atomically issued native credential timestamps in the Prisma adapter format so verified enrollment keys authenticate and expire correctly.
 
 - Decode bounded gzip, deflate and zstd inference requests before routing and

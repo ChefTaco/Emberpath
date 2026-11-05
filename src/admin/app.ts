@@ -8,7 +8,7 @@ import { actorJournal, actorJournalWrite, actorCredentials } from './actor-journ
 import type { ActorLease, ActorStep } from './actor-journal.js';
 import { routingPatchSchema, routingSnapshot, applyRoutingRevision, routingHistory, savedRoutingRevision } from '../routing/revisions.js';
 import { MemoryWriteSchema } from '../contracts/memory-operations.js';
-import { AuthMode, ProviderKind, RouteRuleKind, type AdminUser, type ClientApiKey } from '../generated/prisma/client.js';
+import { AuthMode, ProviderKind, RouteRuleKind, Prisma, type AdminUser, type ClientApiKey } from '../generated/prisma/client.js';
 import { Hono, type Context, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getConnInfo } from '@hono/node-server/conninfo';
@@ -2137,12 +2137,12 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       delete providerData.encryptedAuthSecret;
     }
 
-    await prisma.providerModel.deleteMany({ where: { providerId } });
     const updated = await prisma.provider.update({
       where: { id: providerId },
       data: {
         ...providerData,
         models: {
+          deleteMany: {},
           create: buildProviderModelInputs(body.models),
         },
       },
@@ -2861,6 +2861,9 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.onError((err, context) => {
     if (err instanceof HTTPException) return context.json({ error: err.message }, err.status);
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return context.json({ error: 'A record with these unique fields already exists. Review the existing record before saving.' }, 409);
+    }
     if (err instanceof ZodError) {
       return context.json({ error: 'Validation error', issues: err.issues }, 400);
     }
