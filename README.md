@@ -1,30 +1,13 @@
 # Emberpath
 
-New suite deployments may preallocate console account IDs with
-`EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON`, for example
-`[{"username":"admin","localId":"synthetic-new-model-admin"}]`.
-Each username must be in the configured administrator allowlist. Startup creates
-only missing accounts and preserves all existing IDs, display names and
-credentials. Conflicting bindings fail instead of merging accounts. Existing
-installations use explicit reviewed Oathweave issuer/subject account links.
+Emberpath is an OpenAI-compatible model gateway with a separate administration API. Clients talk to one endpoint; Emberpath picks an upstream provider, fails over when it is safe to, enforces per-key quotas and records a trace for every request. Inference services stay external: Emberpath routes to them and never installs or manages them.
 
-Part of the Hive:Magnus ecosystem. This repository starts from a reviewed public
-Hive source snapshot; `provenance.json` records its revision and original hashes.
+It is one product in the [Hive:Magnus](https://github.com/ChefTaco/hive) suite, and it also runs on its own. The [Hive installer](https://github.com/ChefTaco/hive#readme) deploys tested combinations of the suite's products.
 
-Extraction is in progress. Existing client protocols and migration history are
-retained. The suite SSO/API cutover and production migration are not yet accepted.
-Do not replace an existing deployment using this source snapshot alone.
-
-# Hive Router
-
-Hive Router is an OpenAI-compatible inference gateway with a separate admin
-plane. Clients talk to one OpenAI-style endpoint; the router picks an upstream
-provider, fails over when it is safe to, enforces per-key quotas, and records a
-trace for every request. The admin plane serves the unified Hive console, which
-also fronts Hive IAM and HiveMem when they are deployed.
+This project was extracted from Hive with its migration history and client protocols intact. `provenance.json` records the source revision and original file hashes.
 
 It is a single Node.js process written in strict TypeScript (Hono, Prisma 7,
-SQLite). The console is React + Vite and ships prebuilt in the package.
+SQLite). The browser console is a separate product, [HiveXUI](https://github.com/ChefTaco/HiveXUI).
 
 ## Quick start (npm)
 
@@ -573,3 +556,13 @@ contract bytes, exact source revision and checksum, product version and Apache
 attribution. Browser clients vendor that reviewed export, validate responses and
 requests, and check its provenance without reading sibling backend source.
 `npm run check:openapi` checks the generated operation and schema snapshot.
+
+## Fresh suite initialization
+
+New suite deployments may preallocate console account IDs with
+`EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON`, for example
+`[{"username":"admin","localId":"synthetic-new-model-admin"}]`.
+Each username must be in the configured administrator allowlist. Startup creates
+only missing accounts and preserves all existing IDs, display names and
+credentials. Conflicting bindings fail instead of merging accounts. Existing
+installations use explicit reviewed Oathweave issuer/subject account links.
