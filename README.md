@@ -7,19 +7,32 @@ It is one product in the [Hive:Magnus](https://github.com/ChefTaco/hive) suite, 
 This project was extracted from Hive with its migration history and client protocols intact. `provenance.json` records the source revision and original file hashes.
 
 It is a single Node.js process written in strict TypeScript (Hono, Prisma 7,
-SQLite). The browser console is a separate product, [HiveXUI](https://github.com/ChefTaco/HiveXUI).
+SQLite).
+
+**There is no built-in console.** The admin listener serves the administration API;
+`GET /` returns only a short fallback page. In the suite, the browser console is a
+separate product, [HiveXUI](https://github.com/ChefTaco/HiveXUI), which signs in through
+Oathweave (see [direct browser authorization](docs/OATHWEAVE.md)). Running on its own,
+Emberpath is managed through the admin API ([OpenAPI document](docs/openapi.json)) and the
+`hive-router` command.
+
+**Package names.** The source here is `@hivemagnus/emberpath`, which is not on npm yet. The
+npm commands below use `@hivemagnus/hive-router`, the last published name. That package predates
+this repository and still bundles the old console, so it opens a console on the admin listener
+where this source does not. Its command, `hive-router`, is also available from this source
+alongside `emberpath`.
 
 ## Quick start (npm)
 
-The easiest way to run Router, IAM and HiveMem together is the
+The easiest way to run Emberpath, IAM and HiveMem together is the
 [`@hivemagnus/hive`](https://www.npmjs.com/package/@hivemagnus/hive) launcher,
-which writes the env files and secrets for you. To run the Router on its own:
+which writes the env files and secrets for you. To run Emberpath on its own:
 
 **Requirements**
 
 - Node.js 24 (`>=24.22.1`) or 26 (`>=26.13.0`). `better-sqlite3` installs from
   a prebuilt binary on common platforms, or compiles with a C++ toolchain.
-- For console sign-in, either Linux with `pamtester` installed
+- For admin sign-in, either Linux with `pamtester` installed
   (`HIVE_ROUTER_AUTH_MODE=os`, the default: operators use their OS password),
   or a running [Hive IAM](https://github.com/ChefTaco/hive/tree/main/services/hive-iam)
   (`HIVE_ROUTER_AUTH_MODE=iam-oidc`).
@@ -34,7 +47,7 @@ echo "HIVE_ROUTER_ADMIN_USERS=$USER" >> ~/.hive/router.env
 ```
 
 That is the whole minimal configuration. By default the API listens on
-`127.0.0.1:4020`, the console on `127.0.0.1:9443`, and the SQLite database and
+`127.0.0.1:4020`, the admin API on `127.0.0.1:9443`, and the SQLite database and
 traces go to `${HIVE_HOME:-~/.hive}/router` (created with mode `0700`).
 
 **2. Check and start**
@@ -44,23 +57,24 @@ npx --allow-scripts=better-sqlite3 @hivemagnus/hive-router check --env-file ~/.h
 npx --allow-scripts=better-sqlite3 @hivemagnus/hive-router --env-file ~/.hive/router.env
 ```
 
-Open `http://127.0.0.1:9443/` and sign in as one of `HIVE_ROUTER_ADMIN_USERS`.
+The administration API is at `http://127.0.0.1:9443/api`. Sign in with
+`POST /api/auth/login` as one of `HIVE_ROUTER_ADMIN_USERS`.
 The OpenAI-compatible API is at `http://127.0.0.1:4020/v1`; both listeners
 answer `GET /health`. You can also install it globally with
 `npm install -g --allow-scripts=better-sqlite3 @hivemagnus/hive-router` and run `hive-router`.
 
-**Install scripts (npm 12 and later).** The Router uses `better-sqlite3`, a
+**Install scripts (npm 12 and later).** Emberpath uses `better-sqlite3`, a
 native add-on whose install script downloads (or, if none matches your
 platform, builds) its binary. npm 12 blocks dependency install scripts unless
 you allow them, which is what `--allow-scripts=better-sqlite3` does for `npx`
-and global installs. When you add the Router to your own project, allow it in
+and global installs. When you add Emberpath to your own project, allow it in
 that project's `package.json` instead (npm rejects the flag there):
 
 ```json
 { "allowScripts": { "better-sqlite3": true } }
 ```
 
-Without this, the install succeeds but the Router cannot open its database.
+Without this, the install succeeds but Emberpath cannot open its database.
 npm 11 runs the script without asking. The `@hivemagnus/hive` launcher sets
 this up for you.
 
@@ -73,7 +87,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj /CN=localhost \
   -keyout ~/.hive/router.key -out ~/.hive/router.crt
 ```
 
-To expose the Router beyond this machine, also set `HOST=0.0.0.0` (or
+To expose Emberpath beyond this machine, also set `HOST=0.0.0.0` (or
 `API_HOST`/`ADMIN_HOST`), `PUBLIC_API_URL` and `PUBLIC_ADMIN_URL`, for example
 `https://hive.example.com:4020` and `https://hive.example.com:9443`.
 
@@ -93,11 +107,11 @@ variable and how to fix it.
 
 **Connecting IAM and HiveMem.** Set `HIVE_ROUTER_AUTH_MODE=iam-oidc`,
 `HIVE_IAM_INTERNAL_URL` and `HIVE_ROUTER_IAM_CLIENT_SECRET` (equal to IAM's
-`SEED_HIVE_ROUTER_CLIENT_SECRET`) to sign in through IAM and enable the IAM
-pages. Set `HIVEMEM_INTERNAL_URL` and `HIVE_ROUTER_MEMORY_PROXY_TOKEN` for the Memory
-pages. The token is a HiveMem admin token; mint it with
+`SEED_HIVE_ROUTER_CLIENT_SECRET`) to sign in through IAM and enable the `/api/iam/*`
+proxy. Set `HIVEMEM_INTERNAL_URL` and `HIVE_ROUTER_MEMORY_PROXY_TOKEN` for the `/api/memory/*`
+proxy. The token is a HiveMem admin token; mint it with
 `hivemem-server issue-token --env-file hivemem.env --subject hive-router --role admin`
-(valid for at most 30 days, so re-issue it and restart the Router before it
+(valid for at most 30 days, so re-issue it and restart Emberpath before it
 expires). See
 [Configuration](#configuration) for everything else.
 
@@ -116,7 +130,7 @@ expires). See
   faster and more reliable recently. Routing configuration is versioned and can
   be rolled back.
 - **Safe failover**: streaming failures are classified as `pre-first-byte` or
-  `mid-stream`. The router fails over only before the first token and never
+  `mid-stream`. Emberpath fails over only before the first token and never
   splices two upstream streams together.
 - **Client API keys and quotas**: OpenAI-style `sk-...` keys, stored only as
   hashes, with daily and monthly request and token caps (soft warnings, then
@@ -126,9 +140,9 @@ expires). See
   provider does not report it, and an audit log of admin actions.
 - **Model discovery**: `POST /api/providers/:id/discover` pulls live model
   lists into the catalog and keeps any operator overrides.
-- **Admin console**: provider and routing editors, traces, incidents, API keys,
-  audit, and (when configured) IAM and Memory pages, all behind PAM or IAM
-  OIDC login.
+- **Administration API**: providers and routing, traces, incidents, API keys,
+  audit, and (when configured) IAM and Memory proxies, all behind PAM or IAM
+  OIDC login. HiveXUI is its browser console.
 - **Shadow decision model (optional)**: classifies prompts with the TypeSafe
   Jev decision API (with OpenRouter as fallback) and records the result on the
   trace without changing routing.
@@ -141,7 +155,7 @@ clients ──► API plane (API_HOST:API_PORT) ──► providers (OpenAI, Ant
                      └─ traces, metrics, quotas ─► SQLite (DATABASE_URL)
 
 operators ─► Admin plane (ADMIN_HOST:ADMIN_PORT)
-               ├─ Hive console (static SPA)
+               ├─ GET /             fallback page only (the console is HiveXUI)
                ├─ /api/*            admin API (session cookie + permission checks)
                ├─ /api/iam/*        proxied to Hive IAM with a server-side client-credentials token
                ├─ /api/memory/*     proxied to HiveMem with HIVE_ROUTER_MEMORY_PROXY_TOKEN
@@ -172,7 +186,6 @@ compiles it into `dist/`, so the published package needs no Prisma CLI and
 runs no install scripts of its own.
 
 ```bash
-cd services/hive-router
 npm install
 cp .env.example .env
 # edit .env: at least HIVE_ROUTER_SECRET and HIVE_ROUTER_ADMIN_USERS
@@ -180,10 +193,9 @@ npm run build
 npm run start
 ```
 
-For development, run `npm run dev` (API and admin with reload) and, in another
-terminal, `npm run dev:ui` (Vite dev server for the console).
+For development, run `npm run dev` (API and admin with reload).
 
-`.env.example` binds the API to `https://localhost:4020` and the admin console
+`.env.example` binds the API to `https://localhost:4020` and the admin API
 to `https://127.0.0.1:9443`. TLS is turned on when both `TLS_CERT_PATH` and
 `TLS_KEY_PATH` point at existing files. In development, with no certificate,
 the listeners use plain HTTP. Health endpoints on both listeners:
@@ -191,10 +203,12 @@ the listeners use plain HTTP. Health endpoints on both listeners:
 
 Next steps:
 
-1. Sign in to the admin console as a user listed in `HIVE_ROUTER_ADMIN_USERS`.
-2. Add a provider under **Providers**, for example `LLAMACPP` at
+1. Sign in with `POST /api/auth/login` as a user listed in `HIVE_ROUTER_ADMIN_USERS`,
+   keeping the session cookie it sets.
+2. Add a provider with `POST /api/providers`, for example `LLAMACPP` at
    `http://127.0.0.1:8000` with auth `NONE`.
-3. Create a client key under **System → API Keys**.
+3. Create a client key with `hive-router create-key --name my-service`
+   (see [API keys from the command line](#api-keys-from-the-command-line)).
 4. Call the API:
 
    ```bash
@@ -218,13 +232,13 @@ directory. Variables with no default are optional unless marked **required**.
 |---|---|---|
 | `NODE_ENV` | `development` | `development`, `test` or `production`. Production requires TLS and rejects the insecure-TLS escape hatches. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
-| `HOST` | `127.0.0.1` | Default bind address for both listeners. Set `0.0.0.0` (or a specific interface) to expose the router. |
+| `HOST` | `127.0.0.1` | Default bind address for both listeners. Set `0.0.0.0` (or a specific interface) to expose Emberpath. |
 | `API_HOST` / `ADMIN_HOST` | `HOST` | Bind address for each listener. |
 | `API_PORT` | `4020` | API plane port. |
 | `ADMIN_PORT` | `9443` | Admin plane port. |
 | `PUBLIC_API_URL` | `http(s)://localhost:API_PORT` | Externally visible API URL, used in docs and enrollment output. The default scheme is `https` when TLS is configured. |
 | `PUBLIC_ADMIN_URL` | `http(s)://localhost:ADMIN_PORT` | Externally visible admin URL. Also the base of the default OIDC redirect URI. |
-| `HIVE_UI_PUBLIC_URL` | `PUBLIC_ADMIN_URL` | Public URL of the Hive console. |
+| `HIVE_UI_PUBLIC_URL` | `PUBLIC_ADMIN_URL` | Public URL of the browser console. |
 | `TLS_CERT_PATH` / `TLS_KEY_PATH` | | PEM certificate and key. Both are required when `NODE_ENV=production` or `REQUIRE_TLS=true`. |
 | `REQUIRE_TLS` | `false` | Refuse to start without TLS, even outside production. |
 
@@ -258,28 +272,28 @@ directory. Variables with no default are optional unless marked **required**.
 
 | Variable | Default | Description |
 |---|---|---|
-| `HIVE_IAM_INTERNAL_URL` | `http://127.0.0.1:4200` | IAM base URL as the router reaches it. |
+| `HIVE_IAM_INTERNAL_URL` | `http://127.0.0.1:4200` | IAM base URL as Emberpath reaches it. |
 | `HIVE_IAM_PUBLIC_URL` | `PUBLIC_ADMIN_URL/iam` | IAM URL shown to users. |
-| `HIVE_ROUTER_IAM_CLIENT_ID` | `hive-router` | OAuth client the router uses. |
+| `HIVE_ROUTER_IAM_CLIENT_ID` | `hive-router` | OAuth client Emberpath uses. |
 | `HIVE_ROUTER_IAM_CLIENT_SECRET` | | Secret for that client. Required when `HIVE_ROUTER_AUTH_MODE=iam-oidc`; also enables the `/api/iam/*` proxy. |
 | `HIVE_ROUTER_IAM_REDIRECT_URI` | `PUBLIC_ADMIN_URL/api/auth/oidc/callback` | OIDC redirect URI. |
 | `HIVE_ROUTER_IAM_SCOPES` | `openid profile email` | Scopes requested at sign-in. |
 | `HIVE_ROUTER_IAM_PROXY_SCOPES` | IAM admin scopes | Permissions requested for the server-side proxy token. |
-| `HIVE_ROUTER_IAM_ISSUER` / `HIVE_ROUTER_IAM_AUDIENCE` | `hive-iam` / `hive-router` | Claims required on IAM tokens presented to the router. |
+| `HIVE_ROUTER_IAM_ISSUER` / `HIVE_ROUTER_IAM_AUDIENCE` | `hive-iam` / `hive-router` | Claims required on IAM tokens presented to Emberpath. |
 | `HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID` | `security-exporter` | IAM client id accepted for the security event exporter. |
 | `HIVE_ROUTER_IAM_CA_CERT_PATH` | | CA certificate trusted for IAM HTTPS (OIDC, JWKS, proxy). |
-| `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | JWKS refresh interval and the maximum age of cached keys. When the maximum is exceeded, the router rejects tokens. |
+| `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | JWKS refresh interval and the maximum age of cached keys. When the maximum is exceeded, Emberpath rejects tokens. |
 | `HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
 ### HiveMem integration (optional)
 
 | Variable | Default | Description |
 |---|---|---|
-| `HIVEMEM_INTERNAL_URL` | `http://127.0.0.1:18790` | HiveMem base URL for the Memory panels and the `/v1/*` and `/dashboard` proxy. |
+| `HIVEMEM_INTERNAL_URL` | `http://127.0.0.1:18790` | HiveMem base URL for the `/api/memory/*`, `/v1/*` and `/dashboard` proxies. |
 | `HIVEMEM_PUBLIC_URL` | `PUBLIC_ADMIN_URL` | HiveMem URL shown to users and agents. |
 | `HIVEMEM_CA_CERT_PATH` | | Certificate trusted for HiveMem HTTPS. |
 | `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject hive-router --role admin`. It is never sent to the browser. |
-| `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry shown in the console. |
+| `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry reported by the admin API. |
 | `HIVE_STATUS_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
 ### Metrics, export and decision model
@@ -290,7 +304,7 @@ directory. Variables with no default are optional unless marked **required**.
 | `PROMETHEUS_PREFIX` | `hive_router_` | Prefix for metric names. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | | OTLP endpoint for OpenTelemetry traces. |
 | `HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH` | | Legacy static credential for the security-event export. Used only while the fallback flag below is on. |
-| `HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED` | `false` | Temporary migration switch for the static export credential. The router refuses to start with it on after `2026-09-30`. |
+| `HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED` | `false` | Temporary migration switch for the static export credential. Emberpath refuses to start with it on after `2026-09-30`. |
 | `OPENROUTER_API_KEY` | | Seeds an `OPENROUTER` provider on first start. |
 | `HIVE_TYPESAFE_AI_KEY` / `HIVE_TYPESAFE_AI_MODEL` | / `jev-latest` | Direct TypeSafe credential and model for the shadow decision model. |
 | `HIVE_ROUTER_OPENROUTER_KEY` | | OpenRouter credential for the decision model fallback. |
@@ -303,21 +317,21 @@ directory. Variables with no default are optional unless marked **required**.
 - **OS mode** (`HIVE_ROUTER_AUTH_MODE=os`): an allowlisted user signs in with
   their OS password, which is checked through PAM. Every OS-mode operator has
   full admin rights.
-- **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`): the router signs the user
+- **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`): Emberpath signs the user
   in against Hive IAM with authorization code + PKCE, then checks the username
   against `HIVE_ROUTER_ADMIN_USERS`. IAM `admin` and `super_admin` roles grant
   full access. Other users need a permission for each request, reads included:
   for example `router:providers:read` or `router:providers:write`,
   `iam:users:read`, `memory:read`. Any `:write` grant also covers the matching
   `:read`. Exporting the configuration requires `router:settings:write`.
-- Credential and policy changes need a sign-in from the last 15 minutes. The
-  console asks for the password again when needed.
+- Credential and policy changes need a sign-in from the last 15 minutes. Confirm
+  the password again with `POST /api/auth/reauthenticate` when needed.
 - Repeated failed logins lock out that username from that client address, and
   one address that fails against many usernames is locked out too.
   Re-authentication is rate-limited in the same way.
 - Browser credentials are never forwarded upstream. The IAM proxy swaps the
   admin session for a short-lived client-credentials token. The HiveMem proxy
-  passes on only HiveMem's own `hivemem_*` cookies, never the router session
+  passes on only HiveMem's own `hivemem_*` cookies, never Emberpath's session
   cookie.
 - Configuration exports never include encrypted provider secrets. When you
   import an export, providers that already exist keep their stored secrets.
@@ -340,7 +354,7 @@ The plaintext key is printed once; only a hash is stored.
 ## Testing
 
 ```bash
-npm run typecheck          # server and UI
+npm run typecheck
 npm test                   # unit and integration tests (vitest)
 npm run test:routing-contract
 npm run build
@@ -359,7 +373,7 @@ npm run smoke:jev          # needs HIVE_TYPESAFE_AI_KEY and/or HIVE_ROUTER_OPENR
 
 ### systemd over SSH
 
-`scripts/deploy-hive-router.sh` builds the router, uploads it over SSH, and
+`scripts/deploy-hive-router.sh` builds Emberpath, uploads it over SSH, and
 installs it as a systemd service with atomic releases. Code goes into
 `<path>/releases/<id>`. Persistent state (database, `.env`, certificates) lives
 in `<path>/shared`. The `<path>/current` link moves to the new release only
@@ -407,7 +421,7 @@ recovers `HIVE_ROUTER_IAM_CLIENT_SECRET` from `/opt/hive-iam/.env` and
 Build the image from the repository root:
 
 ```bash
-docker build -f services/hive-router/Dockerfile -t hive-router:local docker
+docker build -t emberpath:local .
 ```
 
 `docker-compose.example.yml` publishes both listeners on loopback only. It will
@@ -415,17 +429,17 @@ not start unless you supply a strong `HIVE_ROUTER_SECRET`, an explicit
 `HIVE_ROUTER_ADMIN_USERS`, and TLS certificate and key paths
 (`HIVE_ROUTER_TLS_CERT_PATH`, `HIVE_ROUTER_TLS_KEY_PATH`). The container runs
 as the unprivileged `node` user, so the mounted `./data` directory must be
-writable by that user. The image includes the PAM helper but no operator accounts; use
+writable by that user. The image includes neither a PAM helper nor operator accounts; use
 `HIVE_ROUTER_AUTH_MODE=iam-oidc` or provide your own
 `HIVE_ROUTER_OS_AUTH_COMMAND`.
 
-Images install the exact npm release, use API port 4020 and admin port 9443 by default,
+Images build from this source, use API port 4020 and admin port 9443 by default,
 and persist state under `/data/router`. `docker-compose.example.yml` sets explicit ports
 and data paths. Startup migrations require verified backups.
 
 ### Production checklist
 
-- Set `NODE_ENV=production`. The router then refuses to start without
+- Set `NODE_ENV=production`. Emberpath then refuses to start without
   `TLS_CERT_PATH` and `TLS_KEY_PATH`.
 - Generate `HIVE_ROUTER_SECRET` randomly (`openssl rand -hex 32`) and keep it
   out of version control.
@@ -438,7 +452,7 @@ and data paths. Startup migrations require verified backups.
 
 Jev is a **decision model**, not a chat model. Do not configure it as an
 upstream chat alias. When `HIVE_TYPESAFE_AI_KEY` or `HIVE_ROUTER_OPENROUTER_KEY`
-is set and `HIVE_ROUTER_DECISION_MODE=shadow`, the router sends the prompt
+is set and `HIVE_ROUTER_DECISION_MODE=shadow`, Emberpath sends the prompt
 fields of each text chat, completion and Responses request to TypeSafe
 (`https://api.typesafe.ai/v1/systemone`). If that call fails, it tries the
 OpenRouter decisions API once. The result goes into a `jev-decision` trace
@@ -474,13 +488,12 @@ The evaluation reads credentials from the repository-root `.env` (override with
 | Path | Contents |
 |---|---|
 | `src/api` | API-plane routes, proxy execution, streaming failover |
-| `src/admin` | Admin API, permission checks, IAM/HiveMem proxies, SPA hosting |
+| `src/admin` | Admin API, permission checks, IAM/HiveMem proxies, fallback page |
 | `src/providers` | Provider adapters, discovery, runtime and capability parsing |
 | `src/routing` | Aliases, rules, heuristics, adaptive ranking, decision model |
 | `src/security` | Admin sessions, PAM/OIDC auth, API keys, quotas, crypto |
 | `src/storage` | Prisma client, SQLite bootstrap, trace bodies, audit |
 | `src/telemetry` | Logging, metrics, tracing, retention |
-| `ui` | Hive console (React + Vite) |
 | `prisma` | Prisma schema |
 | `scripts` | Deploy, smoke, evaluation and code-generation scripts |
 | `tests` | Vitest suites, Playwright console tests and fixtures |
