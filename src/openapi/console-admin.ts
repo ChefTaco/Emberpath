@@ -14,7 +14,7 @@ export function consoleAdminOpenApi() {
     RoutingApplyRequest: contracts.routingApplyRequestSchema, RoutingRollbackRequest: contracts.routingRollbackRequestSchema,
     RoutingPreview: contracts.routingPreviewSchema, RoutingRevisions: contracts.routingRevisionsSchema,
     RoutingApplied: contracts.routingAppliedSchema, RoutingSnapshot: contracts.routingSnapshotSchema,
-    DocsIndex: contracts.docsIndexSchema, Trace: contracts.traceReadSchema, Telemetry: contracts.telemetrySchema, AuditEvent: contracts.auditReadSchema,
+    AdminMe: contracts.adminMeSchema, DocsIndex: contracts.docsIndexSchema, Trace: contracts.traceReadSchema, Telemetry: contracts.telemetrySchema, AuditEvent: contracts.auditReadSchema,
     RuntimeSetting: contracts.runtimeSettingReadSchema, CodexOAuthStatus: contracts.codexOAuthStatusSchema,
     CodexOAuthStart: contracts.codexOAuthStartSchema, CodexOAuthCheck: contracts.codexOAuthCheckSchema,
     CodexOAuthResult: contracts.codexOAuthResultSchema, ConsoleOk: contracts.okSchema,
@@ -65,5 +65,6 @@ export function consoleAdminOpenApi() {
   operation('/api/providers/codex-oauth/start', 'post', 'startCodexOAuth', 'router:providers:write', data(ref('CodexOAuthStart')));
   operation('/api/providers/codex-oauth/check', 'post', 'checkCodexOAuth', 'router:providers:write', data(ref('CodexOAuthResult')), 'CodexOAuthCheck');
   operation('/api/docs/index', 'get', 'readApiDocsIndex', 'router:admin:read', ref('DocsIndex'));
+  paths['/api/auth/me'] = {get: {operationId: 'readAuthenticatedPrincipal', summary: 'Read this authenticated product principal and permissions', security, responses: {'200': {description: 'Public product principal without credential storage', content: json(ref('AdminMe'))}, '401': errors['401']}}};
   return {paths, schemas};
 }

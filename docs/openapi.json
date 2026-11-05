@@ -1,6 +1,59 @@
 {
   "components": {
     "schemas": {
+      "AdminMe": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "user": {
+            "properties": {
+              "createdAt": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "permissions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "roles": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "username",
+              "displayName",
+              "createdAt",
+              "updatedAt",
+              "roles",
+              "permissions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "type": "object"
+      },
       "AuditEvent": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
@@ -6154,6 +6207,35 @@
         ],
         "summary": "read Audit",
         "x-permission": "router:admin:read"
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "readAuthenticatedPrincipal",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMe"
+                }
+              }
+            },
+            "description": "Public product principal without credential storage"
+          },
+          "401": {
+            "description": "Authentication required"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Read this authenticated product principal and permissions"
       }
     },
     "/api/chat": {

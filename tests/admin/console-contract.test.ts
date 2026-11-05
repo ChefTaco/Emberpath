@@ -47,6 +47,8 @@ it('validates real SQLite reads/writes, secret redaction, scoped authorization a
     const response = await req(path, method, body); expect(response.status, path).toBe(method === 'POST' && ['/api/route-rules', '/api/heuristics', '/api/client-keys'].includes(path) ? 201 : 200);
     return {response, body: schema.parse(await response.json())};
   };
+  const me = await parse('/api/auth/me', contracts.adminMeSchema);
+  expect(me.body.user.permissions).toContain('*'); expect(JSON.stringify(me.body)).not.toContain('passwordHash');
   const secret = encryptText('obviously-fake-provider-secret');
   const provider = await prisma.provider.create({data: {slug: 'fixture', name: 'Fixture', kind: 'OPENAI_GENERIC', baseUrl: 'https://provider.example.com/v1',
     enabled: false, encryptedAuthSecret: secret, defaultHeadersJson: '{"x-private-header":"obviously-fake-header-secret"}'}});

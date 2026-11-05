@@ -428,3 +428,5 @@ export const apiDocSchema = z.object({scope: z.enum(['router', 'provider']), met
   title: z.string(), summary: z.string(), implemented: z.boolean(), rationale: z.string().optional(), providerKind: providerSchema.shape.kind.optional()});
 export const docsIndexSchema = z.object({docs: z.array(apiDocSchema), providers: z.array(providerSummarySchema.extend({baseUrl: z.string(), enabled: z.boolean()}))});
 export type ApiDoc = z.infer<typeof apiDocSchema>;
+export const adminPrincipalSchema = adminUserReadSchema.extend({roles: z.array(z.string()), permissions: z.array(z.string())});
+export const adminMeSchema = z.object({user: adminPrincipalSchema});
