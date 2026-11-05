@@ -9,7 +9,7 @@ export function consoleAdminOpenApi() {
     ClientKeyWrite: contracts.clientKeySchema, ClientKeyUpdate: contracts.clientKeyUpdateSchema,
     ClientKey: contracts.clientKeyReadSchema, ClientKeyCreated: contracts.clientKeyCreatedSchema,
     ClientKeyRotated: contracts.clientKeyRotatedSchema, ClientKeyUsage: contracts.clientKeyUsageSchema,
-    RoutingObjective: contracts.routingObjectiveSchema, RoutingTestRequest: contracts.routingTestRequestSchema,
+    RoutingObjective: contracts.routingObjectiveSchema, RoutingObjectiveRead: contracts.routingObjectiveReadSchema, RoutingTestRequest: contracts.routingTestRequestSchema,
     RoutingTestResult: contracts.routingTestResultSchema, RoutingPreviewRequest: contracts.routingPreviewRequestSchema,
     RoutingApplyRequest: contracts.routingApplyRequestSchema, RoutingRollbackRequest: contracts.routingRollbackRequestSchema,
     RoutingPreview: contracts.routingPreviewSchema, RoutingRevisions: contracts.routingRevisionsSchema,
@@ -51,8 +51,8 @@ export function consoleAdminOpenApi() {
   operation('/api/client-keys/{id}/usage', 'get', 'readClientKeyUsage', 'router:keys:read', data(ref('ClientKeyUsage')));
   const usage = paths['/api/client-keys/{id}/usage']!.get as {responses: Record<string, unknown>};
   usage.responses['404'] = {description: 'Client key not found'};
-  operation('/api/routing/objective', 'get', 'readRoutingObjective', 'router:routing:read', data({type: 'object', required: ['config'], properties: {config: ref('RoutingObjective')}}));
-  operation('/api/routing/objective', 'put', 'updateRoutingObjective', 'router:routing:write', data({type: 'object', required: ['config'], properties: {config: ref('RoutingObjective')}}), 'RoutingObjective');
+  operation('/api/routing/objective', 'get', 'readRoutingObjective', 'router:routing:read', data({type: 'object', required: ['config'], properties: {config: ref('RoutingObjectiveRead')}}));
+  operation('/api/routing/objective', 'put', 'updateRoutingObjective', 'router:routing:write', data({type: 'object', required: ['config'], properties: {config: ref('RoutingObjectiveRead')}}), 'RoutingObjective');
   operation('/api/testing/run', 'post', 'runRoutingTest', 'router:testing:write', data(ref('RoutingTestResult')), 'RoutingTestRequest');
   operation('/api/testing/preview', 'post', 'previewRoutingSelection', 'router:testing:read', ref('RoutingPreview'), 'RoutingPreviewRequest');
   operation('/api/routing/revisions', 'get', 'listRoutingRevisions', 'router:routing:read', ref('RoutingRevisions'));

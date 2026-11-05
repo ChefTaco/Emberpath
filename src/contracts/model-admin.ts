@@ -79,11 +79,17 @@ export const providerModelReadSchema = z.object({
   enabled: z.boolean(), maxContextWindow: z.number().nullable(), capabilityJson: z.string().nullable(),
   createdAt: z.string(), updatedAt: z.string(),
 });
+// Read native measured/historical values without applying current write-policy limits.
+export const providerCapabilityReadSchema = providerCapabilitySchema.extend({
+  maxContextWindow: z.number().optional(), inputCostPerMillionTokens: z.number().optional(),
+  outputCostPerMillionTokens: z.number().optional(), qualityScore: z.number().optional(),
+  throughputTokensPerSecond: z.number().optional(),
+});
 export const providerReadSchema = z.object({
   id: z.string(), slug: z.string(), name: z.string(), kind: providerSchema.shape.kind,
   baseUrl: z.string(), authMode: z.enum(['NONE', 'BEARER', 'API_KEY', 'HEADER']), authHeaderName: z.string(),
   authSecretMasked: z.string().nullable(), defaultHeaders: z.record(z.string(), z.string()),
-  capabilities: providerCapabilitySchema, timeoutMs: z.number(), maxRetries: z.number(), concurrency: z.number(),
+  capabilities: providerCapabilityReadSchema, timeoutMs: z.number(), maxRetries: z.number(), concurrency: z.number(),
   priority: z.number(), weight: z.number(), failoverGroup: z.string().nullable(), enabled: z.boolean(),
   lastHealthStatus: z.string().nullable(), lastHealthError: z.string().nullable(), lastHealthAt: z.string().nullable(),
   models: z.array(providerModelReadSchema),
@@ -388,8 +394,12 @@ export const routingTestResultSchema = z.object({requestId: z.string(), category
   providerError: nullableText, responsePreview: z.string(), decision: routeDecisionSchema, candidates: z.array(providerSummarySchema),
   attempts: z.array(z.object({provider: providerSummarySchema, latencyMs: z.number(), statusCode: z.number(), success: z.boolean(), error: nullableText})),
   selectedProvider: providerSummarySchema.extend({model: z.string().optional()}).nullable()});
-export const routingSnapshotSchema = z.object({revision: z.string(), config: z.object({aliases: z.array(modelAliasSchema),
-  rules: z.array(routeRuleSchema), objective: routingObjectiveSchema})});
+export const routingObjectiveReadSchema = z.object({goal: routingObjectiveSchema.shape.goal,
+  costWeight: z.number().optional(), qualityWeight: z.number().optional(), throughputWeight: z.number().optional(), missingPricePenalty: z.number().optional()});
+const routingAliasSnapshotSchema = z.object({alias: z.string(), providerId: z.string().optional(), upstreamModel: z.string(), enabled: z.boolean(), description: z.string().optional()});
+const routingRuleSnapshotSchema = z.object({name: z.string(), kind: routeRuleSchema.shape.kind, priority: z.number(), enabled: z.boolean(), matchJson: z.unknown(), actionJson: z.unknown()});
+export const routingSnapshotSchema = z.object({revision: z.string(), config: z.object({aliases: z.array(routingAliasSnapshotSchema),
+  rules: z.array(routingRuleSnapshotSchema), objective: routingObjectiveReadSchema})});
 export const routingHistorySchema = routingSnapshotSchema.extend({operator: z.string(), recordedAt: timestamp});
 export const routingRevisionsSchema = routingSnapshotSchema.extend({history: z.array(routingHistorySchema)});
 export const routingAppliedSchema = routingSnapshotSchema.extend({previousRevision: z.string()});
@@ -411,7 +421,7 @@ export const modelConsoleSchemas = {
   createdClientKey: dataSchema(clientKeyCreatedSchema), rotatedClientKey: dataSchema(clientKeyRotatedSchema),
   clientKeyUsage: dataSchema(clientKeyUsageSchema), traces: dataSchema(z.array(traceReadSchema)), telemetry: telemetrySchema,
   audit: dataSchema(z.array(auditReadSchema)), runtimeSettings: dataSchema(z.array(runtimeSettingReadSchema)),
-  routingObjective: dataSchema(z.object({config: routingObjectiveSchema})), routingTest: dataSchema(routingTestResultSchema),
+  routingObjective: dataSchema(z.object({config: routingObjectiveReadSchema})), routingTest: dataSchema(routingTestResultSchema),
   routingRevisions: routingRevisionsSchema, routingApplied: routingAppliedSchema, routingSnapshot: routingSnapshotSchema,
   routingPreview: routingPreviewSchema, codexOAuthStatus: dataSchema(codexOAuthStatusSchema),
   codexOAuthStart: dataSchema(codexOAuthStartSchema), codexOAuthCheck: dataSchema(codexOAuthResultSchema),

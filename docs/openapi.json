@@ -735,7 +735,6 @@
                         "type": "boolean"
                       },
                       "inputCostPerMillionTokens": {
-                        "minimum": 0,
                         "type": "number"
                       },
                       "jsonSchema": {
@@ -745,12 +744,9 @@
                         "type": "boolean"
                       },
                       "maxContextWindow": {
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991,
-                        "type": "integer"
+                        "type": "number"
                       },
                       "outputCostPerMillionTokens": {
-                        "minimum": 0,
                         "type": "number"
                       },
                       "passthroughRoutes": {
@@ -761,8 +757,6 @@
                         "type": "array"
                       },
                       "qualityScore": {
-                        "maximum": 100,
-                        "minimum": 0,
                         "type": "number"
                       },
                       "reasoning": {
@@ -798,7 +792,6 @@
                         "type": "array"
                       },
                       "throughputTokensPerSecond": {
-                        "exclusiveMinimum": 0,
                         "type": "number"
                       },
                       "tools": {
@@ -1078,7 +1071,6 @@
                         "type": "boolean"
                       },
                       "inputCostPerMillionTokens": {
-                        "minimum": 0,
                         "type": "number"
                       },
                       "jsonSchema": {
@@ -1088,12 +1080,9 @@
                         "type": "boolean"
                       },
                       "maxContextWindow": {
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991,
-                        "type": "integer"
+                        "type": "number"
                       },
                       "outputCostPerMillionTokens": {
-                        "minimum": 0,
                         "type": "number"
                       },
                       "passthroughRoutes": {
@@ -1104,8 +1093,6 @@
                         "type": "array"
                       },
                       "qualityScore": {
-                        "maximum": 100,
-                        "minimum": 0,
                         "type": "number"
                       },
                       "reasoning": {
@@ -1141,7 +1128,6 @@
                         "type": "array"
                       },
                       "throughputTokensPerSecond": {
-                        "exclusiveMinimum": 0,
                         "type": "number"
                       },
                       "tools": {
@@ -2560,7 +2546,6 @@
                 "type": "boolean"
               },
               "inputCostPerMillionTokens": {
-                "minimum": 0,
                 "type": "number"
               },
               "jsonSchema": {
@@ -2570,12 +2555,9 @@
                 "type": "boolean"
               },
               "maxContextWindow": {
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
-                "type": "integer"
+                "type": "number"
               },
               "outputCostPerMillionTokens": {
-                "minimum": 0,
                 "type": "number"
               },
               "passthroughRoutes": {
@@ -2586,8 +2568,6 @@
                 "type": "array"
               },
               "qualityScore": {
-                "maximum": 100,
-                "minimum": 0,
                 "type": "number"
               },
               "reasoning": {
@@ -2623,7 +2603,6 @@
                 "type": "array"
               },
               "throughputTokensPerSecond": {
-                "exclusiveMinimum": 0,
                 "type": "number"
               },
               "tools": {
@@ -3534,40 +3513,35 @@
             "properties": {
               "aliases": {
                 "items": {
-                  "additionalProperties": false,
                   "properties": {
                     "alias": {
-                      "minLength": 1,
                       "type": "string"
                     },
                     "description": {
                       "type": "string"
                     },
                     "enabled": {
-                      "default": true,
                       "type": "boolean"
                     },
                     "providerId": {
                       "type": "string"
                     },
                     "upstreamModel": {
-                      "default": "",
                       "type": "string"
                     }
                   },
                   "required": [
-                    "alias"
+                    "alias",
+                    "upstreamModel",
+                    "enabled"
                   ],
                   "type": "object"
                 },
                 "type": "array"
               },
               "objective": {
-                "additionalProperties": false,
                 "properties": {
                   "costWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "goal": {
@@ -3580,18 +3554,12 @@
                     "type": "string"
                   },
                   "missingPricePenalty": {
-                    "maximum": 1000,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "qualityWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "throughputWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   }
                 },
@@ -3602,50 +3570,9 @@
               },
               "rules": {
                 "items": {
-                  "additionalProperties": false,
                   "properties": {
-                    "actionJson": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "deny": {
-                          "type": "boolean"
-                        },
-                        "denyReason": {
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "providerIds": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "providerKinds": {
-                          "items": {
-                            "enum": [
-                              "OPENAI",
-                              "CODEX",
-                              "OPENAI_GENERIC",
-                              "OPENROUTER",
-                              "ANTHROPIC",
-                              "OLLAMA",
-                              "LLAMACPP",
-                              "VLLM"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "requiredTag": {
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    },
+                    "actionJson": {},
                     "enabled": {
-                      "default": true,
                       "type": "boolean"
                     },
                     "kind": {
@@ -3659,59 +3586,19 @@
                       ],
                       "type": "string"
                     },
-                    "matchJson": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "endpointKinds": {
-                          "items": {
-                            "enum": [
-                              "v1.models",
-                              "v1.responses",
-                              "v1.chat.completions",
-                              "v1.completions",
-                              "v1.embeddings",
-                              "v1.audio.transcriptions",
-                              "v1.audio.translations",
-                              "v1.images.generations",
-                              "v1.moderations",
-                              "ollama.native",
-                              "vllm.native"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "models": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "paths": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "type": "object"
-                    },
+                    "matchJson": {},
                     "name": {
-                      "minLength": 2,
                       "type": "string"
                     },
                     "priority": {
-                      "default": 100,
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
+                      "type": "number"
                     }
                   },
                   "required": [
                     "name",
                     "kind",
+                    "priority",
+                    "enabled",
                     "matchJson",
                     "actionJson"
                   ],
@@ -3980,6 +3867,36 @@
           "throughputWeight": {
             "maximum": 10,
             "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "type": "object"
+      },
+      "RoutingObjectiveRead": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "costWeight": {
+            "type": "number"
+          },
+          "goal": {
+            "enum": [
+              "balanced",
+              "cheapest",
+              "fastest",
+              "highest-quality"
+            ],
+            "type": "string"
+          },
+          "missingPricePenalty": {
+            "type": "number"
+          },
+          "qualityWeight": {
+            "type": "number"
+          },
+          "throughputWeight": {
             "type": "number"
           }
         },
@@ -4456,40 +4373,35 @@
             "properties": {
               "aliases": {
                 "items": {
-                  "additionalProperties": false,
                   "properties": {
                     "alias": {
-                      "minLength": 1,
                       "type": "string"
                     },
                     "description": {
                       "type": "string"
                     },
                     "enabled": {
-                      "default": true,
                       "type": "boolean"
                     },
                     "providerId": {
                       "type": "string"
                     },
                     "upstreamModel": {
-                      "default": "",
                       "type": "string"
                     }
                   },
                   "required": [
-                    "alias"
+                    "alias",
+                    "upstreamModel",
+                    "enabled"
                   ],
                   "type": "object"
                 },
                 "type": "array"
               },
               "objective": {
-                "additionalProperties": false,
                 "properties": {
                   "costWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "goal": {
@@ -4502,18 +4414,12 @@
                     "type": "string"
                   },
                   "missingPricePenalty": {
-                    "maximum": 1000,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "qualityWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "throughputWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   }
                 },
@@ -4524,50 +4430,9 @@
               },
               "rules": {
                 "items": {
-                  "additionalProperties": false,
                   "properties": {
-                    "actionJson": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "deny": {
-                          "type": "boolean"
-                        },
-                        "denyReason": {
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "providerIds": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "providerKinds": {
-                          "items": {
-                            "enum": [
-                              "OPENAI",
-                              "CODEX",
-                              "OPENAI_GENERIC",
-                              "OPENROUTER",
-                              "ANTHROPIC",
-                              "OLLAMA",
-                              "LLAMACPP",
-                              "VLLM"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "requiredTag": {
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    },
+                    "actionJson": {},
                     "enabled": {
-                      "default": true,
                       "type": "boolean"
                     },
                     "kind": {
@@ -4581,59 +4446,19 @@
                       ],
                       "type": "string"
                     },
-                    "matchJson": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "endpointKinds": {
-                          "items": {
-                            "enum": [
-                              "v1.models",
-                              "v1.responses",
-                              "v1.chat.completions",
-                              "v1.completions",
-                              "v1.embeddings",
-                              "v1.audio.transcriptions",
-                              "v1.audio.translations",
-                              "v1.images.generations",
-                              "v1.moderations",
-                              "ollama.native",
-                              "vllm.native"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "models": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "paths": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "type": "object"
-                    },
+                    "matchJson": {},
                     "name": {
-                      "minLength": 2,
                       "type": "string"
                     },
                     "priority": {
-                      "default": 100,
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
+                      "type": "number"
                     }
                   },
                   "required": [
                     "name",
                     "kind",
+                    "priority",
+                    "enabled",
                     "matchJson",
                     "actionJson"
                   ],
@@ -4656,40 +4481,35 @@
                   "properties": {
                     "aliases": {
                       "items": {
-                        "additionalProperties": false,
                         "properties": {
                           "alias": {
-                            "minLength": 1,
                             "type": "string"
                           },
                           "description": {
                             "type": "string"
                           },
                           "enabled": {
-                            "default": true,
                             "type": "boolean"
                           },
                           "providerId": {
                             "type": "string"
                           },
                           "upstreamModel": {
-                            "default": "",
                             "type": "string"
                           }
                         },
                         "required": [
-                          "alias"
+                          "alias",
+                          "upstreamModel",
+                          "enabled"
                         ],
                         "type": "object"
                       },
                       "type": "array"
                     },
                     "objective": {
-                      "additionalProperties": false,
                       "properties": {
                         "costWeight": {
-                          "maximum": 10,
-                          "minimum": 0,
                           "type": "number"
                         },
                         "goal": {
@@ -4702,18 +4522,12 @@
                           "type": "string"
                         },
                         "missingPricePenalty": {
-                          "maximum": 1000,
-                          "minimum": 0,
                           "type": "number"
                         },
                         "qualityWeight": {
-                          "maximum": 10,
-                          "minimum": 0,
                           "type": "number"
                         },
                         "throughputWeight": {
-                          "maximum": 10,
-                          "minimum": 0,
                           "type": "number"
                         }
                       },
@@ -4724,50 +4538,9 @@
                     },
                     "rules": {
                       "items": {
-                        "additionalProperties": false,
                         "properties": {
-                          "actionJson": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "deny": {
-                                "type": "boolean"
-                              },
-                              "denyReason": {
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "providerIds": {
-                                "items": {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "type": "array"
-                              },
-                              "providerKinds": {
-                                "items": {
-                                  "enum": [
-                                    "OPENAI",
-                                    "CODEX",
-                                    "OPENAI_GENERIC",
-                                    "OPENROUTER",
-                                    "ANTHROPIC",
-                                    "OLLAMA",
-                                    "LLAMACPP",
-                                    "VLLM"
-                                  ],
-                                  "type": "string"
-                                },
-                                "type": "array"
-                              },
-                              "requiredTag": {
-                                "minLength": 1,
-                                "type": "string"
-                              }
-                            },
-                            "type": "object"
-                          },
+                          "actionJson": {},
                           "enabled": {
-                            "default": true,
                             "type": "boolean"
                           },
                           "kind": {
@@ -4781,59 +4554,19 @@
                             ],
                             "type": "string"
                           },
-                          "matchJson": {
-                            "additionalProperties": false,
-                            "properties": {
-                              "endpointKinds": {
-                                "items": {
-                                  "enum": [
-                                    "v1.models",
-                                    "v1.responses",
-                                    "v1.chat.completions",
-                                    "v1.completions",
-                                    "v1.embeddings",
-                                    "v1.audio.transcriptions",
-                                    "v1.audio.translations",
-                                    "v1.images.generations",
-                                    "v1.moderations",
-                                    "ollama.native",
-                                    "vllm.native"
-                                  ],
-                                  "type": "string"
-                                },
-                                "type": "array"
-                              },
-                              "models": {
-                                "items": {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "type": "array"
-                              },
-                              "paths": {
-                                "items": {
-                                  "minLength": 1,
-                                  "type": "string"
-                                },
-                                "type": "array"
-                              }
-                            },
-                            "type": "object"
-                          },
+                          "matchJson": {},
                           "name": {
-                            "minLength": 2,
                             "type": "string"
                           },
                           "priority": {
-                            "default": 100,
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
+                            "type": "number"
                           }
                         },
                         "required": [
                           "name",
                           "kind",
+                          "priority",
+                          "enabled",
                           "matchJson",
                           "actionJson"
                         ],
@@ -4899,40 +4632,35 @@
             "properties": {
               "aliases": {
                 "items": {
-                  "additionalProperties": false,
                   "properties": {
                     "alias": {
-                      "minLength": 1,
                       "type": "string"
                     },
                     "description": {
                       "type": "string"
                     },
                     "enabled": {
-                      "default": true,
                       "type": "boolean"
                     },
                     "providerId": {
                       "type": "string"
                     },
                     "upstreamModel": {
-                      "default": "",
                       "type": "string"
                     }
                   },
                   "required": [
-                    "alias"
+                    "alias",
+                    "upstreamModel",
+                    "enabled"
                   ],
                   "type": "object"
                 },
                 "type": "array"
               },
               "objective": {
-                "additionalProperties": false,
                 "properties": {
                   "costWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "goal": {
@@ -4945,18 +4673,12 @@
                     "type": "string"
                   },
                   "missingPricePenalty": {
-                    "maximum": 1000,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "qualityWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   },
                   "throughputWeight": {
-                    "maximum": 10,
-                    "minimum": 0,
                     "type": "number"
                   }
                 },
@@ -4967,50 +4689,9 @@
               },
               "rules": {
                 "items": {
-                  "additionalProperties": false,
                   "properties": {
-                    "actionJson": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "deny": {
-                          "type": "boolean"
-                        },
-                        "denyReason": {
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "providerIds": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "providerKinds": {
-                          "items": {
-                            "enum": [
-                              "OPENAI",
-                              "CODEX",
-                              "OPENAI_GENERIC",
-                              "OPENROUTER",
-                              "ANTHROPIC",
-                              "OLLAMA",
-                              "LLAMACPP",
-                              "VLLM"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "requiredTag": {
-                          "minLength": 1,
-                          "type": "string"
-                        }
-                      },
-                      "type": "object"
-                    },
+                    "actionJson": {},
                     "enabled": {
-                      "default": true,
                       "type": "boolean"
                     },
                     "kind": {
@@ -5024,59 +4705,19 @@
                       ],
                       "type": "string"
                     },
-                    "matchJson": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "endpointKinds": {
-                          "items": {
-                            "enum": [
-                              "v1.models",
-                              "v1.responses",
-                              "v1.chat.completions",
-                              "v1.completions",
-                              "v1.embeddings",
-                              "v1.audio.transcriptions",
-                              "v1.audio.translations",
-                              "v1.images.generations",
-                              "v1.moderations",
-                              "ollama.native",
-                              "vllm.native"
-                            ],
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "models": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        },
-                        "paths": {
-                          "items": {
-                            "minLength": 1,
-                            "type": "string"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "type": "object"
-                    },
+                    "matchJson": {},
                     "name": {
-                      "minLength": 2,
                       "type": "string"
                     },
                     "priority": {
-                      "default": 100,
-                      "maximum": 9007199254740991,
-                      "minimum": -9007199254740991,
-                      "type": "integer"
+                      "type": "number"
                     }
                   },
                   "required": [
                     "name",
                     "kind",
+                    "priority",
+                    "enabled",
                     "matchJson",
                     "actionJson"
                   ],
@@ -8553,7 +8194,7 @@
                     "data": {
                       "properties": {
                         "config": {
-                          "$ref": "#/components/schemas/RoutingObjective"
+                          "$ref": "#/components/schemas/RoutingObjectiveRead"
                         }
                       },
                       "required": [
@@ -8630,7 +8271,7 @@
                     "data": {
                       "properties": {
                         "config": {
-                          "$ref": "#/components/schemas/RoutingObjective"
+                          "$ref": "#/components/schemas/RoutingObjectiveRead"
                         }
                       },
                       "required": [

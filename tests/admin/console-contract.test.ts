@@ -103,6 +103,18 @@ it('validates real SQLite reads/writes, secret redaction, scoped authorization a
   const audit = await parse('/api/audit', contracts.modelConsoleSchemas.audit); expect(JSON.stringify(audit.body)).not.toContain('passwordHash');
   expect(JSON.stringify(audit.body)).not.toContain(originalKey); expect(JSON.stringify(audit.body)).not.toContain(rotated.body.data.apiKey);
   await parse('/api/runtime-settings', contracts.modelConsoleSchemas.runtimeSettings);
+  // Native readers retain historical values even when new writes require repair.
+  await prisma.runtimeSetting.update({where: {key: 'routing.objective'}, data: {valueJson: '{"goal":"balanced","costWeight":25}'}});
+  const historicalObjective = await parse('/api/routing/objective', contracts.modelConsoleSchemas.routingObjective);
+  expect(historicalObjective.body.data.config.costWeight).toBe(25);
+  expect((await req('/api/routing/objective', 'PUT', historicalObjective.body.data.config)).status).toBe(400);
+  await prisma.routeRule.create({data: {name: 'R', kind: 'SAFETY', matchJson: 'null', actionJson: '[]'}});
+  const historicalSnapshot = await parse('/api/routing/revisions', contracts.routingRevisionsSchema);
+  expect(historicalSnapshot.body.config.rules.find(rule => rule.name === 'R')).toMatchObject({matchJson: null, actionJson: []});
+  expect(contracts.routingPatchSchema.safeParse(historicalSnapshot.body.config).success).toBe(false);
+  await prisma.provider.update({where: {id: provider.id}, data: {capabilityJson: '{"qualityScore":150,"throughputTokensPerSecond":0}'}});
+  const providerResponse = await req('/api/providers'); const providerRead = await providerResponse.json();
+  expect(contracts.providerReadSchema.parse(providerRead.data[0]).capabilities.qualityScore).toBe(150);
   await parse('/api/providers/codex-oauth/status', contracts.modelConsoleSchemas.codexOAuthStatus);
   await parse('/api/providers/codex-oauth/check', contracts.modelConsoleSchemas.codexOAuthCheck, 'POST', {loginId: 'unknown-fixture'});
   expect((await req('/api/providers/codex-oauth/start', 'POST', undefined, read)).status).toBe(403); // No hosted call on denied requests.
