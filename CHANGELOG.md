@@ -1,5 +1,7 @@
 # Changelog
 
+- Store atomically issued native credential timestamps in the Prisma adapter format so verified enrollment keys authenticate and expire correctly.
+
 - Decode bounded gzip, deflate and zstd inference requests before routing and
   accounting; preserve alias rewriting and streaming for native Responses clients.
   Reject unsupported, malformed and oversized expanded bodies before forwarding.

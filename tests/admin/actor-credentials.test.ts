@@ -1,3 +1,9 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaClient } from '../../src/generated/prisma/client.js';
+import { verifyHash } from '../../src/security/crypto.js';
 import Database from 'better-sqlite3';
 import { expect, it } from 'vitest';
 import { ActorCredentials } from '../../src/admin/actor-credentials.js';
@@ -21,7 +27,7 @@ it('does not extend a key lifetime during rotation; containment clears every sup
     const rotation = { ...input, action: 'rotate', resourceId: original.resourceId, expiresAt: new Date(Date.now() + 7200_000).toISOString() };
     const rotated = credentials.apply('operator', 'b'.repeat(64), rotation);
     expect(rotated.apiKey).not.toBe(original.apiKey);
-    expect(database.prepare('SELECT expiresAt FROM ClientApiKey').get()).toEqual({ expiresAt: Date.parse(input.expiresAt) });
+    expect(database.prepare('SELECT expiresAt FROM ClientApiKey').get()).toEqual({ expiresAt: input.expiresAt.replace('Z', '+00:00') });
     expect(() => credentials.apply('operator', 'a'.repeat(64), input)).toThrow(/expired or acknowledged/);
     credentials.apply('operator', 'c'.repeat(64), { ...rotation, action: 'disable' });
     expect(database.prepare('SELECT enabled FROM ClientApiKey').get()).toEqual({ enabled: 0 });
@@ -35,4 +41,27 @@ it('rolls back credential writes if receipt storage fails', () => {
     expect(() => credentials.apply('operator', 'a'.repeat(64), input)).toThrow('fixture write failure');
     expect(database.prepare('SELECT count(*) AS n FROM ClientApiKey').get()).toEqual({ n: 0 });
   } finally { database.close(); }
+});
+
+it('makes atomic native keys usable through real Prisma expiry queries and rejects expired or disabled generations', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'emberpath-credential-'));
+  const path = join(directory, 'fixture.db'), database = new Database(path);
+  for (const statement of schemaStatements) database.exec(statement);
+  const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: 'file:' + path }) });
+  let now = Date.now();
+  try {
+    const credentials = new ActorCredentials(database, undefined, () => now);
+    const first = credentials.apply('operator', 'a'.repeat(64), input);
+    const candidates = () => prisma.clientApiKey.findMany({ where: { enabled: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date(now) } }], keyPrefix: String(first.apiKey).slice(0, 8) } });
+    const rows = await candidates();
+    expect(rows).toHaveLength(1);
+    expect(verifyHash(String(first.apiKey), rows[0]!.keyHash)).toBe(true);
+    expect(rows[0]!.expiresAt!.toISOString()).toBe(input.expiresAt);
+    expect(rows[0]!.createdAt.getTime()).toBe(now);
+    now = Date.parse(input.expiresAt) + 1;
+    expect(await candidates()).toEqual([]);
+    expect(() => credentials.apply('operator', 'b'.repeat(64), { ...input, action: 'rotate', resourceId: first.resourceId, expiresAt: new Date(now + 3600_000).toISOString() })).toThrow(/expired/);
+    credentials.apply('operator', 'c'.repeat(64), { ...input, action: 'disable', resourceId: first.resourceId });
+    expect((await prisma.clientApiKey.findUniqueOrThrow({ where: { id: String(first.resourceId) } })).enabled).toBe(false);
+  } finally { await prisma.$disconnect(); database.close(); rmSync(directory, { recursive: true }); }
 });
