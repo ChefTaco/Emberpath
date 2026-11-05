@@ -1,5 +1,10 @@
 # Changelog
 
+- Round-trip native version-1 configuration archives and legacy bare envelopes
+  through strict known metadata validation. Import configuration and audit
+  atomically, preserve omitted credentials and provider state, and map source
+  provider references by slug without copying foreign IDs.
+
 - Publish product-owned browser-safe provider and alias contracts and generated
   OpenAPI operations. Export committed contract bytes with version, revision,
   checksum and attribution; omit credential storage from nested alias providers.

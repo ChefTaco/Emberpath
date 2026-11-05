@@ -540,3 +540,18 @@ manifest with the product version, source revision and SHA-256. It never exports
 working-tree edits, private configuration or backend imports, and refuses to
 replace an existing directory. Browser applications vendor a reviewed release
 export and verify its checksum; they do not import sibling backend source.
+
+Configuration downloads retain the published version-1 envelope, source IDs and
+read timestamps. Import accepts that exact archive and the legacy `{data: ...}`
+envelope. Only known metadata is accepted and stripped; unknown fields, malformed
+encoded JSON and unresolved provider references fail. Providers reconcile by slug,
+then exported source IDs map aliases and current routing-rule provider references
+to the destination IDs. Omitted credentials, models and optional provider settings
+stay intact on existing providers. A fresh destination needs its own separately
+configured credentials; exported files never include encrypted provider secrets.
+Configuration writes and the import audit commit in one transaction, including
+rollback on a late database failure. Health observations and persistence IDs are
+never assigned from an archive. Historical runtime-setting JSON remains byte
+stable; historical revision records retain their original source references and
+require review before applying them in another installation. This configuration
+workflow does not replace a verified database/key backup or installation restore.

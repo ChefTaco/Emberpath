@@ -1,22 +1,8 @@
-import { AuthMode, ProviderKind, RouteRuleKind } from '../generated/prisma/client.js';
+import { RouteRuleKind } from '../generated/prisma/client.js';
 import { z } from 'zod';
 
-import {endpointKindSchema, providerCapabilitySchema, providerModelSchema, providerSchema, modelAliasSchema} from '../contracts/model-admin.js';
-export {endpointKindSchema, providerCapabilitySchema, providerModelSchema, providerSchema, modelAliasSchema} from '../contracts/model-admin.js';
-
-export const routeRuleMatchSchema = z.object({
-  paths: z.array(z.string().min(1)).optional(),
-  models: z.array(z.string().min(1)).optional(),
-  endpointKinds: z.array(endpointKindSchema).optional(),
-}).strict();
-
-export const routeRuleActionSchema = z.object({
-  providerIds: z.array(z.string().min(1)).optional(),
-  providerKinds: z.array(z.enum(ProviderKind)).optional(),
-  requiredTag: z.string().min(1).optional(),
-  deny: z.boolean().optional(),
-  denyReason: z.string().min(1).optional(),
-}).strict();
+import {endpointKindSchema, providerCapabilitySchema, providerModelSchema, providerSchema, modelAliasSchema, routeRuleMatchSchema, routeRuleActionSchema, heuristicActionSchema, configImportSchema} from '../contracts/model-admin.js';
+export {endpointKindSchema, providerCapabilitySchema, providerModelSchema, providerSchema, modelAliasSchema, routeRuleMatchSchema, routeRuleActionSchema, heuristicActionSchema, configImportSchema} from '../contracts/model-admin.js';
 
 export const routeRuleSchema = z.object({
   name: z.string().min(2),
@@ -25,13 +11,6 @@ export const routeRuleSchema = z.object({
   enabled: z.boolean().default(true),
   matchJson: routeRuleMatchSchema,
   actionJson: routeRuleActionSchema,
-}).strict();
-
-export const heuristicActionSchema = z.object({
-  action: z.enum(['rerank', 'trace-detail', 'deny']),
-  targetTag: z.string().min(1).optional(),
-  detail: z.enum(['low', 'high']).optional(),
-  reason: z.string().min(1).optional(),
 }).strict();
 
 export const heuristicSchema = z.object({
@@ -91,106 +70,6 @@ export const clientKeyUpdateSchema = z.object({
   name: z.string().min(2).optional(),
   enabled: z.boolean().optional(),
   metadata: clientKeyMetadataSchema.optional(),
-}).strict();
-
-function parseJsonString(value: string): unknown {
-  return JSON.parse(value) as unknown;
-}
-
-function jsonStringSchema(label: string): z.ZodType<string> {
-  return z.string().superRefine((value, context) => {
-    try {
-      parseJsonString(value);
-    } catch {
-      context.addIssue({ code: 'custom', message: `${label} must be valid JSON` });
-    }
-  });
-}
-
-function jsonStringMatching<T>(label: string, schema: z.ZodType<T>): z.ZodType<string> {
-  return z.string().superRefine((value, context) => {
-    let parsed: unknown;
-    try {
-      parsed = parseJsonString(value);
-    } catch {
-      context.addIssue({ code: 'custom', message: `${label} must be valid JSON` });
-      return;
-    }
-    const result = schema.safeParse(parsed);
-    if (!result.success) {
-      context.addIssue({ code: 'custom', message: `${label} does not match the expected shape` });
-    }
-  });
-}
-
-const importProviderModelSchema = z.object({
-  model: z.string().min(1),
-  displayName: z.string().nullable().optional(),
-  enabled: z.boolean().optional(),
-  maxContextWindow: z.number().int().positive().nullable().optional(),
-  capabilityJson: jsonStringMatching('model capabilityJson', providerCapabilitySchema).nullable().optional(),
-}).strict();
-
-const importProviderSchema = z.object({
-  slug: z.string().min(2),
-  name: z.string().min(2),
-  kind: z.enum(ProviderKind),
-  baseUrl: z.url(),
-  authMode: z.enum(AuthMode).optional(),
-  authHeaderName: z.string().optional(),
-  encryptedAuthSecret: z.string().nullable().optional(),
-  defaultHeadersJson: jsonStringMatching('defaultHeadersJson', z.record(z.string(), z.string())).nullable().optional(),
-  capabilityJson: jsonStringMatching('capabilityJson', providerCapabilitySchema).nullable().optional(),
-  tlsInsecure: z.boolean().optional(),
-  timeoutMs: z.number().int().positive().optional(),
-  maxRetries: z.number().int().min(0).optional(),
-  concurrency: z.number().int().positive().optional(),
-  priority: z.number().int().optional(),
-  weight: z.number().int().positive().optional(),
-  failoverGroup: z.string().nullable().optional(),
-  enabled: z.boolean().optional(),
-  models: z.array(importProviderModelSchema).optional(),
-}).strict();
-
-const importModelAliasSchema = z.object({
-  alias: z.string().min(1),
-  providerId: z.string().nullable().optional(),
-  upstreamModel: z.string(),
-  enabled: z.boolean().optional(),
-  description: z.string().nullable().optional(),
-}).strict();
-
-const importRouteRuleSchema = z.object({
-  name: z.string().min(2),
-  kind: z.enum(RouteRuleKind),
-  priority: z.number().int().optional(),
-  enabled: z.boolean().optional(),
-  matchJson: jsonStringMatching('route matchJson', routeRuleMatchSchema),
-  actionJson: jsonStringMatching('route actionJson', routeRuleActionSchema),
-}).strict();
-
-const importHeuristicRuleSchema = z.object({
-  name: z.string().min(2),
-  category: z.string().min(2),
-  pattern: z.string().min(2),
-  score: z.number().int().optional(),
-  enabled: z.boolean().optional(),
-  actionJson: jsonStringMatching('heuristic actionJson', heuristicActionSchema),
-}).strict();
-
-const importRuntimeSettingSchema = z.object({
-  key: z.string().min(1),
-  valueJson: jsonStringSchema('runtime setting valueJson'),
-}).strict();
-
-export const configImportSchema = z.object({
-  data: z.object({
-    providers: z.array(importProviderSchema).optional(),
-    aliases: z.array(importModelAliasSchema).optional(),
-    routeRules: z.array(importRouteRuleSchema).optional(),
-    heuristicRules: z.array(importHeuristicRuleSchema).optional(),
-    runtimeSettings: z.array(importRuntimeSettingSchema).optional(),
-  }).strict().optional(),
 }).strict();
 
 export type ProviderModelInput = z.infer<typeof providerModelSchema>;

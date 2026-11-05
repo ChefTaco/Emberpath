@@ -9,7 +9,7 @@ it('uses the same strict public schemas for native requests and OpenAPI without 
   const document = modelAdminOpenApi();
   expect(document.schemas.ProviderWrite).toEqual(z.toJSONSchema(providerSchema, {io: 'input'}));
   expect(document.schemas.ModelAliasWrite).toEqual(z.toJSONSchema(modelAliasSchema, {io: 'input'}));
-  for (const path of ['/api/providers', '/api/providers/{id}', '/api/providers/{id}/discover', '/api/model-aliases', '/api/model-aliases/{id}']) expect(document.paths).toHaveProperty(path);
+  for (const path of ['/api/providers', '/api/providers/{id}', '/api/providers/{id}/discover', '/api/model-aliases', '/api/model-aliases/{id}', '/api/config/export', '/api/config/import']) expect(document.paths).toHaveProperty(path);
   const paths = document.paths as Record<string, Record<string, {responses: Record<string, unknown>}>>;
   expect(paths['/api/providers']!.post!.responses).toHaveProperty('409');
   expect(paths['/api/model-aliases/{id}']!.put!.responses).toHaveProperty('409');

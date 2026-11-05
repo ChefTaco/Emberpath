@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {providerSchema, providerModelSchema, providerCapabilitySchema, providerReadSchema, providerModelReadSchema,
-  modelAliasSchema, modelAliasReadSchema, modelAdminErrorSchema} from '../contracts/model-admin.js';
+  modelAliasSchema, modelAliasReadSchema, modelAdminErrorSchema, configImportSchema, configExportSchema} from '../contracts/model-admin.js';
 
 const json = (schema: unknown) => ({'application/json': {schema}});
 const ref = (name: string) => ({$ref: '#/components/schemas/' + name});
@@ -16,7 +16,8 @@ const errors = {
 export function modelAdminOpenApi() {
   const schemas = Object.fromEntries(Object.entries({ProviderWrite: providerSchema, ProviderModelWrite: providerModelSchema,
     ProviderCapability: providerCapabilitySchema, Provider: providerReadSchema, ProviderModel: providerModelReadSchema,
-    ModelAliasWrite: modelAliasSchema, ModelAlias: modelAliasReadSchema, ModelAdminError: modelAdminErrorSchema})
+    ModelAliasWrite: modelAliasSchema, ModelAlias: modelAliasReadSchema, ModelAdminError: modelAdminErrorSchema,
+    ConfigImport: configImportSchema, ConfigExport: configExportSchema})
     .map(([name, schema]) => [name, z.toJSONSchema(schema, {io: 'input'})]));
   const paths: Record<string, unknown> = {};
   for (const [path, label, schema, readPermission, writePermission] of [
@@ -43,6 +44,15 @@ export function modelAdminOpenApi() {
     'x-permission': 'router:providers:write', responses: {
       '200': {description: 'Refreshed provider and discovery reconciliation; detailed discovery response schema is not yet exported'},
       ...errors, '404': {description: 'Provider not found'}, '502': {description: 'External provider discovery failed'},
+    }}};
+  paths['/api/config/export'] = {get: {operationId: 'exportConfiguration', summary: 'Download a native version-1 configuration archive without encrypted provider credentials',
+    security, 'x-permission': 'router:settings:write', responses: {'200': {description: 'Version-1 archive; source IDs and read metadata are retained for recovery and reference mapping', content: json(ref('ConfigExport'))},
+      '401': errors['401'], '403': errors['403']}}};
+  paths['/api/config/import'] = {post: {operationId: 'importConfiguration', summary: 'Atomically reconcile a version-1 archive or legacy bare data envelope',
+    description: 'Only known archive metadata is accepted. Provider source IDs map through slugs to local IDs; unknown references fail. Omitted credentials and optional provider state stay unchanged. Historical runtime-setting JSON is preserved as opaque data.',
+    security, 'x-permission': 'router:settings:write', requestBody: {required: true, content: json(ref('ConfigImport'))}, responses: {
+      '200': {description: 'Configuration and audit committed atomically', content: json({type: 'object', required: ['ok'], properties: {ok: {type: 'boolean'}}})}, ...errors,
+      '500': {description: 'Import failed and all configuration writes were rolled back', content: json(ref('ModelAdminError'))},
     }}};
   return {paths, schemas};
 }

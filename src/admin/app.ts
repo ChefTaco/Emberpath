@@ -4,6 +4,7 @@ import { packageRoot as releasePackageRoot } from '../config/paths.js';
 import { compatibilityWarnings, coordinatorRequest, durableUpgradeStatus, home as upgradeHome, ownRelease, projectFile, updateStatus } from '../release/runtime.js';
 import { UpgradeApplyRequest, UpgradePlanRequest } from '../contracts/upgrades.js';
 import { HTTPException } from 'hono/http-exception';
+import {importConfiguration} from './config-transfer.js';
 import { actorJournal, actorJournalWrite, actorCredentials } from './actor-journal-runtime.js';
 import type { ActorLease, ActorStep } from './actor-journal.js';
 import { routingPatchSchema, routingSnapshot, applyRoutingRevision, routingHistory, savedRoutingRevision } from '../routing/revisions.js';
@@ -82,7 +83,6 @@ import {
   adaptiveRoutingSchema,
   clientKeySchema,
   clientKeyUpdateSchema,
-  configImportSchema,
   heuristicSchema,
   modelAliasSchema,
   providerModelSchema,
@@ -2643,147 +2643,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/config/import', requireAdminAuth, async (context) => {
-    const user = context.get('adminUser');
-    const body = configImportSchema.parse(await context.req.json());
-
-    const payload = body.data;
-    if (!payload) {
-      return context.json({ error: 'Missing import payload' }, 400);
-    }
-
-    for (const provider of payload.providers ?? []) {
-      const existing = await prisma.provider.findUnique({ where: { slug: provider.slug } });
-      const saved = existing
-        ? await prisma.provider.update({
-            where: { id: existing.id },
-            data: {
-              name: provider.name,
-              kind: provider.kind,
-              baseUrl: provider.baseUrl,
-              authMode: provider.authMode ?? AuthMode.BEARER,
-              authHeaderName: provider.authHeaderName ?? 'Authorization',
-              encryptedAuthSecret: provider.encryptedAuthSecret === undefined ? existing.encryptedAuthSecret : provider.encryptedAuthSecret,
-              defaultHeadersJson: provider.defaultHeadersJson ?? '{}',
-              capabilityJson: provider.capabilityJson ?? '{}',
-              timeoutMs: provider.timeoutMs ?? 120000,
-              maxRetries: provider.maxRetries ?? 1,
-              concurrency: provider.concurrency ?? 16,
-              priority: provider.priority ?? 100,
-              weight: provider.weight ?? 100,
-              failoverGroup: provider.failoverGroup ?? null,
-              enabled: provider.enabled ?? true,
-            },
-          })
-        : await prisma.provider.create({
-            data: {
-              slug: provider.slug,
-              name: provider.name,
-              kind: provider.kind,
-              baseUrl: provider.baseUrl,
-              authMode: provider.authMode ?? AuthMode.BEARER,
-              authHeaderName: provider.authHeaderName ?? 'Authorization',
-              encryptedAuthSecret: provider.encryptedAuthSecret ?? null,
-              defaultHeadersJson: provider.defaultHeadersJson ?? '{}',
-              capabilityJson: provider.capabilityJson ?? '{}',
-              passthroughJson: '[]',
-              timeoutMs: provider.timeoutMs ?? 120000,
-              maxRetries: provider.maxRetries ?? 1,
-              concurrency: provider.concurrency ?? 16,
-              priority: provider.priority ?? 100,
-              weight: provider.weight ?? 100,
-              failoverGroup: provider.failoverGroup ?? null,
-              enabled: provider.enabled ?? true,
-            },
-          });
-
-      await prisma.providerModel.deleteMany({ where: { providerId: saved.id } });
-      if (provider.models?.length) {
-        await prisma.providerModel.createMany({
-          data: provider.models.map((model) => ({
-            providerId: saved.id,
-            model: model.model,
-            displayName: model.displayName ?? null,
-            enabled: model.enabled ?? true,
-            maxContextWindow: model.maxContextWindow ?? null,
-            capabilityJson: model.capabilityJson ?? '{}',
-          })),
-        });
-      }
-    }
-
-    for (const alias of payload.aliases ?? []) {
-      const aliasData = {
-        alias: alias.alias,
-        providerId: alias.providerId ?? null,
-        upstreamModel: alias.upstreamModel,
-        enabled: alias.enabled ?? true,
-        description: alias.description ?? null,
-      };
-      await prisma.modelAlias.upsert({
-        where: { alias: alias.alias },
-        update: aliasData,
-        create: aliasData,
-      });
-    }
-
-    for (const rule of payload.routeRules ?? []) {
-      await prisma.routeRule.upsert({
-        where: { name: rule.name },
-        update: {
-          kind: rule.kind,
-          priority: rule.priority ?? 100,
-          enabled: rule.enabled ?? true,
-          matchJson: rule.matchJson,
-          actionJson: rule.actionJson,
-        },
-        create: {
-          name: rule.name,
-          kind: rule.kind,
-          priority: rule.priority ?? 100,
-          enabled: rule.enabled ?? true,
-          matchJson: rule.matchJson,
-          actionJson: rule.actionJson,
-        },
-      });
-    }
-
-    for (const heuristic of payload.heuristicRules ?? []) {
-      await prisma.heuristicRule.upsert({
-        where: { name: heuristic.name },
-        update: {
-          category: heuristic.category,
-          pattern: heuristic.pattern,
-          score: heuristic.score ?? 10,
-          enabled: heuristic.enabled ?? true,
-          actionJson: heuristic.actionJson,
-        },
-        create: {
-          name: heuristic.name,
-          category: heuristic.category,
-          pattern: heuristic.pattern,
-          score: heuristic.score ?? 10,
-          enabled: heuristic.enabled ?? true,
-          actionJson: heuristic.actionJson,
-        },
-      });
-    }
-
-    for (const setting of payload.runtimeSettings ?? []) {
-      await prisma.runtimeSetting.upsert({
-        where: { key: setting.key },
-        update: { valueJson: setting.valueJson },
-        create: { key: setting.key, valueJson: setting.valueJson },
-      });
-    }
-
-    await recordAuditEvent({
-      actorType: 'admin-user',
-      adminUserId: user?.id,
-      action: 'config.import',
-      entityType: 'config',
-      metadata: { imported: true },
-    });
-
+    await importConfiguration(await context.req.json(), context.get('adminUser')?.id);
     return context.json({ ok: true });
   });
 
