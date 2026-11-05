@@ -17,7 +17,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.22.1
+      - run: sudo apt-get update -qq && sudo apt-get install -y ripgrep
       - run: npm run bootstrap
+      - run: npm rebuild better-sqlite3 --ignore-scripts=false
       - run: npm run typecheck
       - run: npm run build
       - run: npm test

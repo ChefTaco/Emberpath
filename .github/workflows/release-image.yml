@@ -90,4 +90,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DIGEST: ${{ steps.manifest.outputs.digest }}
-        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "Image: \`$IMAGE@$DIGEST\`"
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "Image: \`$IMAGE@$DIGEST\`"
