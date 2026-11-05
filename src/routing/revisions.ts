@@ -1,17 +1,12 @@
 import { HTTPException } from 'hono/http-exception';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '../generated/prisma/client.js';
-import { z } from 'zod';
 import { prisma } from '../storage/client.js';
 import { digestText } from '../security/crypto.js';
-import { modelAliasSchema, routeRuleSchema, routingObjectiveSchema } from '../admin/schemas.js';
 import { ROUTING_OBJECTIVE_SETTING_KEY, parseRoutingObjectiveConfig } from './objective.js';
 
-export const routingPatchSchema = z.object({
-  aliases: z.array(modelAliasSchema).max(500).optional(),
-  rules: z.array(routeRuleSchema).max(500).optional(),
-  objective: routingObjectiveSchema.optional(),
-}).strict();
+export {routingPatchSchema} from '../contracts/model-admin.js';
+import {routingPatchSchema} from '../contracts/model-admin.js';
 const prefix = 'routing.revision.';
 export async function routingSnapshot(db: Pick<Prisma.TransactionClient, 'modelAlias' | 'routeRule' | 'runtimeSetting'> = prisma) {
   const [aliases, rules, objective] = await Promise.all([

@@ -1,5 +1,11 @@
 # Changelog
 
+- Publish native browser contracts and OpenAPI for routing policies, selection
+  previews and revisions, quotas and client keys, telemetry, audit, runtime
+  settings and Codex device authorization. Reuse the exact native request schemas,
+  omit stored provider credentials from trace relations, and prevent caching of
+  one-time credential responses.
+
 - Round-trip native version-1 configuration archives and legacy bare envelopes
   through strict known metadata validation. Import configuration and audit
   atomically, preserve omitted credentials and provider state, and map source

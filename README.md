@@ -555,3 +555,21 @@ never assigned from an archive. Historical runtime-setting JSON remains byte
 stable; historical revision records retain their original source references and
 require review before applying them in another installation. This configuration
 workflow does not replace a verified database/key backup or installation restore.
+
+### Browser administration contracts
+
+`src/contracts/model-admin.ts` is the browser-safe Zod contract for provider and
+alias administration, route rules and heuristics, objective configuration,
+selection previews and revision recovery, inference tests, client keys and quota
+usage, telemetry and traces, audit, runtime settings, API documentation and Codex
+device authorization. Native request handlers reuse these exact schemas; owned
+OpenAPI response schemas distinguish newly created keys from full rotation
+records. Creation and rotation reveal an API key once and prohibit caching; list
+and trace relations never expose key hashes or stored provider credentials.
+Opaque stored JSON fields remain strings, preserving historical data semantics.
+
+Run `npm run contracts:browser -- --output NEW_DIRECTORY` to export committed
+contract bytes, exact source revision and checksum, product version and Apache
+attribution. Browser clients vendor that reviewed export, validate responses and
+requests, and check its provenance without reading sibling backend source.
+`npm run check:openapi` checks the generated operation and schema snapshot.

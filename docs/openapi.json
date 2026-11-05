@@ -1,6 +1,1277 @@
 {
   "components": {
     "schemas": {
+      "AuditEvent": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actorType": {
+            "type": "string"
+          },
+          "adminUser": {
+            "anyOf": [
+              {
+                "properties": {
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "username",
+                  "displayName",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adminUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entityType": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadataJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "actorType",
+          "adminUserId",
+          "action",
+          "entityType",
+          "entityId",
+          "metadataJson",
+          "createdAt",
+          "adminUser"
+        ],
+        "type": "object"
+      },
+      "ClientKey": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyPrefix": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadataJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "keyPrefix",
+          "enabled",
+          "metadataJson",
+          "lastUsedAt",
+          "expiresAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ClientKeyCreated": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "apiKey": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyPrefix": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "keyPrefix",
+          "apiKey"
+        ],
+        "type": "object"
+      },
+      "ClientKeyRotated": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "apiKey": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyPrefix": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadataJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "keyPrefix",
+          "enabled",
+          "metadataJson",
+          "lastUsedAt",
+          "expiresAt",
+          "createdAt",
+          "updatedAt",
+          "apiKey"
+        ],
+        "type": "object"
+      },
+      "ClientKeyUpdate": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "metadata": {
+            "additionalProperties": false,
+            "properties": {
+              "environment": {
+                "enum": [
+                  "dev",
+                  "test",
+                  "staging",
+                  "prod"
+                ],
+                "type": "string"
+              },
+              "expiresAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "type": "string"
+              },
+              "labels": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "notes": {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              "owner": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "purpose": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "quota": {
+                "additionalProperties": false,
+                "properties": {
+                  "dailyRequests": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "dailyTokens": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "monthlyRequests": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "monthlyTokens": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "warnAtPercent": {
+                    "maximum": 99,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "rotation": {
+                "additionalProperties": false,
+                "properties": {
+                  "cadenceDays": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "lastRotatedAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
+                  },
+                  "nextRotateBy": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "scopes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tags": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ClientKeyUsage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "clientApiKeyId": {
+            "type": "string"
+          },
+          "daily": {
+            "items": {
+              "properties": {
+                "costUsd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "day": {
+                  "type": "string"
+                },
+                "estimatedRequests": {
+                  "type": "number"
+                },
+                "requests": {
+                  "type": "number"
+                },
+                "tokens": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "day",
+                "requests",
+                "tokens",
+                "costUsd",
+                "estimatedRequests"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "exceeded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "history": {
+            "properties": {
+              "cutoverAt": {
+                "type": "number"
+              },
+              "historicalCoverage": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cutoverAt",
+              "historicalCoverage"
+            ],
+            "type": "object"
+          },
+          "limits": {
+            "additionalProperties": false,
+            "properties": {
+              "acceptRetainedHistory": {
+                "type": "boolean"
+              },
+              "dailyRequests": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "dailyTokens": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "monthlyRequests": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "monthlyTokens": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "warnAtPercent": {
+                "maximum": 99,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "usage": {
+            "properties": {
+              "dayRequests": {
+                "type": "number"
+              },
+              "dayTokens": {
+                "type": "number"
+              },
+              "monthRequests": {
+                "type": "number"
+              },
+              "monthTokens": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "dayRequests",
+              "monthRequests",
+              "dayTokens",
+              "monthTokens"
+            ],
+            "type": "object"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "clientApiKeyId",
+          "name",
+          "daily",
+          "limits",
+          "usage",
+          "allowed",
+          "exceeded",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "ClientKeyWrite": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "metadata": {
+            "additionalProperties": false,
+            "default": {},
+            "properties": {
+              "environment": {
+                "enum": [
+                  "dev",
+                  "test",
+                  "staging",
+                  "prod"
+                ],
+                "type": "string"
+              },
+              "expiresAt": {
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                "type": "string"
+              },
+              "labels": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "notes": {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              "owner": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "purpose": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "quota": {
+                "additionalProperties": false,
+                "properties": {
+                  "dailyRequests": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "dailyTokens": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "monthlyRequests": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "monthlyTokens": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "warnAtPercent": {
+                    "maximum": 99,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "rotation": {
+                "additionalProperties": false,
+                "properties": {
+                  "cadenceDays": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "lastRotatedAt": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
+                  },
+                  "nextRotateBy": {
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "scopes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "tags": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CodexOAuthCheck": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "loginId": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "loginId"
+        ],
+        "type": "object"
+      },
+      "CodexOAuthResult": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "accountIdMasked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRefreshAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "planType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "properties": {
+                  "authHeaderName": {
+                    "type": "string"
+                  },
+                  "authMode": {
+                    "enum": [
+                      "NONE",
+                      "BEARER",
+                      "API_KEY",
+                      "HEADER"
+                    ],
+                    "type": "string"
+                  },
+                  "authSecretMasked": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "baseUrl": {
+                    "type": "string"
+                  },
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "audio": {
+                        "type": "boolean"
+                      },
+                      "embeddings": {
+                        "type": "boolean"
+                      },
+                      "inputCostPerMillionTokens": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "jsonSchema": {
+                        "type": "boolean"
+                      },
+                      "longContext": {
+                        "type": "boolean"
+                      },
+                      "maxContextWindow": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "type": "integer"
+                      },
+                      "outputCostPerMillionTokens": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "passthroughRoutes": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "qualityScore": {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "reasoning": {
+                        "type": "boolean"
+                      },
+                      "streaming": {
+                        "type": "boolean"
+                      },
+                      "supportedRoutes": {
+                        "items": {
+                          "enum": [
+                            "v1.models",
+                            "v1.responses",
+                            "v1.chat.completions",
+                            "v1.completions",
+                            "v1.embeddings",
+                            "v1.audio.transcriptions",
+                            "v1.audio.translations",
+                            "v1.images.generations",
+                            "v1.moderations",
+                            "ollama.native",
+                            "vllm.native"
+                          ],
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "tags": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "throughputTokensPerSecond": {
+                        "exclusiveMinimum": 0,
+                        "type": "number"
+                      },
+                      "tools": {
+                        "type": "boolean"
+                      },
+                      "video": {
+                        "type": "boolean"
+                      },
+                      "vision": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "concurrency": {
+                    "type": "number"
+                  },
+                  "defaultHeaders": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "failoverGroup": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "OPENAI",
+                      "CODEX",
+                      "OPENAI_GENERIC",
+                      "OPENROUTER",
+                      "ANTHROPIC",
+                      "OLLAMA",
+                      "LLAMACPP",
+                      "VLLM"
+                    ],
+                    "type": "string"
+                  },
+                  "lastHealthAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lastHealthError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lastHealthStatus": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "maxRetries": {
+                    "type": "number"
+                  },
+                  "models": {
+                    "items": {
+                      "properties": {
+                        "capabilityJson": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "maxContextWindow": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "providerId": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "providerId",
+                        "model",
+                        "displayName",
+                        "enabled",
+                        "maxContextWindow",
+                        "capabilityJson",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "type": "number"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "timeoutMs": {
+                    "type": "number"
+                  },
+                  "weight": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "slug",
+                  "name",
+                  "kind",
+                  "baseUrl",
+                  "authMode",
+                  "authHeaderName",
+                  "authSecretMasked",
+                  "defaultHeaders",
+                  "capabilities",
+                  "timeoutMs",
+                  "maxRetries",
+                  "concurrency",
+                  "priority",
+                  "weight",
+                  "failoverGroup",
+                  "enabled",
+                  "lastHealthStatus",
+                  "lastHealthError",
+                  "lastHealthAt",
+                  "models"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "authorized",
+              "expired",
+              "error"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "CodexOAuthStart": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "deviceAuthId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "intervalSeconds": {
+            "type": "number"
+          },
+          "loginId": {
+            "type": "string"
+          },
+          "userCode": {
+            "type": "string"
+          },
+          "verificationUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "loginId",
+          "deviceAuthId",
+          "verificationUrl",
+          "userCode",
+          "intervalSeconds",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CodexOAuthStatus": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "accountIdMasked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "authorized": {
+            "type": "boolean"
+          },
+          "lastRefreshAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "planType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "properties": {
+                  "authHeaderName": {
+                    "type": "string"
+                  },
+                  "authMode": {
+                    "enum": [
+                      "NONE",
+                      "BEARER",
+                      "API_KEY",
+                      "HEADER"
+                    ],
+                    "type": "string"
+                  },
+                  "authSecretMasked": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "baseUrl": {
+                    "type": "string"
+                  },
+                  "capabilities": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "audio": {
+                        "type": "boolean"
+                      },
+                      "embeddings": {
+                        "type": "boolean"
+                      },
+                      "inputCostPerMillionTokens": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "jsonSchema": {
+                        "type": "boolean"
+                      },
+                      "longContext": {
+                        "type": "boolean"
+                      },
+                      "maxContextWindow": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "type": "integer"
+                      },
+                      "outputCostPerMillionTokens": {
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "passthroughRoutes": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "qualityScore": {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "reasoning": {
+                        "type": "boolean"
+                      },
+                      "streaming": {
+                        "type": "boolean"
+                      },
+                      "supportedRoutes": {
+                        "items": {
+                          "enum": [
+                            "v1.models",
+                            "v1.responses",
+                            "v1.chat.completions",
+                            "v1.completions",
+                            "v1.embeddings",
+                            "v1.audio.transcriptions",
+                            "v1.audio.translations",
+                            "v1.images.generations",
+                            "v1.moderations",
+                            "ollama.native",
+                            "vllm.native"
+                          ],
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "tags": {
+                        "items": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "throughputTokensPerSecond": {
+                        "exclusiveMinimum": 0,
+                        "type": "number"
+                      },
+                      "tools": {
+                        "type": "boolean"
+                      },
+                      "video": {
+                        "type": "boolean"
+                      },
+                      "vision": {
+                        "type": "boolean"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "concurrency": {
+                    "type": "number"
+                  },
+                  "defaultHeaders": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "failoverGroup": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "OPENAI",
+                      "CODEX",
+                      "OPENAI_GENERIC",
+                      "OPENROUTER",
+                      "ANTHROPIC",
+                      "OLLAMA",
+                      "LLAMACPP",
+                      "VLLM"
+                    ],
+                    "type": "string"
+                  },
+                  "lastHealthAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lastHealthError": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "lastHealthStatus": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "maxRetries": {
+                    "type": "number"
+                  },
+                  "models": {
+                    "items": {
+                      "properties": {
+                        "capabilityJson": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "maxContextWindow": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "providerId": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "providerId",
+                        "model",
+                        "displayName",
+                        "enabled",
+                        "maxContextWindow",
+                        "capabilityJson",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "type": "number"
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "timeoutMs": {
+                    "type": "number"
+                  },
+                  "weight": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "slug",
+                  "name",
+                  "kind",
+                  "baseUrl",
+                  "authMode",
+                  "authHeaderName",
+                  "authSecretMasked",
+                  "defaultHeaders",
+                  "capabilities",
+                  "timeoutMs",
+                  "maxRetries",
+                  "concurrency",
+                  "priority",
+                  "weight",
+                  "failoverGroup",
+                  "enabled",
+                  "lastHealthStatus",
+                  "lastHealthError",
+                  "lastHealthAt",
+                  "models"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refreshTokenQuarantined": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "authorized",
+          "provider"
+        ],
+        "type": "object"
+      },
       "ConfigExport": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -861,6 +2132,237 @@
         },
         "required": [
           "data"
+        ],
+        "type": "object"
+      },
+      "ConsoleOk": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
+      "DocsIndex": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "docs": {
+            "items": {
+              "properties": {
+                "implemented": {
+                  "type": "boolean"
+                },
+                "method": {
+                  "type": "string"
+                },
+                "providerKind": {
+                  "enum": [
+                    "OPENAI",
+                    "CODEX",
+                    "OPENAI_GENERIC",
+                    "OPENROUTER",
+                    "ANTHROPIC",
+                    "OLLAMA",
+                    "LLAMACPP",
+                    "VLLM"
+                  ],
+                  "type": "string"
+                },
+                "rationale": {
+                  "type": "string"
+                },
+                "route": {
+                  "type": "string"
+                },
+                "scope": {
+                  "enum": [
+                    "router",
+                    "provider"
+                  ],
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "scope",
+                "method",
+                "route",
+                "title",
+                "summary",
+                "implemented"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "baseUrl": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "OPENAI",
+                    "CODEX",
+                    "OPENAI_GENERIC",
+                    "OPENROUTER",
+                    "ANTHROPIC",
+                    "OLLAMA",
+                    "LLAMACPP",
+                    "VLLM"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "slug",
+                "name",
+                "kind",
+                "baseUrl",
+                "enabled"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "docs",
+          "providers"
+        ],
+        "type": "object"
+      },
+      "Heuristic": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "actionJson": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "category",
+          "pattern",
+          "score",
+          "enabled",
+          "actionJson",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "HeuristicWrite": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "actionJson": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "enum": [
+                  "rerank",
+                  "trace-detail",
+                  "deny"
+                ],
+                "type": "string"
+              },
+              "detail": {
+                "enum": [
+                  "low",
+                  "high"
+                ],
+                "type": "string"
+              },
+              "reason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "targetTag": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          "category": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "pattern": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "score": {
+            "default": 10,
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "pattern",
+          "actionJson"
         ],
         "type": "object"
       },
@@ -1825,6 +3327,2749 @@
           "baseUrl"
         ],
         "type": "object"
+      },
+      "RouteRule": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "actionJson": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "MODEL_ALIAS",
+              "PROVIDER_PREFERENCE",
+              "CAPABILITY",
+              "SAFETY",
+              "PASSTHROUGH",
+              "LOCAL_ONLY"
+            ],
+            "type": "string"
+          },
+          "matchJson": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "priority",
+          "enabled",
+          "matchJson",
+          "actionJson",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "RouteRuleWrite": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "actionJson": {
+            "additionalProperties": false,
+            "properties": {
+              "deny": {
+                "type": "boolean"
+              },
+              "denyReason": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerIds": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "providerKinds": {
+                "items": {
+                  "enum": [
+                    "OPENAI",
+                    "CODEX",
+                    "OPENAI_GENERIC",
+                    "OPENROUTER",
+                    "ANTHROPIC",
+                    "OLLAMA",
+                    "LLAMACPP",
+                    "VLLM"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "requiredTag": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "MODEL_ALIAS",
+              "PROVIDER_PREFERENCE",
+              "CAPABILITY",
+              "SAFETY",
+              "PASSTHROUGH",
+              "LOCAL_ONLY"
+            ],
+            "type": "string"
+          },
+          "matchJson": {
+            "additionalProperties": false,
+            "properties": {
+              "endpointKinds": {
+                "items": {
+                  "enum": [
+                    "v1.models",
+                    "v1.responses",
+                    "v1.chat.completions",
+                    "v1.completions",
+                    "v1.embeddings",
+                    "v1.audio.transcriptions",
+                    "v1.audio.translations",
+                    "v1.images.generations",
+                    "v1.moderations",
+                    "ollama.native",
+                    "vllm.native"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "models": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "paths": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "minLength": 2,
+            "type": "string"
+          },
+          "priority": {
+            "default": 100,
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "matchJson",
+          "actionJson"
+        ],
+        "type": "object"
+      },
+      "RoutingApplied": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "config": {
+            "properties": {
+              "aliases": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "alias": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    },
+                    "upstreamModel": {
+                      "default": "",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "alias"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "objective": {
+                "additionalProperties": false,
+                "properties": {
+                  "costWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "goal": {
+                    "enum": [
+                      "balanced",
+                      "cheapest",
+                      "fastest",
+                      "highest-quality"
+                    ],
+                    "type": "string"
+                  },
+                  "missingPricePenalty": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "qualityWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "throughputWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "goal"
+                ],
+                "type": "object"
+              },
+              "rules": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actionJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "deny": {
+                          "type": "boolean"
+                        },
+                        "denyReason": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "providerIds": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "providerKinds": {
+                          "items": {
+                            "enum": [
+                              "OPENAI",
+                              "CODEX",
+                              "OPENAI_GENERIC",
+                              "OPENROUTER",
+                              "ANTHROPIC",
+                              "OLLAMA",
+                              "LLAMACPP",
+                              "VLLM"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "requiredTag": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "enum": [
+                        "MODEL_ALIAS",
+                        "PROVIDER_PREFERENCE",
+                        "CAPABILITY",
+                        "SAFETY",
+                        "PASSTHROUGH",
+                        "LOCAL_ONLY"
+                      ],
+                      "type": "string"
+                    },
+                    "matchJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "endpointKinds": {
+                          "items": {
+                            "enum": [
+                              "v1.models",
+                              "v1.responses",
+                              "v1.chat.completions",
+                              "v1.completions",
+                              "v1.embeddings",
+                              "v1.audio.transcriptions",
+                              "v1.audio.translations",
+                              "v1.images.generations",
+                              "v1.moderations",
+                              "ollama.native",
+                              "vllm.native"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "models": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "paths": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "name": {
+                      "minLength": 2,
+                      "type": "string"
+                    },
+                    "priority": {
+                      "default": 100,
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind",
+                    "matchJson",
+                    "actionJson"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "aliases",
+              "rules",
+              "objective"
+            ],
+            "type": "object"
+          },
+          "previousRevision": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "config",
+          "previousRevision"
+        ],
+        "type": "object"
+      },
+      "RoutingApplyRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "baseRevision": {
+            "type": "string"
+          },
+          "patch": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "alias": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    },
+                    "upstreamModel": {
+                      "default": "",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "alias"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              "objective": {
+                "additionalProperties": false,
+                "properties": {
+                  "costWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "goal": {
+                    "enum": [
+                      "balanced",
+                      "cheapest",
+                      "fastest",
+                      "highest-quality"
+                    ],
+                    "type": "string"
+                  },
+                  "missingPricePenalty": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "qualityWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "throughputWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "goal"
+                ],
+                "type": "object"
+              },
+              "rules": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actionJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "deny": {
+                          "type": "boolean"
+                        },
+                        "denyReason": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "providerIds": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "providerKinds": {
+                          "items": {
+                            "enum": [
+                              "OPENAI",
+                              "CODEX",
+                              "OPENAI_GENERIC",
+                              "OPENROUTER",
+                              "ANTHROPIC",
+                              "OLLAMA",
+                              "LLAMACPP",
+                              "VLLM"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "requiredTag": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "enum": [
+                        "MODEL_ALIAS",
+                        "PROVIDER_PREFERENCE",
+                        "CAPABILITY",
+                        "SAFETY",
+                        "PASSTHROUGH",
+                        "LOCAL_ONLY"
+                      ],
+                      "type": "string"
+                    },
+                    "matchJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "endpointKinds": {
+                          "items": {
+                            "enum": [
+                              "v1.models",
+                              "v1.responses",
+                              "v1.chat.completions",
+                              "v1.completions",
+                              "v1.embeddings",
+                              "v1.audio.transcriptions",
+                              "v1.audio.translations",
+                              "v1.images.generations",
+                              "v1.moderations",
+                              "ollama.native",
+                              "vllm.native"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "models": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "paths": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "name": {
+                      "minLength": 2,
+                      "type": "string"
+                    },
+                    "priority": {
+                      "default": 100,
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind",
+                    "matchJson",
+                    "actionJson"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 500,
+                "type": "array"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "baseRevision",
+          "patch"
+        ],
+        "type": "object"
+      },
+      "RoutingObjective": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "costWeight": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          },
+          "goal": {
+            "enum": [
+              "balanced",
+              "cheapest",
+              "fastest",
+              "highest-quality"
+            ],
+            "type": "string"
+          },
+          "missingPricePenalty": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "qualityWeight": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          },
+          "throughputWeight": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "type": "object"
+      },
+      "RoutingPreview": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "inferenceCalls": {
+            "const": 0,
+            "type": "number"
+          },
+          "mode": {
+            "const": "selection-only",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "changed": {
+                  "type": "boolean"
+                },
+                "current": {
+                  "properties": {
+                    "candidateProviderIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "denialReason": {
+                      "type": "string"
+                    },
+                    "fallbackProviderIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "observations": {
+                      "items": {
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "details": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "category",
+                          "score",
+                          "action"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "passthroughTargetPath": {
+                      "type": "string"
+                    },
+                    "selectedProviderId": {
+                      "type": "string"
+                    },
+                    "selectedProviderKind": {
+                      "enum": [
+                        "OPENAI",
+                        "CODEX",
+                        "OPENAI_GENERIC",
+                        "OPENROUTER",
+                        "ANTHROPIC",
+                        "OLLAMA",
+                        "LLAMACPP",
+                        "VLLM"
+                      ],
+                      "type": "string"
+                    },
+                    "targetModel": {
+                      "type": "string"
+                    },
+                    "triggeredRuleNames": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "candidateProviderIds",
+                    "fallbackProviderIds",
+                    "observations",
+                    "triggeredRuleNames",
+                    "confidence"
+                  ],
+                  "type": "object"
+                },
+                "proposed": {
+                  "properties": {
+                    "candidateProviderIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "confidence": {
+                      "type": "number"
+                    },
+                    "denialReason": {
+                      "type": "string"
+                    },
+                    "fallbackProviderIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "observations": {
+                      "items": {
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "details": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "category",
+                          "score",
+                          "action"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "passthroughTargetPath": {
+                      "type": "string"
+                    },
+                    "selectedProviderId": {
+                      "type": "string"
+                    },
+                    "selectedProviderKind": {
+                      "enum": [
+                        "OPENAI",
+                        "CODEX",
+                        "OPENAI_GENERIC",
+                        "OPENROUTER",
+                        "ANTHROPIC",
+                        "OLLAMA",
+                        "LLAMACPP",
+                        "VLLM"
+                      ],
+                      "type": "string"
+                    },
+                    "targetModel": {
+                      "type": "string"
+                    },
+                    "triggeredRuleNames": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "candidateProviderIds",
+                    "fallbackProviderIds",
+                    "observations",
+                    "triggeredRuleNames",
+                    "confidence"
+                  ],
+                  "type": "object"
+                },
+                "rejectedProviders": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "reason"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "category",
+                "current",
+                "proposed",
+                "changed",
+                "rejectedProviders"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "inferenceCalls",
+          "results"
+        ],
+        "type": "object"
+      },
+      "RoutingPreviewRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "aliases": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "alias": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "providerId": {
+                  "type": "string"
+                },
+                "upstreamModel": {
+                  "default": "",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "alias"
+              ],
+              "type": "object"
+            },
+            "maxItems": 500,
+            "type": "array"
+          },
+          "cases": {
+            "items": {
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "maxResponseChars": {
+                  "default": 1500,
+                  "maximum": 8192,
+                  "minimum": 120,
+                  "type": "integer"
+                },
+                "modelAlias": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "prompt": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "modelAlias",
+                "prompt"
+              ],
+              "type": "object"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "type": "array"
+          },
+          "objective": {
+            "additionalProperties": false,
+            "properties": {
+              "costWeight": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "goal": {
+                "enum": [
+                  "balanced",
+                  "cheapest",
+                  "fastest",
+                  "highest-quality"
+                ],
+                "type": "string"
+              },
+              "missingPricePenalty": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "number"
+              },
+              "qualityWeight": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              },
+              "throughputWeight": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "required": [
+              "goal"
+            ],
+            "type": "object"
+          },
+          "rules": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "actionJson": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "deny": {
+                      "type": "boolean"
+                    },
+                    "denyReason": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "providerIds": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "providerKinds": {
+                      "items": {
+                        "enum": [
+                          "OPENAI",
+                          "CODEX",
+                          "OPENAI_GENERIC",
+                          "OPENROUTER",
+                          "ANTHROPIC",
+                          "OLLAMA",
+                          "LLAMACPP",
+                          "VLLM"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "requiredTag": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "kind": {
+                  "enum": [
+                    "MODEL_ALIAS",
+                    "PROVIDER_PREFERENCE",
+                    "CAPABILITY",
+                    "SAFETY",
+                    "PASSTHROUGH",
+                    "LOCAL_ONLY"
+                  ],
+                  "type": "string"
+                },
+                "matchJson": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "endpointKinds": {
+                      "items": {
+                        "enum": [
+                          "v1.models",
+                          "v1.responses",
+                          "v1.chat.completions",
+                          "v1.completions",
+                          "v1.embeddings",
+                          "v1.audio.transcriptions",
+                          "v1.audio.translations",
+                          "v1.images.generations",
+                          "v1.moderations",
+                          "ollama.native",
+                          "vllm.native"
+                        ],
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "models": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "paths": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                },
+                "name": {
+                  "minLength": 2,
+                  "type": "string"
+                },
+                "priority": {
+                  "default": 100,
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "matchJson",
+                "actionJson"
+              ],
+              "type": "object"
+            },
+            "maxItems": 500,
+            "type": "array"
+          }
+        },
+        "required": [
+          "cases"
+        ],
+        "type": "object"
+      },
+      "RoutingRevisions": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "config": {
+            "properties": {
+              "aliases": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "alias": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    },
+                    "upstreamModel": {
+                      "default": "",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "alias"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "objective": {
+                "additionalProperties": false,
+                "properties": {
+                  "costWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "goal": {
+                    "enum": [
+                      "balanced",
+                      "cheapest",
+                      "fastest",
+                      "highest-quality"
+                    ],
+                    "type": "string"
+                  },
+                  "missingPricePenalty": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "qualityWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "throughputWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "goal"
+                ],
+                "type": "object"
+              },
+              "rules": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actionJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "deny": {
+                          "type": "boolean"
+                        },
+                        "denyReason": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "providerIds": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "providerKinds": {
+                          "items": {
+                            "enum": [
+                              "OPENAI",
+                              "CODEX",
+                              "OPENAI_GENERIC",
+                              "OPENROUTER",
+                              "ANTHROPIC",
+                              "OLLAMA",
+                              "LLAMACPP",
+                              "VLLM"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "requiredTag": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "enum": [
+                        "MODEL_ALIAS",
+                        "PROVIDER_PREFERENCE",
+                        "CAPABILITY",
+                        "SAFETY",
+                        "PASSTHROUGH",
+                        "LOCAL_ONLY"
+                      ],
+                      "type": "string"
+                    },
+                    "matchJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "endpointKinds": {
+                          "items": {
+                            "enum": [
+                              "v1.models",
+                              "v1.responses",
+                              "v1.chat.completions",
+                              "v1.completions",
+                              "v1.embeddings",
+                              "v1.audio.transcriptions",
+                              "v1.audio.translations",
+                              "v1.images.generations",
+                              "v1.moderations",
+                              "ollama.native",
+                              "vllm.native"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "models": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "paths": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "name": {
+                      "minLength": 2,
+                      "type": "string"
+                    },
+                    "priority": {
+                      "default": 100,
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind",
+                    "matchJson",
+                    "actionJson"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "aliases",
+              "rules",
+              "objective"
+            ],
+            "type": "object"
+          },
+          "history": {
+            "items": {
+              "properties": {
+                "config": {
+                  "properties": {
+                    "aliases": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alias": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "default": true,
+                            "type": "boolean"
+                          },
+                          "providerId": {
+                            "type": "string"
+                          },
+                          "upstreamModel": {
+                            "default": "",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "alias"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "objective": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "costWeight": {
+                          "maximum": 10,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "goal": {
+                          "enum": [
+                            "balanced",
+                            "cheapest",
+                            "fastest",
+                            "highest-quality"
+                          ],
+                          "type": "string"
+                        },
+                        "missingPricePenalty": {
+                          "maximum": 1000,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "qualityWeight": {
+                          "maximum": 10,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "throughputWeight": {
+                          "maximum": 10,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "goal"
+                      ],
+                      "type": "object"
+                    },
+                    "rules": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "actionJson": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "deny": {
+                                "type": "boolean"
+                              },
+                              "denyReason": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "providerIds": {
+                                "items": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "providerKinds": {
+                                "items": {
+                                  "enum": [
+                                    "OPENAI",
+                                    "CODEX",
+                                    "OPENAI_GENERIC",
+                                    "OPENROUTER",
+                                    "ANTHROPIC",
+                                    "OLLAMA",
+                                    "LLAMACPP",
+                                    "VLLM"
+                                  ],
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "requiredTag": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "enabled": {
+                            "default": true,
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "enum": [
+                              "MODEL_ALIAS",
+                              "PROVIDER_PREFERENCE",
+                              "CAPABILITY",
+                              "SAFETY",
+                              "PASSTHROUGH",
+                              "LOCAL_ONLY"
+                            ],
+                            "type": "string"
+                          },
+                          "matchJson": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "endpointKinds": {
+                                "items": {
+                                  "enum": [
+                                    "v1.models",
+                                    "v1.responses",
+                                    "v1.chat.completions",
+                                    "v1.completions",
+                                    "v1.embeddings",
+                                    "v1.audio.transcriptions",
+                                    "v1.audio.translations",
+                                    "v1.images.generations",
+                                    "v1.moderations",
+                                    "ollama.native",
+                                    "vllm.native"
+                                  ],
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "models": {
+                                "items": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "paths": {
+                                "items": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "name": {
+                            "minLength": 2,
+                            "type": "string"
+                          },
+                          "priority": {
+                            "default": 100,
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "kind",
+                          "matchJson",
+                          "actionJson"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "aliases",
+                    "rules",
+                    "objective"
+                  ],
+                  "type": "object"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "recordedAt": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "revision",
+                "config",
+                "operator",
+                "recordedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "config",
+          "history"
+        ],
+        "type": "object"
+      },
+      "RoutingRollbackRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "baseRevision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseRevision"
+        ],
+        "type": "object"
+      },
+      "RoutingSnapshot": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "config": {
+            "properties": {
+              "aliases": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "alias": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "providerId": {
+                      "type": "string"
+                    },
+                    "upstreamModel": {
+                      "default": "",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "alias"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "objective": {
+                "additionalProperties": false,
+                "properties": {
+                  "costWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "goal": {
+                    "enum": [
+                      "balanced",
+                      "cheapest",
+                      "fastest",
+                      "highest-quality"
+                    ],
+                    "type": "string"
+                  },
+                  "missingPricePenalty": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "qualityWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "throughputWeight": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "goal"
+                ],
+                "type": "object"
+              },
+              "rules": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "actionJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "deny": {
+                          "type": "boolean"
+                        },
+                        "denyReason": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "providerIds": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "providerKinds": {
+                          "items": {
+                            "enum": [
+                              "OPENAI",
+                              "CODEX",
+                              "OPENAI_GENERIC",
+                              "OPENROUTER",
+                              "ANTHROPIC",
+                              "OLLAMA",
+                              "LLAMACPP",
+                              "VLLM"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "requiredTag": {
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "enabled": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "enum": [
+                        "MODEL_ALIAS",
+                        "PROVIDER_PREFERENCE",
+                        "CAPABILITY",
+                        "SAFETY",
+                        "PASSTHROUGH",
+                        "LOCAL_ONLY"
+                      ],
+                      "type": "string"
+                    },
+                    "matchJson": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "endpointKinds": {
+                          "items": {
+                            "enum": [
+                              "v1.models",
+                              "v1.responses",
+                              "v1.chat.completions",
+                              "v1.completions",
+                              "v1.embeddings",
+                              "v1.audio.transcriptions",
+                              "v1.audio.translations",
+                              "v1.images.generations",
+                              "v1.moderations",
+                              "ollama.native",
+                              "vllm.native"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "models": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "paths": {
+                          "items": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "name": {
+                      "minLength": 2,
+                      "type": "string"
+                    },
+                    "priority": {
+                      "default": 100,
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind",
+                    "matchJson",
+                    "actionJson"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "aliases",
+              "rules",
+              "objective"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "config"
+        ],
+        "type": "object"
+      },
+      "RoutingTestRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "maxResponseChars": {
+            "default": 1500,
+            "maximum": 8192,
+            "minimum": 120,
+            "type": "integer"
+          },
+          "modelAlias": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "prompt": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelAlias",
+          "prompt"
+        ],
+        "type": "object"
+      },
+      "RoutingTestResult": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "attempts": {
+            "items": {
+              "properties": {
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "latencyMs": {
+                  "type": "number"
+                },
+                "provider": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "OPENAI",
+                        "CODEX",
+                        "OPENAI_GENERIC",
+                        "OPENROUTER",
+                        "ANTHROPIC",
+                        "OLLAMA",
+                        "LLAMACPP",
+                        "VLLM"
+                      ],
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "slug",
+                    "name",
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "statusCode": {
+                  "type": "number"
+                },
+                "success": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "provider",
+                "latencyMs",
+                "statusCode",
+                "success",
+                "error"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "candidates": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "OPENAI",
+                    "CODEX",
+                    "OPENAI_GENERIC",
+                    "OPENROUTER",
+                    "ANTHROPIC",
+                    "OLLAMA",
+                    "LLAMACPP",
+                    "VLLM"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "slug",
+                "name",
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "category": {
+            "type": "string"
+          },
+          "decision": {
+            "properties": {
+              "candidateProviderIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "denialReason": {
+                "type": "string"
+              },
+              "fallbackProviderIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "observations": {
+                "items": {
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "category",
+                    "score",
+                    "action"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "passthroughTargetPath": {
+                "type": "string"
+              },
+              "selectedProviderId": {
+                "type": "string"
+              },
+              "selectedProviderKind": {
+                "enum": [
+                  "OPENAI",
+                  "CODEX",
+                  "OPENAI_GENERIC",
+                  "OPENROUTER",
+                  "ANTHROPIC",
+                  "OLLAMA",
+                  "LLAMACPP",
+                  "VLLM"
+                ],
+                "type": "string"
+              },
+              "targetModel": {
+                "type": "string"
+              },
+              "triggeredRuleNames": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "candidateProviderIds",
+              "fallbackProviderIds",
+              "observations",
+              "triggeredRuleNames",
+              "confidence"
+            ],
+            "type": "object"
+          },
+          "latencyMs": {
+            "type": "number"
+          },
+          "modelAlias": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "providerError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestBody": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "responsePreview": {
+            "type": "string"
+          },
+          "selectedProvider": {
+            "anyOf": [
+              {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "OPENAI",
+                      "CODEX",
+                      "OPENAI_GENERIC",
+                      "OPENROUTER",
+                      "ANTHROPIC",
+                      "OLLAMA",
+                      "LLAMACPP",
+                      "VLLM"
+                    ],
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "slug",
+                  "name",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statusCode": {
+            "type": "number"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "targetModel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "category",
+          "modelAlias",
+          "prompt",
+          "requestBody",
+          "latencyMs",
+          "success",
+          "statusCode",
+          "providerError",
+          "responsePreview",
+          "decision",
+          "candidates",
+          "attempts",
+          "selectedProvider"
+        ],
+        "type": "object"
+      },
+      "RuntimeSetting": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "parsed": {},
+          "updatedAt": {
+            "type": "string"
+          },
+          "valueJson": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "valueJson",
+          "createdAt",
+          "updatedAt",
+          "parsed"
+        ],
+        "type": "object"
+      },
+      "Telemetry": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "latestTrace": {
+            "anyOf": [
+              {
+                "properties": {
+                  "clientApiKey": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "expiresAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "keyPrefix": {
+                            "type": "string"
+                          },
+                          "lastUsedAt": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "metadataJson": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "keyPrefix",
+                          "enabled",
+                          "metadataJson",
+                          "lastUsedAt",
+                          "expiresAt",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "clientApiKeyId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "decisionJson": {
+                    "type": "string"
+                  },
+                  "durationMs": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "endedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "endpointKind": {
+                    "type": "string"
+                  },
+                  "estimatedUsage": {
+                    "type": "boolean"
+                  },
+                  "events": {
+                    "items": {
+                      "properties": {
+                        "dataJson": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "occurredAt": {
+                          "type": "string"
+                        },
+                        "phase": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "traceId": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "traceId",
+                        "type",
+                        "phase",
+                        "message",
+                        "dataJson",
+                        "occurredAt"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "method": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "OPENAI",
+                              "CODEX",
+                              "OPENAI_GENERIC",
+                              "OPENROUTER",
+                              "ANTHROPIC",
+                              "OLLAMA",
+                              "LLAMACPP",
+                              "VLLM"
+                            ],
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "slug",
+                          "name",
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "providerId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "providerKind": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "providerModel": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reasoningBodyPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "requestBodyPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "requestHeadersJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "requestMetaJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "responseBodyPath": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "responseHeadersJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "responseMetaJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "retentionJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "routeKey": {
+                    "type": "string"
+                  },
+                  "startedAt": {
+                    "type": "string"
+                  },
+                  "statusCode": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "usageJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "requestId",
+                  "method",
+                  "path",
+                  "endpointKind",
+                  "routeKey",
+                  "statusCode",
+                  "outcome",
+                  "estimatedUsage",
+                  "providerId",
+                  "providerKind",
+                  "providerModel",
+                  "clientApiKeyId",
+                  "decisionJson",
+                  "requestHeadersJson",
+                  "responseHeadersJson",
+                  "requestMetaJson",
+                  "responseMetaJson",
+                  "usageJson",
+                  "retentionJson",
+                  "requestBodyPath",
+                  "responseBodyPath",
+                  "reasoningBodyPath",
+                  "startedAt",
+                  "endedAt",
+                  "durationMs",
+                  "createdAt"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totals": {
+            "properties": {
+              "failovers": {
+                "type": "number"
+              },
+              "failures": {
+                "type": "number"
+              },
+              "traces": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "traces",
+              "failures",
+              "failovers"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "totals",
+          "latestTrace"
+        ],
+        "type": "object"
+      },
+      "Trace": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "clientApiKey": {
+            "anyOf": [
+              {
+                "properties": {
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "expiresAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "keyPrefix": {
+                    "type": "string"
+                  },
+                  "lastUsedAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "metadataJson": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "keyPrefix",
+                  "enabled",
+                  "metadataJson",
+                  "lastUsedAt",
+                  "expiresAt",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clientApiKeyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decisionJson": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endpointKind": {
+            "type": "string"
+          },
+          "estimatedUsage": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "properties": {
+                "dataJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "occurredAt": {
+                  "type": "string"
+                },
+                "phase": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "traceId": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "traceId",
+                "type",
+                "phase",
+                "message",
+                "dataJson",
+                "occurredAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "OPENAI",
+                      "CODEX",
+                      "OPENAI_GENERIC",
+                      "OPENROUTER",
+                      "ANTHROPIC",
+                      "OLLAMA",
+                      "LLAMACPP",
+                      "VLLM"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "slug",
+                  "name",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "providerKind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "providerModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoningBodyPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestBodyPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestHeadersJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "requestMetaJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "responseBodyPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "responseHeadersJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "responseMetaJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retentionJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routeKey": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "statusCode": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "usageJson": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "requestId",
+          "method",
+          "path",
+          "endpointKind",
+          "routeKey",
+          "statusCode",
+          "outcome",
+          "estimatedUsage",
+          "providerId",
+          "providerKind",
+          "providerModel",
+          "clientApiKeyId",
+          "decisionJson",
+          "requestHeadersJson",
+          "responseHeadersJson",
+          "requestMetaJson",
+          "responseMetaJson",
+          "usageJson",
+          "retentionJson",
+          "requestBodyPath",
+          "responseBodyPath",
+          "reasoningBodyPath",
+          "startedAt",
+          "endedAt",
+          "durationMs",
+          "createdAt"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1841,12 +6086,76 @@
     }
   },
   "info": {
-    "description": "Model routing and administration baseline. Complete request/response schema coverage remains pending.",
+    "description": "Model routing baseline and owned browser administration request/response contracts. Native provider proxy payloads remain provider-defined.",
     "title": "Emberpath API",
     "version": "1.2.2"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/audit": {
+      "get": {
+        "operationId": "readAudit",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEvent"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Audit",
+        "x-permission": "router:admin:read"
+      }
+    },
     "/api/chat": {
       "post": {
         "operationId": "post__api_chat",
@@ -1856,6 +6165,430 @@
           }
         },
         "summary": "Native Ollama chat route"
+      }
+    },
+    "/api/client-keys": {
+      "get": {
+        "operationId": "listClientKeys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/ClientKey"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "list Client Keys",
+        "x-permission": "router:keys:read"
+      },
+      "post": {
+        "operationId": "createClientKey",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientKeyWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientKeyCreated"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "create Client Key",
+        "x-permission": "router:keys:write"
+      }
+    },
+    "/api/client-keys/{id}": {
+      "delete": {
+        "operationId": "deleteClientKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOk"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "delete Client Key",
+        "x-permission": "router:keys:write"
+      },
+      "put": {
+        "operationId": "updateClientKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientKeyUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientKey"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "update Client Key",
+        "x-permission": "router:keys:write"
+      }
+    },
+    "/api/client-keys/{id}/rotate": {
+      "post": {
+        "operationId": "rotateClientKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientKeyRotated"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "rotate Client Key",
+        "x-permission": "router:keys:write"
+      }
+    },
+    "/api/client-keys/{id}/usage": {
+      "get": {
+        "operationId": "readClientKeyUsage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientKeyUsage"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "404": {
+            "description": "Client key not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Client Key Usage",
+        "x-permission": "router:keys:read"
       }
     },
     "/api/client-keys/operations/{operationId}": {
@@ -2163,12 +6896,43 @@
     },
     "/api/docs/index": {
       "get": {
+        "operationId": "readApiDocsIndex",
         "responses": {
           "200": {
-            "description": "Documentation"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsIndex"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
           }
         },
         "security": [
@@ -2179,7 +6943,8 @@
             "adminSession": []
           }
         ],
-        "summary": "Authenticated API documentation"
+        "summary": "read Api Docs Index",
+        "x-permission": "router:admin:read"
       }
     },
     "/api/docs/openapi.json": {
@@ -2254,6 +7019,283 @@
           }
         },
         "summary": "Native Ollama completion route"
+      }
+    },
+    "/api/heuristics": {
+      "get": {
+        "operationId": "listHeuristics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/Heuristic"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "list Heuristics",
+        "x-permission": "router:routing:read"
+      },
+      "post": {
+        "operationId": "createHeuristic",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeuristicWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Heuristic"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "create Heuristic",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/heuristics/{id}": {
+      "delete": {
+        "operationId": "deleteHeuristic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOk"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "delete Heuristic",
+        "x-permission": "router:routing:write"
+      },
+      "put": {
+        "operationId": "updateHeuristic",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeuristicWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/Heuristic"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "update Heuristic",
+        "x-permission": "router:routing:write"
       }
     },
     "/api/hive/updates": {
@@ -2948,6 +7990,199 @@
         "x-permission": "router:providers:write"
       }
     },
+    "/api/providers/codex-oauth/check": {
+      "post": {
+        "operationId": "checkCodexOAuth",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodexOAuthCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CodexOAuthResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "check Codex O Auth",
+        "x-permission": "router:providers:write"
+      }
+    },
+    "/api/providers/codex-oauth/start": {
+      "post": {
+        "operationId": "startCodexOAuth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CodexOAuthStart"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "start Codex O Auth",
+        "x-permission": "router:providers:write"
+      }
+    },
+    "/api/providers/codex-oauth/status": {
+      "get": {
+        "operationId": "readCodexOAuthStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CodexOAuthStatus"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Codex O Auth Status",
+        "x-permission": "router:providers:read"
+      }
+    },
     "/api/ps": {
       "get": {
         "operationId": "get__api_ps",
@@ -2970,6 +8205,681 @@
         "summary": "Policy-gated Ollama model pull"
       }
     },
+    "/api/route-rules": {
+      "get": {
+        "operationId": "listRouteRules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/RouteRule"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "list Route Rules",
+        "x-permission": "router:routing:read"
+      },
+      "post": {
+        "operationId": "createRouteRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRuleWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RouteRule"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "create Route Rule",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/route-rules/{id}": {
+      "delete": {
+        "operationId": "deleteRouteRule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOk"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "delete Route Rule",
+        "x-permission": "router:routing:write"
+      },
+      "put": {
+        "operationId": "updateRouteRule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRuleWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RouteRule"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "update Route Rule",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/routing/objective": {
+      "get": {
+        "operationId": "readRoutingObjective",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "config": {
+                          "$ref": "#/components/schemas/RoutingObjective"
+                        }
+                      },
+                      "required": [
+                        "config"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Routing Objective",
+        "x-permission": "router:routing:read"
+      },
+      "put": {
+        "operationId": "updateRoutingObjective",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingObjective"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "config": {
+                          "$ref": "#/components/schemas/RoutingObjective"
+                        }
+                      },
+                      "required": [
+                        "config"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "update Routing Objective",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/routing/revisions": {
+      "get": {
+        "operationId": "listRoutingRevisions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingRevisions"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "list Routing Revisions",
+        "x-permission": "router:routing:read"
+      },
+      "post": {
+        "operationId": "applyRoutingRevision",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingApplied"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "apply Routing Revision",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/routing/revisions/{id}/rollback": {
+      "post": {
+        "operationId": "rollbackRoutingRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingRollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingSnapshot"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "rollback Routing Revision",
+        "x-permission": "router:routing:write"
+      }
+    },
+    "/api/runtime-settings": {
+      "get": {
+        "operationId": "readRuntimeSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/RuntimeSetting"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Runtime Settings",
+        "x-permission": "router:settings:read"
+      }
+    },
     "/api/show": {
       "post": {
         "operationId": "post__api_show",
@@ -2990,6 +8900,257 @@
           }
         },
         "summary": "Enumerate Ollama models"
+      }
+    },
+    "/api/telemetry": {
+      "get": {
+        "operationId": "readTelemetry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Telemetry"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Telemetry",
+        "x-permission": "router:admin:read"
+      }
+    },
+    "/api/testing/preview": {
+      "post": {
+        "operationId": "previewRoutingSelection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPreview"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "preview Routing Selection",
+        "x-permission": "router:testing:read"
+      }
+    },
+    "/api/testing/run": {
+      "post": {
+        "operationId": "runRoutingTest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RoutingTestResult"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "run Routing Test",
+        "x-permission": "router:testing:write"
+      }
+    },
+    "/api/traces": {
+      "get": {
+        "operationId": "readTraces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "$ref": "#/components/schemas/Trace"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Product permission required; client key operations also require recent interactive authentication"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Unique record or routing revision conflict"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "read Traces",
+        "x-permission": "router:admin:read"
       }
     },
     "/detokenize": {

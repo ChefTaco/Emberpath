@@ -1,3 +1,4 @@
+import {consoleAdminOpenApi} from './console-admin.js';
 import type { ProviderKind } from '../generated/prisma/client.js';
 import { packageInfo } from '../config/paths.js';
 import { z } from 'zod';
@@ -40,6 +41,7 @@ export const builtinApiDocs: BuiltinApiDocEntry[] = [
 
 export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string, unknown> {
   const modelAdmin = modelAdminOpenApi();
+  const consoleAdmin = consoleAdminOpenApi();
   const paths: Record<string, unknown> = Object.fromEntries(
     builtinApiDocs.map((entry) => [
       entry.route,
@@ -76,10 +78,10 @@ export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string,
     info: {
       title: 'Emberpath API',
       version: packageInfo().version,
-      description: 'Model routing and administration baseline. Complete request/response schema coverage remains pending.',
+      description: 'Model routing baseline and owned browser administration request/response contracts. Native provider proxy payloads remain provider-defined.',
     },
     servers: [{ url: adminBaseUrl }],
-    paths: {...paths, ...modelAdmin.paths},
-    components:{schemas: modelAdmin.schemas, securitySchemes:{resourceBearer:{type:'http',scheme:'bearer',bearerFormat:'JWT'},adminSession:{type:'apiKey',in:'cookie',name:'hive_router_admin'}}},
+    paths: {...paths, ...modelAdmin.paths, ...consoleAdmin.paths},
+    components:{schemas: {...modelAdmin.schemas, ...consoleAdmin.schemas}, securitySchemes:{resourceBearer:{type:'http',scheme:'bearer',bearerFormat:'JWT'},adminSession:{type:'apiKey',in:'cookie',name:'hive_router_admin'}}},
   };
 }

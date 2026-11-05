@@ -1,3 +1,4 @@
+import {routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema} from '../contracts/model-admin.js';
 import { maintenanceActive } from '../release/runtime.js';
 import { metadata } from '../release/runtime.js';
 import { packageRoot as releasePackageRoot } from '../config/paths.js';
@@ -7,7 +8,7 @@ import { HTTPException } from 'hono/http-exception';
 import {importConfiguration} from './config-transfer.js';
 import { actorJournal, actorJournalWrite, actorCredentials } from './actor-journal-runtime.js';
 import type { ActorLease, ActorStep } from './actor-journal.js';
-import { routingPatchSchema, routingSnapshot, applyRoutingRevision, routingHistory, savedRoutingRevision } from '../routing/revisions.js';
+import { routingSnapshot, applyRoutingRevision, routingHistory, savedRoutingRevision } from '../routing/revisions.js';
 import { MemoryWriteSchema } from '../contracts/memory-operations.js';
 import { AuthMode, ProviderKind, RouteRuleKind, Prisma, type AdminUser, type ClientApiKey } from '../generated/prisma/client.js';
 import { Hono, type Context, type Next } from 'hono';
@@ -93,13 +94,6 @@ import {
   type ProviderModelInput,
 } from './schemas.js';
 import { buildHiveActors, buildIncidentTimeline, type HiveActor } from './unified-views.js';
-
-const routingTestRequestSchema = z.object({
-  category: z.string().optional(),
-  modelAlias: z.string().min(1),
-  prompt: z.string().min(1),
-  maxResponseChars: z.number().int().min(120).max(8192).optional().default(1500),
-});
 
 const actorCreateSchema = z.object({
   agentId: z.string().min(2).max(32).regex(/^[a-z0-9_-]+$/u),
@@ -765,10 +759,6 @@ const loginSchema = z.object({
 });
 
 
-const codexOAuthCheckSchema = z.object({
-  loginId: z.string().min(1),
-});
-
 const pendingCodexOAuth = new Map<string, CodexDeviceCode>();
 const LOGIN_FAILURE_LIMIT = 5;
 const LOGIN_CLIENT_FAILURE_LIMIT = 20;
@@ -1163,7 +1153,7 @@ async function listTraces(): Promise<Response> {
       events: {
         orderBy: { occurredAt: 'asc' },
       },
-      provider: true,
+      provider: { select: { id: true, slug: true, name: true, kind: true } },
       clientApiKey: true,
     },
   });
@@ -1475,7 +1465,7 @@ async function listHiveIncidents(requestId: string): Promise<Response> {
     prisma.trace.findMany({
       orderBy: { createdAt: 'desc' },
       take: 200,
-      include: { events: { orderBy: { occurredAt: 'asc' } }, clientApiKey: true, provider: true },
+      include: { events: { orderBy: { occurredAt: 'asc' } }, clientApiKey: true, provider: { select: { id: true, slug: true, name: true, kind: true } } },
     }),
     prisma.auditEvent.findMany({
       orderBy: { createdAt: 'desc' },
@@ -1787,7 +1777,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/testing/preview', requireAdminAuth, async (context) => {
-    const body = z.object({ cases: z.array(routingTestRequestSchema).min(1).max(30), ...routingPatchSchema.shape }).parse(await context.req.json());
+    const body = routingPreviewRequestSchema.parse(await context.req.json());
     const providers = await listProviderRuntimes();
     const currentAliases = await prisma.modelAlias.findMany();
     const results = [];
@@ -1804,14 +1794,14 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.get('/api/routing/revisions', requireAdminAuth, async (context) => context.json({ ...await routingSnapshot(), history: await routingHistory() }));
   app.post('/api/routing/revisions', requireAdminAuth, async (context) => {
-    const body = z.object({ baseRevision: z.string(), patch: routingPatchSchema }).parse(await context.req.json());
+    const body = routingApplyRequestSchema.parse(await context.req.json());
     const previous = await applyRoutingRevision(body.baseRevision, body.patch, context.get('adminUser')!.id);
     const current = await routingSnapshot();
     await recordAuditEvent({ actorType: 'admin-user', adminUserId: context.get('adminUser')!.id, action: 'routing.revision.apply', entityType: 'routing', entityId: current.revision, metadata: previous });
     return context.json({ ...current, ...previous });
   });
   app.post('/api/routing/revisions/:id/rollback', requireAdminAuth, async (context) => {
-    const body = z.object({ baseRevision: z.string() }).parse(await context.req.json());
+    const body = routingRollbackRequestSchema.parse(await context.req.json());
     await applyRoutingRevision(body.baseRevision, await savedRoutingRevision(getParamId(context)), context.get('adminUser')!.id);
     const current = await routingSnapshot();
     await recordAuditEvent({ actorType: 'admin-user', adminUserId: context.get('adminUser')!.id, action: 'routing.revision.rollback', entityType: 'routing', entityId: current.revision });
@@ -2035,6 +2025,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/providers/codex-oauth/start', requireAdminAuth, async (context) => {
+    context.header('Cache-Control', 'no-store');
     const user = context.get('adminUser');
     const deviceCode = await requestCodexDeviceCode();
     const loginId = randomUUID();
@@ -2055,6 +2046,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/providers/codex-oauth/check', requireAdminAuth, async (context) => {
+    context.header('Cache-Control', 'no-store');
     const user = context.get('adminUser');
     const body = codexOAuthCheckSchema.parse(await context.req.json());
     const pending = pendingCodexOAuth.get(body.loginId);
@@ -2512,6 +2504,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/client-keys', requireAdminAuth, async (context) => {
+    context.header('Cache-Control', 'no-store');
     const user = context.get('adminUser');
     const body = clientKeySchema.parse(await context.req.json());
     const rawKey = generateOpenAiStyleApiKey();
@@ -2542,6 +2535,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/client-keys/:id/rotate', requireAdminAuth, async (context) => {
+    context.header('Cache-Control', 'no-store');
     const user = context.get('adminUser');
     const id = getParamId(context);
     const rotated = await rotateClientKey(id);
