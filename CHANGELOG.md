@@ -1,5 +1,7 @@
 # Changelog
 
+## 2.0.0 - 2026-11-05
+
 - Publish native browser contracts and OpenAPI for routing policies, selection
   previews and revisions, quotas and client keys, telemetry, audit, runtime
   settings and Codex device authorization. Reuse the exact native request schemas,
@@ -34,7 +36,7 @@
 - Support explicit initial model-console IDs for fresh suite initialization;
   preserve existing identities and reject conflicting bindings before creation.
 
-## Unreleased ecosystem extraction
+### Ecosystem extraction
 
 Preserve existing provider credentials, route edits, alias bindings, model settings
 and administrator display names during repeated startup; seed environment values
