@@ -237,10 +237,24 @@ export const configImportSchema = z.object({
 }).strict();
 
 
-export const configExportSchema = configImportSchema.extend({version: z.literal(1), exportedAt: z.iso.datetime({offset: true}),
-  data: configImportSchema.shape.data.extend({providers: z.array(importProviderSchema.omit({encryptedAuthSecret: true})),
-    aliases: z.array(importModelAliasSchema), routeRules: z.array(importRouteRuleSchema),
-    heuristicRules: z.array(importHeuristicRuleSchema), runtimeSettings: z.array(importRuntimeSettingSchema)})});
+// Recovery downloads describe native stored records, not valid future writes.
+// Do not parse/rewrite historical JSON text or impose import-only minimum lengths.
+const archiveMetadata = {id: z.string(), createdAt: z.string(), updatedAt: z.string()};
+export const configExportSchema = z.object({version: z.literal(1), exportedAt: z.string(), data: z.object({
+  providers: z.array(z.object({
+    ...archiveMetadata, slug: z.string(), name: z.string(), kind: providerSchema.shape.kind, baseUrl: z.string(),
+    authMode: providerSchema.shape.authMode.unwrap(), authHeaderName: z.string(),
+    defaultHeadersJson: z.string().nullable(), capabilityJson: z.string().nullable(), passthroughJson: z.string().nullable(),
+    lastHealthStatus: z.string().nullable(), lastHealthError: z.string().nullable(), lastHealthAt: z.string().nullable(),
+    tlsInsecure: z.boolean(), timeoutMs: z.number(), maxRetries: z.number(), concurrency: z.number(),
+    priority: z.number(), weight: z.number(), failoverGroup: z.string().nullable(), enabled: z.boolean(),
+    models: z.array(providerModelReadSchema),
+  }).strict()),
+  aliases: z.array(z.object({...archiveMetadata, alias: z.string(), providerId: z.string().nullable(), upstreamModel: z.string(), enabled: z.boolean(), description: z.string().nullable()}).strict()),
+  routeRules: z.array(z.object({...archiveMetadata, name: z.string(), kind: z.enum(['MODEL_ALIAS', 'PROVIDER_PREFERENCE', 'CAPABILITY', 'SAFETY', 'PASSTHROUGH', 'LOCAL_ONLY']), priority: z.number(), enabled: z.boolean(), matchJson: z.string(), actionJson: z.string()}).strict()),
+  heuristicRules: z.array(z.object({...archiveMetadata, name: z.string(), category: z.string(), pattern: z.string(), score: z.number(), enabled: z.boolean(), actionJson: z.string()}).strict()),
+  runtimeSettings: z.array(z.object({...archiveMetadata, key: z.string(), valueJson: z.string()}).strict()),
+}).strict()}).strict();
 export type ConfigImportRequest = z.input<typeof configImportSchema>;
 
 // Native admin requests share these exact schemas with browser clients.

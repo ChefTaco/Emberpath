@@ -1,3 +1,4 @@
+import {configExportSchema} from '../../src/contracts/model-admin.js';
 import {afterAll, expect, it, vi} from 'vitest';
 import {mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -100,4 +101,20 @@ it('round-trips exact version-1 exports into the same and fresh SQLite installat
   expect(partial.authMode).toBe('HEADER'); expect(partial.passthroughJson).toBe('["/fixture"]');
   const auditText = JSON.stringify(await target.prisma.auditEvent.findMany());
   expect(auditText).not.toContain(destinationCredential); expect(auditText).not.toMatch(/obviously-fake-(source|destination)-credential/);
+}, 30000);
+
+it('keeps recovery exports downloadable when historical records need explicit repair before import', async () => {
+  const source = await installation('historical-download');
+  await source.prisma.provider.create({data: {slug: 'p', name: 'P', kind: 'OPENAI_GENERIC', baseUrl: 'historical-address',
+    capabilityJson: '{invalid historical JSON', defaultHeadersJson: 'historical header text', passthroughJson: 'historical route text',
+    models: {create: {model: '', capabilityJson: 'historical model text'}}}});
+  await source.prisma.routeRule.create({data: {name: 'R', kind: 'SAFETY', matchJson: 'historical rule text', actionJson: '{'}});
+  await source.prisma.heuristicRule.create({data: {name: 'H', category: 'C', pattern: 'P', actionJson: 'historical heuristic text'}});
+  await source.prisma.runtimeSetting.create({data: {key: 'historical', valueJson: 'historical runtime text'}});
+  const response = await source.request('/api/config/export'); expect(response.status).toBe(200);
+  const raw = await response.json(); expect(configExportSchema.parse(raw)).toEqual(raw);
+  expect(raw.data.providers[0]).toMatchObject({slug: 'p', capabilityJson: '{invalid historical JSON'});
+  const before = await source.snapshot();
+  expect((await source.request('/api/config/import', raw)).status).toBe(400);
+  expect(await source.snapshot()).toEqual(before);
 }, 30000);
