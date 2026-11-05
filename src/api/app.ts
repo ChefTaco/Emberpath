@@ -6,6 +6,8 @@ import { observeStream } from "./observed-stream.js";
 import { TraceOutcome, type Provider as ProviderRecord } from '../generated/prisma/client.js';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { HTTPException } from 'hono/http-exception';
+import { decodeInferenceBody } from './request-body.js';
 import type { Context } from 'hono';
 import { ZodError } from 'zod';
 import type { AppVariables } from '../types/app.js';
@@ -250,7 +252,7 @@ async function buildRouteRequest(
   if (!['GET', 'HEAD'].includes(method)) {
     const arrayBuffer = await rawRequest.arrayBuffer();
     if (arrayBuffer.byteLength > 0) {
-      bodyBuffer = new Uint8Array(arrayBuffer);
+      bodyBuffer = await decodeInferenceBody(new Uint8Array(arrayBuffer), context.req.header('content-encoding'), loadEnv().MAX_REQUEST_BODY_BYTES);
     }
   }
 
@@ -849,6 +851,7 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
   app.get('/version', (context) => handleRouteExecution(context, 'vllm.native'));
 
   app.onError((err, context) => {
+    if (err instanceof HTTPException) return context.json({ error: err.message }, err.status);
     if (err instanceof ZodError) {
       return context.json({ error: 'Validation error', issues: err.issues }, 400);
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+- Decode bounded gzip, deflate and zstd inference requests before routing and
+  accounting; preserve alias rewriting and streaming for native Responses clients.
+  Reject unsupported, malformed and oversized expanded bodies before forwarding.
+
 - Add product-owned idempotent native credential operations with atomic encrypted receipts, exact owner/policy binding, bounded recovery, unchanged credential deadlines and explicit containment. Oathweave coordinates identities through these authorized APIs while native model-key ownership remains in Emberpath.
 
 
