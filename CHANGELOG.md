@@ -1,5 +1,21 @@
 # Changelog
 
+### Security
+
+- Remove npm, npx, corepack and yarn and the apt package tooling (apt,
+  libapt-pkg6.0) from the runtime image; the service never invokes a package
+  manager at runtime. This drops the bundled npm's brace-expansion 5.0.9
+  (CVE-2026-102276, CVE-2026-102278) and undici 6.28.0 (CVE-2026-19534,
+  CVE-2026-109383, CVE-2026-109869, CVE-2026-87018) and apt 2.6.1
+  (CVE-2026-109518). dpkg and its package database remain so scanners can still
+  inventory OS packages. The image has no HIGH or CRITICAL finding with an
+  available fix (Trivy 0.70.0).
+- HIGH and CRITICAL findings in Debian 12 base packages that have no fix yet:
+  zlib1g CVE-2023-45853 (critical) and CVE-2026-76844; util-linux and its
+  libraries CVE-2026-53613, CVE-2026-53615 and CVE-2026-78410; ncurses
+  CVE-2025-69720; libsystemd0 and libudev1 CVE-2026-16742; gzip CVE-2026-41992;
+  libacl1 CVE-2026-54369; perl-base CVE-2026-9538.
+
 ## 2.0.0 - 2026-11-05
 
 - Publish native browser contracts and OpenAPI for routing policies, selection
