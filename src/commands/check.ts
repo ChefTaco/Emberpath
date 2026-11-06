@@ -251,7 +251,7 @@ export function formatReport(report: CheckReport): string {
   const label: Record<CheckStatus, string> = { ok: 'ok  ', warn: 'warn', fail: 'FAIL' };
   const width = Math.max(...report.checks.map((check) => check.name.length));
   const lines = [
-    `Hive Router configuration check (${info.name} ${info.version})`,
+    `Emberpath configuration check (${info.name} ${info.version})`,
     `env file: ${envFile ?? 'none (process environment and ./.env)'}`,
     '',
     ...report.checks.map((check) => `  ${label[check.status]}  ${check.name.padEnd(width)}  ${check.message}`),

@@ -23,7 +23,7 @@ interface GeneratedKey {
 }
 
 function showUsage(): void {
-  console.log(`Hive Router API key CLI
+  console.log(`Emberpath API key CLI
 
 Usage:
   hive-router create-key --name <name> [--metadata '<json>'] [--token <token>] [--json]

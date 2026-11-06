@@ -5,7 +5,8 @@ import { packageInfo } from './config/paths.js';
 // be loaded before the config module (./config/env.js) is first evaluated, so
 // every command below is imported lazily.
 
-const USAGE = `Hive Router: OpenAI-compatible model gateway, admin API and the Hive console.
+const USAGE = `Emberpath: OpenAI-compatible model gateway with a separate administration API.
+The command is installed as both emberpath and hive-router.
 
 Usage:
   hive-router [start] [--env-file <path>]    Start the API and admin listeners (default)
@@ -28,10 +29,10 @@ Options:
 
 Minimal configuration:
   HIVE_ROUTER_SECRET       required, at least 32 characters (openssl rand -hex 32)
-  HIVE_ROUTER_ADMIN_USERS  accounts allowed to sign in to the console
+  HIVE_ROUTER_ADMIN_USERS  accounts allowed to sign in to the admin API
   TLS_CERT_PATH, TLS_KEY_PATH  required when NODE_ENV=production
 
-Defaults: API on 127.0.0.1:4020, console on 127.0.0.1:9443, data in
+Defaults: API on 127.0.0.1:4020, admin API on 127.0.0.1:9443, data in
 \${HIVE_HOME:-~/.hive}/router. Run "hive-router env-schema" for every setting.`;
 
 interface ParsedCli {
