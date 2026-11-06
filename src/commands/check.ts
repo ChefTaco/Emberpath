@@ -7,6 +7,7 @@ import { packageInfo } from '../config/paths.js';
 import { resolveSqlitePath } from '../storage/sqlite-path.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
 import { requestServiceHealth } from '../contracts/service-health.js';
+import { unverifiedJwtExpiry } from '../security/hivemem-credential.js';
 
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 
@@ -29,6 +30,8 @@ export interface CheckOptions {
   /** Overrides the HTTP probe, for tests. Resolves to a status line or throws. */
   probe?: (url: string, tls: Record<string, unknown>) => Promise<{ ok: boolean; statusCode: number }>;
   findExecutable?: (command: string) => string | null;
+  /** Overrides the clock, for tests. */
+  now?: () => number;
 }
 
 const CERT_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1000;
@@ -201,6 +204,26 @@ const defaultProbe: NonNullable<CheckOptions['probe']> = async (url, tls) => {
   return { ok: result.ok, statusCode: result.statusCode };
 };
 
+const TOKEN_EXPIRY_WARNING_MS = 7 * 24 * 3600_000;
+
+/** Which HiveMem credential the console Memory pages use, and whether it needs attention. */
+export function memoryCredentialCheck(env: Env, now: number): CheckResult {
+  const staticExpiry = env.HIVE_ROUTER_MEMORY_PROXY_TOKEN ? unverifiedJwtExpiry(env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) : null;
+  if (env.EMBERPATH_HIVEMEM_CLIENT_ID) {
+    return { name: 'memory-token', status: 'ok', message: `self-renewing Oathweave client ${env.EMBERPATH_HIVEMEM_CLIENT_ID}; HIVE_ROUTER_MEMORY_PROXY_TOKEN is ${env.HIVE_ROUTER_MEMORY_PROXY_TOKEN ? 'only a fallback' : 'not needed'}` };
+  }
+  if (!env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) {
+    return { name: 'memory-token', status: 'warn', message: 'No HiveMem credential is set, so the console Memory pages cannot call HiveMem. Set EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET to a self-renewing Oathweave client, or HIVE_ROUTER_MEMORY_PROXY_TOKEN.' };
+  }
+  if (staticExpiry !== null && staticExpiry <= now) {
+    return { name: 'memory-token', status: 'warn', message: `HIVE_ROUTER_MEMORY_PROXY_TOKEN expired at ${new Date(staticExpiry).toISOString()}. Configure the self-renewing EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET, or re-issue the token.` };
+  }
+  if (staticExpiry !== null && staticExpiry - now < TOKEN_EXPIRY_WARNING_MS) {
+    return { name: 'memory-token', status: 'warn', message: `HIVE_ROUTER_MEMORY_PROXY_TOKEN expires at ${new Date(staticExpiry).toISOString()}. Configure the self-renewing EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET so it never needs re-issuing.` };
+  }
+  return { name: 'memory-token', status: 'ok', message: `static HIVE_ROUTER_MEMORY_PROXY_TOKEN${staticExpiry !== null ? ` valid until ${new Date(staticExpiry).toISOString()}` : ''}` };
+}
+
 /** Validates configuration without starting listeners or writing data. */
 export async function runChecks(options: CheckOptions = {}): Promise<CheckReport> {
   const source = options.source ?? process.env;
@@ -231,13 +254,11 @@ export async function runChecks(options: CheckOptions = {}): Promise<CheckReport
     results.push({ name: 'iam', status: 'ok', message: 'not configured (optional)' });
   }
 
-  if (source['HIVEMEM_INTERNAL_URL'] || env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) {
+  if (source['HIVEMEM_INTERNAL_URL'] || env.HIVE_ROUTER_MEMORY_PROXY_TOKEN || env.EMBERPATH_HIVEMEM_CLIENT_ID) {
     const url = `${env.HIVEMEM_INTERNAL_URL.replace(/\/$/u, '')}/v1/health/ready`;
     if (options.offline) results.push({ name:'memory',status:'warn',message:'Not probed during offline configuration check; live upgrade health must verify Memory' });
     else await checkDependency('memory', url, false, () => hiveMemTlsOptions(new URL(url), env) as Record<string, unknown>, probe, results);
-    if (!env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) {
-      results.push({ name: 'memory-token', status: 'warn', message: 'HIVE_ROUTER_MEMORY_PROXY_TOKEN is not set, so the console Memory pages cannot call HiveMem. Set it to the HiveMem admin token.' });
-    }
+    results.push(memoryCredentialCheck(env, options.now?.() ?? Date.now()));
   } else {
     results.push({ name: 'memory', status: 'ok', message: 'not configured (optional)' });
   }

@@ -156,11 +156,16 @@ variable and how to fix it.
 **Connecting IAM and HiveMem.** Set `HIVE_ROUTER_AUTH_MODE=iam-oidc`,
 `HIVE_IAM_INTERNAL_URL` and `HIVE_ROUTER_IAM_CLIENT_SECRET` (equal to IAM's
 `SEED_HIVE_ROUTER_CLIENT_SECRET`) to sign in through IAM and enable the `/api/iam/*`
-proxy. Set `HIVEMEM_INTERNAL_URL` and `HIVE_ROUTER_MEMORY_PROXY_TOKEN` for the `/api/memory/*`
-proxy. The token is a HiveMem admin token; mint it with
+proxy. For the `/api/memory/*` proxy set `HIVEMEM_INTERNAL_URL` and a HiveMem credential.
+The self-renewing one is an Oathweave machine client: set `EMBERPATH_HIVEMEM_CLIENT_ID` and
+`EMBERPATH_HIVEMEM_CLIENT_SECRET`, give that client an Oathweave policy with audience `hivemem`
+(`IAM_MACHINE_CLIENT_POLICIES` and `IAM_MACHINE_CLIENT_SECRETS`), and link it in HiveMem's
+`HIVEMEM_OATHWEAVE_SERVICES_JSON`. Emberpath then fetches a short-lived token when it needs one
+and fetches the next before it expires, so nothing has to be re-issued or restarted. Without it,
+set `HIVE_ROUTER_MEMORY_PROXY_TOKEN` to a HiveMem admin token minted with
 `hivemem-server issue-token --env-file hivemem.env --subject hive-router --role admin`
 (valid for at most 30 days, so re-issue it and restart Emberpath before it
-expires). See
+expires); with it, that token is only a fallback until its own expiry. See
 [Configuration](#configuration) for everything else.
 
 ## Features
@@ -206,7 +211,7 @@ operators ─► Admin plane (ADMIN_HOST:ADMIN_PORT)
                ├─ GET /             fallback page only (the console is HiveXUI)
                ├─ /api/*            admin API (session cookie + permission checks)
                ├─ /api/iam/*        proxied to Hive IAM with a server-side client-credentials token
-               ├─ /api/memory/*     proxied to HiveMem with HIVE_ROUTER_MEMORY_PROXY_TOKEN
+               ├─ /api/memory/*     proxied to HiveMem with a self-renewing Oathweave service token
                └─ /v1/*, /dashboard proxied to HiveMem (compatibility paths)
 ```
 
@@ -340,7 +345,10 @@ directory. Variables with no default are optional unless marked **required**.
 | `HIVEMEM_INTERNAL_URL` | `http://127.0.0.1:18790` | HiveMem base URL for the `/api/memory/*`, `/v1/*` and `/dashboard` proxies. |
 | `HIVEMEM_PUBLIC_URL` | `PUBLIC_ADMIN_URL` | HiveMem URL shown to users and agents. |
 | `HIVEMEM_CA_CERT_PATH` | | Certificate trusted for HiveMem HTTPS. |
-| `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject hive-router --role admin`. It is never sent to the browser. |
+| `EMBERPATH_HIVEMEM_CLIENT_ID` / `EMBERPATH_HIVEMEM_CLIENT_SECRET` | | Oathweave machine client for HiveMem. Emberpath fetches short-lived client credentials tokens (audience `hivemem`) and renews them in-process before they expire. Set both or neither. |
+| `EMBERPATH_HIVEMEM_SCOPE` | `hivemem:admin:all` | Permissions requested for HiveMem service tokens. |
+| `EMBERPATH_HIVEMEM_TOKEN_URL` | `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token` | Oathweave token endpoint for the service credential; HTTPS in production. |
+| `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject hive-router --role admin`. It is never sent to the browser. With the Oathweave client set, it is only a fallback and is never sent after its own expiry. |
 | `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry reported by the admin API. |
 | `HIVE_STATUS_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 

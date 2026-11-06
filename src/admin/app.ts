@@ -29,7 +29,8 @@ import {
 import type { AppVariables } from '../types/app.js';
 import { requestIdMiddleware } from '../utils/request.js';
 import { authenticateAdmin, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession } from '../security/admin-auth.js';
-import { requestIamClientCredentialsToken } from '../security/iam-oidc.js';
+import { requestHiveMemServiceToken, requestIamClientCredentialsToken } from '../security/iam-oidc.js';
+import { createHiveMemCredential, type HiveMemCredential } from '../security/hivemem-credential.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
 import { decryptText, digestText, encryptText, generateOpenAiStyleApiKey, hashValue, maskSecret, safeEqualText, verifyHash } from '../security/crypto.js';
 import { applyAdminSecurityHeaders } from '../security/headers.js';
@@ -47,7 +48,7 @@ import {
 } from '../providers/codex-oauth.js';
 import { recordAuditEvent } from '../storage/audit.js';
 import { buildRouterOpenApiDocument, builtinApiDocs } from '../openapi/spec.js';
-import { loadEnv } from '../config/env.js';
+import { loadEnv, type Env } from '../config/env.js';
 import { uiDistDir } from '../config/paths.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { getSecurityExporterJwksStatus } from '../security/security-exporter-jwks-status.js';
@@ -419,41 +420,68 @@ async function requestIamJson(path: string, requestId: string): Promise<unknown>
   return response.status >= 200 && response.status < 300 ? response.body : null;
 }
 
-async function requestMemoryJson(path: string, requestId: string, body?: unknown, method?: string): Promise<unknown> {
+const MEMORY_CREDENTIAL_MISSING = 'No HiveMem credential is configured on Emberpath: set EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET (self-renewing), or HIVE_ROUTER_MEMORY_PROXY_TOKEN.';
+const MEMORY_CREDENTIAL_UNAVAILABLE = 'The HiveMem service credential is unavailable: Oathweave did not issue a token, and no valid fallback token is configured.';
+let memoryCredentialState: { env: Env; credential: HiveMemCredential } | null = null;
+
+/** One credential per loaded configuration; it caches and renews its own service token. */
+export function memoryCredential(): HiveMemCredential {
   const env = loadEnv();
-  if (!env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) return null;
+  if (memoryCredentialState?.env !== env) {
+    memoryCredentialState = {
+      env,
+      credential: createHiveMemCredential({
+        serviceConfigured: Boolean(env.EMBERPATH_HIVEMEM_CLIENT_ID && env.EMBERPATH_HIVEMEM_CLIENT_SECRET),
+        fetchServiceToken: () => requestHiveMemServiceToken(env),
+        staticToken: env.HIVE_ROUTER_MEMORY_PROXY_TOKEN,
+        onEvent: (event) => event.type === 'refreshed'
+          ? log('debug', 'HiveMem service credential refreshed', { expiresAt: new Date(event.expiresAt).toISOString() })
+          : log('warn', 'HiveMem service credential refresh failed', { reason: event.reason }),
+      }),
+    };
+  }
+  return memoryCredentialState.credential;
+}
+
+/** Calls HiveMem with the current credential. A refused service token is renewed and the call retried once. */
+async function memoryServiceRequest(path: string, requestId: string, body?: unknown, method?: string): Promise<ServiceJsonResult | 'unconfigured' | 'unavailable'> {
+  const env = loadEnv();
+  const credential = memoryCredential();
+  if (!credential.configured()) return 'unconfigured';
   const targetUrl = new URL(path.replace(/^\/+/, ''), trimSlash(env.HIVEMEM_INTERNAL_URL) + '/');
-  const response = await requestServiceJson(targetUrl, {
-    method: method ?? (typeof body === 'undefined' ? 'GET' : 'POST'),
-    body,
-    headers: {
-      authorization: `Bearer ${env.HIVE_ROUTER_MEMORY_PROXY_TOKEN}`,
-      'x-request-id': requestId,
-      'x-hive-request-id': requestId,
-    },
-    allowInsecureTls: env.HIVE_STATUS_ALLOW_INSECURE_TLS,
-    tls: hiveMemTlsOptions(targetUrl, env),
-  });
+  for (let attempt = 0; ; attempt += 1) {
+    const authorization = await credential.authorization();
+    if (!authorization) return 'unavailable';
+    const response = await requestServiceJson(targetUrl, {
+      method: method ?? (typeof body === 'undefined' ? 'GET' : 'POST'),
+      body,
+      headers: {
+        authorization: `Bearer ${authorization.token}`,
+        'x-request-id': requestId,
+        'x-hive-request-id': requestId,
+      },
+      allowInsecureTls: env.HIVE_STATUS_ALLOW_INSECURE_TLS,
+      tls: hiveMemTlsOptions(targetUrl, env),
+    });
+    // HiveMem refuses before acting, so one retry with a renewed token is safe.
+    if (response.status === 401 && authorization.source === 'oathweave') {
+      credential.reject(authorization.token);
+      if (attempt === 0) continue;
+    }
+    return response;
+  }
+}
+
+async function requestMemoryJson(path: string, requestId: string, body?: unknown, method?: string): Promise<unknown> {
+  const response = await memoryServiceRequest(path, requestId, body, method);
+  if (typeof response === 'string') return null;
   return response.status >= 200 && response.status < 300 ? response.body : null;
 }
 
 async function memoryAdminJson(context: Context<{ Variables: AppVariables }>, path: string, body?: unknown, method?: string): Promise<Response> {
-  const env = loadEnv();
-  if (!env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) {
-    return context.json({ error: 'HIVE_ROUTER_MEMORY_PROXY_TOKEN is not configured on the Router service.' }, 503);
-  }
-  const targetUrl = new URL(path.replace(/^\/+/, ''), trimSlash(env.HIVEMEM_INTERNAL_URL) + '/');
-  const response = await requestServiceJson(targetUrl, {
-    method: method ?? (typeof body === 'undefined' ? 'GET' : 'POST'),
-    body,
-    headers: {
-      authorization: `Bearer ${env.HIVE_ROUTER_MEMORY_PROXY_TOKEN}`,
-      'x-request-id': context.get('requestId'),
-      'x-hive-request-id': context.get('requestId'),
-    },
-    allowInsecureTls: env.HIVE_STATUS_ALLOW_INSECURE_TLS,
-    tls: hiveMemTlsOptions(targetUrl, env),
-  });
+  const response = await memoryServiceRequest(path, context.get('requestId'), body, method);
+  if (response === 'unconfigured') return context.json({ error: MEMORY_CREDENTIAL_MISSING }, 503);
+  if (response === 'unavailable') return context.json({ error: MEMORY_CREDENTIAL_UNAVAILABLE }, 503);
   return context.json(response.body ?? { ok: response.status >= 200 && response.status < 300 }, response.status as never);
 }
 
@@ -1167,11 +1195,10 @@ async function listTraces(): Promise<Response> {
 }
 
 async function buildMemoryConsoleData(requestId: string): Promise<Response> {
-  const env = loadEnv();
-  if (!env.HIVE_ROUTER_MEMORY_PROXY_TOKEN) {
+  if (!memoryCredential().configured()) {
     return Response.json({
       configured: false,
-      error: 'HIVE_ROUTER_MEMORY_PROXY_TOKEN is not configured on the Router service.',
+      error: MEMORY_CREDENTIAL_MISSING,
       stats: null,
       queue: null,
       memories: [],

@@ -71,6 +71,33 @@ describe('hive-router check', () => {
     expect(report.ok).toBe(false);
   });
 
+  it('reports which HiveMem credential is used and warns before a static token expires', async () => {
+    const now = Date.parse('2026-11-20T00:00:00Z');
+    const jwt = (exp: number) => ['{"alg":"HS256"}', JSON.stringify({ sub: 'fake-router', exp: Math.floor(exp / 1000) })].map((part) => Buffer.from(part).toString('base64url')).join('.') + '.fake-signature';
+    const credential = async (extra: Record<string, string>) => (await runChecks({
+      source: { HIVE_ROUTER_SECRET: secret, HIVE_HOME: home, HIVEMEM_INTERNAL_URL: 'http://127.0.0.1:18790', ...extra },
+      findExecutable: () => '/usr/bin/pamtester',
+      probe: async () => ({ ok: true, statusCode: 200 }),
+      now: () => now,
+    })).checks.find((check) => check.name === 'memory-token');
+    expect(await credential({})).toMatchObject({ status: 'warn', message: expect.stringMatching(/EMBERPATH_HIVEMEM_CLIENT_ID/u) });
+    expect(await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now + 30 * 86_400_000) })).toMatchObject({ status: 'ok' });
+    expect(await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now + 3 * 86_400_000) })).toMatchObject({ status: 'warn', message: expect.stringMatching(/expires at 2026-11-23/u) });
+    expect(await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now - 1000) })).toMatchObject({ status: 'warn', message: expect.stringMatching(/expired at/u) });
+    const renewing = await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now - 1000), EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem', EMBERPATH_HIVEMEM_CLIENT_SECRET: 'fake-hivemem-client-secret-0123456789abcdef' });
+    expect(renewing).toMatchObject({ status: 'ok', message: expect.stringMatching(/self-renewing/u) });
+    expect(JSON.stringify(renewing)).not.toContain('fake-hivemem-client-secret');
+  });
+
+  it('requires the HiveMem client ID and secret together, and HTTPS for the token endpoint in production', async () => {
+    const report = await runChecks({ source: { HIVE_ROUTER_SECRET: secret, HIVE_HOME: home, EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem' } });
+    expect(report.ok).toBe(false);
+    expect(report.checks.map((check) => check.message).join('\n')).toMatch(/EMBERPATH_HIVEMEM_CLIENT_SECRET is not set/u);
+    const production = await runChecks({ source: { HIVE_ROUTER_SECRET: secret, HIVE_HOME: home, NODE_ENV: 'production', EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem', EMBERPATH_HIVEMEM_CLIENT_SECRET: 'fake-hivemem-client-secret-0123456789abcdef', HIVE_IAM_INTERNAL_URL: 'http://oathweave.example.com:4200' } });
+    expect(production.checks.map((check) => check.message).join('\n')).toMatch(/EMBERPATH_HIVEMEM_TOKEN_URL must use HTTPS/u);
+    expect(JSON.stringify(production)).not.toContain('fake-hivemem-client-secret');
+  });
+
   it('reports configuration errors as failures', async () => {
     const report = await runChecks({ source: { HIVE_HOME: home } });
     expect(report.ok).toBe(false);

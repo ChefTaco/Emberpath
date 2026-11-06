@@ -89,7 +89,11 @@ export const routerEnvCatalog: EnvVarSpec[] = [
   { name: 'HIVEMEM_INTERNAL_URL', required: false, secret: false, default: 'http://127.0.0.1:18790', description: 'HiveMem base URL as the Router reaches it (console Memory pages and the /v1/* compatibility proxy).' },
   { name: 'HIVEMEM_PUBLIC_URL', required: false, secret: false, default: '$PUBLIC_ADMIN_URL', description: 'HiveMem URL shown to users and agents.' },
   { name: 'HIVEMEM_CA_CERT_PATH', required: false, secret: false, description: 'CA certificate trusted for HiveMem HTTPS.' },
-  { name: 'HIVE_ROUTER_MEMORY_PROXY_TOKEN', required: false, secret: true, description: 'Server-side HiveMem admin token for the console Memory pages, minted with `hivemem-server issue-token --subject hive-router --role admin` (signed with HiveMem\'s HIVEMEM_JWT_SECRET, valid for at most 30 days). Never sent to browsers.' },
+  { name: 'HIVE_ROUTER_MEMORY_PROXY_TOKEN', required: false, secret: true, description: 'Server-side HiveMem admin token for the console Memory pages, minted with `hivemem-server issue-token --subject hive-router --role admin` (signed with HiveMem\'s HIVEMEM_JWT_SECRET, valid for at most 30 days). Never sent to browsers. A fallback when EMBERPATH_HIVEMEM_CLIENT_ID is set.' },
+  { name: 'EMBERPATH_HIVEMEM_CLIENT_ID', required: false, secret: false, description: 'Oathweave machine client for HiveMem. With EMBERPATH_HIVEMEM_CLIENT_SECRET, Emberpath fetches short-lived client_credentials tokens (audience hivemem) and renews them before they expire, so no HiveMem token needs re-issuing. HiveMem must link the client in HIVEMEM_OATHWEAVE_SERVICES_JSON.' },
+  { name: 'EMBERPATH_HIVEMEM_CLIENT_SECRET', required: false, secret: true, description: 'Secret of EMBERPATH_HIVEMEM_CLIENT_ID (at least 32 characters). Never sent to browsers or HiveMem.' },
+  { name: 'EMBERPATH_HIVEMEM_SCOPE', required: false, secret: false, default: 'hivemem:admin:all', description: 'Permissions requested for HiveMem service tokens.' },
+  { name: 'EMBERPATH_HIVEMEM_TOKEN_URL', required: false, secret: false, default: '$HIVE_IAM_INTERNAL_URL/api/v1/oauth/token', description: 'Oathweave token endpoint for the HiveMem service credential (HTTPS in production).' },
 ];
 
 export function buildEnvSchemaDocument(): EnvSchemaDocument {
@@ -129,7 +133,7 @@ export function buildEnvSchemaDocument(): EnvSchemaDocument {
         package: '@hivemagnus/hivemem-server',
         optional: true,
         healthPath: '/v1/health/ready',
-        env: ['HIVEMEM_INTERNAL_URL', 'HIVEMEM_PUBLIC_URL', 'HIVEMEM_CA_CERT_PATH', 'HIVE_ROUTER_MEMORY_PROXY_TOKEN'],
+        env: ['HIVEMEM_INTERNAL_URL', 'HIVEMEM_PUBLIC_URL', 'HIVEMEM_CA_CERT_PATH', 'HIVE_ROUTER_MEMORY_PROXY_TOKEN', 'EMBERPATH_HIVEMEM_CLIENT_ID', 'EMBERPATH_HIVEMEM_CLIENT_SECRET', 'EMBERPATH_HIVEMEM_SCOPE', 'EMBERPATH_HIVEMEM_TOKEN_URL'],
         sharedSecrets: [],
         issuedTokens: [
           {
@@ -138,7 +142,7 @@ export function buildEnvSchemaDocument(): EnvSchemaDocument {
             args: ['--subject', 'hive-router', '--role', 'admin'],
             signedWith: 'HIVEMEM_JWT_SECRET',
             maxTtlSeconds: 30 * 24 * 60 * 60,
-            description: 'HiveMem admin token for the Memory pages and the memory proxy. Re-issue it before it expires and restart the Router.',
+            description: 'HiveMem admin token for the Memory pages and the memory proxy. Re-issue it before it expires and restart the Router, or configure the self-renewing EMBERPATH_HIVEMEM_CLIENT_ID instead.',
           },
         ],
         description: 'Memory service behind the console Memory pages.',

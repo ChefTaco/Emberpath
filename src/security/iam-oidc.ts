@@ -210,3 +210,28 @@ export async function requestIamClientCredentialsToken(env: Env = loadEnv()): Pr
     ...(tokenBody.scope ? { scope: tokenBody.scope } : {}),
   };
 }
+
+/** A short-lived Oathweave service token for HiveMem (client_credentials, audience hivemem). */
+export async function requestHiveMemServiceToken(env: Env = loadEnv()): Promise<IamClientCredentialsToken | null> {
+  if (!env.EMBERPATH_HIVEMEM_CLIENT_ID || !env.EMBERPATH_HIVEMEM_CLIENT_SECRET) return null;
+  const form = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: env.EMBERPATH_HIVEMEM_CLIENT_ID,
+    client_secret: env.EMBERPATH_HIVEMEM_CLIENT_SECRET,
+    scope: env.EMBERPATH_HIVEMEM_SCOPE,
+  });
+  const token = await requestUrl(new URL(env.EMBERPATH_HIVEMEM_TOKEN_URL), {
+    method: 'POST',
+    env,
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+  const tokenBody = parseJson(oauthTokenSchema, token);
+  if (!tokenBody?.access_token) return null;
+  return {
+    accessToken: tokenBody.access_token,
+    expiresIn: tokenBody.expires_in ?? 300,
+    tokenType: tokenBody.token_type ?? 'Bearer',
+    ...(tokenBody.scope ? { scope: tokenBody.scope } : {}),
+  };
+}

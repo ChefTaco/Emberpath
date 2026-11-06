@@ -86,6 +86,18 @@ export const envSchema = z.object({
   HIVEMEM_PUBLIC_URL: optionalUrlSchema,
   HIVEMEM_CA_CERT_PATH: z.string().optional(),
   HIVE_ROUTER_MEMORY_PROXY_TOKEN: optionalProxyTokenSchema,
+  // Self-renewing HiveMem credential: an Oathweave machine client whose short-lived
+  // client_credentials tokens (audience hivemem) are fetched and refreshed in-process.
+  EMBERPATH_HIVEMEM_CLIENT_ID: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/u, { error: 'must be an Oathweave client ID' }).optional(),
+  ),
+  EMBERPATH_HIVEMEM_CLIENT_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).max(512).optional(),
+  ),
+  EMBERPATH_HIVEMEM_SCOPE: z.string().trim().min(1).default('hivemem:admin:all'),
+  EMBERPATH_HIVEMEM_TOKEN_URL: optionalUrlSchema,
   HIVE_IAM_INTERNAL_URL: z.url().default('http://127.0.0.1:4200'),
   HIVE_IAM_PUBLIC_URL: optionalUrlSchema,
   HIVE_STATUS_ALLOW_INSECURE_TLS: booleanStringSchema.prefault('false'),
@@ -160,6 +172,7 @@ export const envSchema = z.object({
     TLS_CERT_PATH: env.TLS_CERT_PATH ? resolve(process.cwd(), env.TLS_CERT_PATH) : undefined,
     TLS_KEY_PATH: env.TLS_KEY_PATH ? resolve(process.cwd(), env.TLS_KEY_PATH) : undefined,
     HIVE_ROUTER_IAM_REDIRECT_URI: env.HIVE_ROUTER_IAM_REDIRECT_URI ?? `${publicAdminUrl.replace(/\/$/, '')}/api/auth/oidc/callback`,
+    EMBERPATH_HIVEMEM_TOKEN_URL: env.EMBERPATH_HIVEMEM_TOKEN_URL ?? `${env.HIVE_IAM_INTERNAL_URL.replace(/\/$/, '')}/api/v1/oauth/token`,
     HIVE_ROUTER_IAM_CA_CERT_PATH: env.HIVE_ROUTER_IAM_CA_CERT_PATH
       ? resolve(process.cwd(), env.HIVE_ROUTER_IAM_CA_CERT_PATH)
       : undefined,
@@ -264,6 +277,13 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
   if ((env.NODE_ENV === 'production' || env.REQUIRE_TLS) && (!env.TLS_CERT_PATH || !env.TLS_KEY_PATH)) {
     const reason = env.NODE_ENV === 'production' ? 'NODE_ENV=production' : 'REQUIRE_TLS=true';
     add('TLS_CERT_PATH', `TLS is required because ${reason}, but TLS_CERT_PATH and TLS_KEY_PATH are not set. Point both at a PEM certificate and private key (self-signed for testing: ${SELF_SIGNED_HINT}), or use NODE_ENV=development with REQUIRE_TLS=false for plain HTTP on a trusted network.`);
+  }
+  if (Boolean(env.EMBERPATH_HIVEMEM_CLIENT_ID) !== Boolean(env.EMBERPATH_HIVEMEM_CLIENT_SECRET)) {
+    const missing = env.EMBERPATH_HIVEMEM_CLIENT_ID ? 'EMBERPATH_HIVEMEM_CLIENT_SECRET' : 'EMBERPATH_HIVEMEM_CLIENT_ID';
+    add(missing, `${missing} is not set. Set EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET together to the Oathweave machine client Emberpath uses for HiveMem, or neither.`);
+  }
+  if (env.EMBERPATH_HIVEMEM_CLIENT_ID && env.NODE_ENV === 'production' && new URL(env.EMBERPATH_HIVEMEM_TOKEN_URL).protocol !== 'https:') {
+    add('EMBERPATH_HIVEMEM_TOKEN_URL', 'EMBERPATH_HIVEMEM_TOKEN_URL must use HTTPS in production, because Emberpath sends its client secret there. Point it, or HIVE_IAM_INTERNAL_URL, at the Oathweave HTTPS endpoint.');
   }
   if (env.HIVE_ROUTER_AUTH_MODE === 'iam-oidc' && !env.HIVE_ROUTER_IAM_CLIENT_SECRET) {
     add('HIVE_ROUTER_IAM_CLIENT_SECRET', 'HIVE_ROUTER_IAM_CLIENT_SECRET is required when HIVE_ROUTER_AUTH_MODE=iam-oidc. Set it to the hive-router client secret registered in Hive IAM (at least 24 characters), or use HIVE_ROUTER_AUTH_MODE=os.');

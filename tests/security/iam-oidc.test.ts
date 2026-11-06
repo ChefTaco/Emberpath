@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Env } from '../../src/config/env.js';
-import { authenticateIamOidcUser, requestIamClientCredentialsToken } from '../../src/security/iam-oidc.js';
+import { authenticateIamOidcUser, requestHiveMemServiceToken, requestIamClientCredentialsToken } from '../../src/security/iam-oidc.js';
 
 let server: ReturnType<typeof createServer> | null = null;
 let baseUrl = '';
@@ -54,6 +54,8 @@ function testEnv(): Env {
     HIVE_ROUTER_IAM_ISSUER: 'hive-iam',
     HIVE_ROUTER_IAM_AUDIENCE: 'hive-router',
     HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID: 'security-exporter',
+    EMBERPATH_HIVEMEM_SCOPE: 'hivemem:admin:all',
+    EMBERPATH_HIVEMEM_TOKEN_URL: `${baseUrl}/api/v1/oauth/token`,
     DATABASE_URL: 'file:./data/test-router.db',
     DATA_DIR: './data/test',
     TRACE_DIR: './data/test/traces',
@@ -113,6 +115,12 @@ describe('security/iam-oidc', () => {
 
       if (request.method === 'POST' && url.pathname === '/api/v1/oauth/token') {
         const form = new URLSearchParams(await readBody(request));
+        if (form.get('grant_type') === 'client_credentials' && form.get('client_id') === 'fake-emberpath-hivemem') {
+          expect(form.get('client_secret')).toBe('fake-hivemem-client-secret-0123456789abcdef');
+          expect(form.get('scope')).toBe('hivemem:admin:all');
+          json(response, 200, { access_token: 'hivemem-service-access-token', token_type: 'Bearer', expires_in: 300, scope: form.get('scope') });
+          return;
+        }
         if (form.get('grant_type') === 'client_credentials') {
           expect(form.get('client_id')).toBe('hive-router');
           expect(form.get('client_secret')).toBe('router-client-secret-1234567890');
@@ -172,6 +180,20 @@ describe('security/iam-oidc', () => {
       expiresIn: 600,
       tokenType: 'Bearer',
       scope: 'iam:users:read iam:roles:read',
+    });
+  });
+
+  it('requests a HiveMem service token only when its Oathweave client is configured', async () => {
+    await expect(requestHiveMemServiceToken(testEnv())).resolves.toBeNull();
+    await expect(requestHiveMemServiceToken({
+      ...testEnv(),
+      EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem',
+      EMBERPATH_HIVEMEM_CLIENT_SECRET: 'fake-hivemem-client-secret-0123456789abcdef',
+    })).resolves.toEqual({
+      accessToken: 'hivemem-service-access-token',
+      expiresIn: 300,
+      tokenType: 'Bearer',
+      scope: 'hivemem:admin:all',
     });
   });
 });
