@@ -16,17 +16,75 @@ Oathweave (see [direct browser authorization](docs/OATHWEAVE.md)). Running on it
 Emberpath is managed through the admin API ([OpenAPI document](docs/openapi.json)) and the
 `hive-router` command.
 
-**Package names.** The source here is `@hivemagnus/emberpath`, which is not on npm yet. The
-npm commands below use `@hivemagnus/hive-router`, the last published name. That package predates
-this repository and still bundles the old console, so it opens a console on the admin listener
-where this source does not. Its command, `hive-router`, is also available from this source
-alongside `emberpath`.
+## Install
 
-## Quick start (npm)
+Emberpath 2.x ships only as a container image, `ghcr.io/cheftaco/emberpath`, for
+`linux/amd64` and `linux/arm64`. Each release is tagged with its exact version (for example
+`2.0.1`; there is no `latest` tag), and its
+[GitHub release](https://github.com/ChefTaco/Emberpath/releases) records the image digest.
 
-The easiest way to run Emberpath, IAM and HiveMem together is the
-[`@hivemagnus/hive`](https://www.npmjs.com/package/@hivemagnus/hive) launcher,
-which writes the env files and secrets for you. To run Emberpath on its own:
+**With the Hive suite.** Emberpath is normally installed by `hive.sh`, the
+[Hive suite controller](https://github.com/ChefTaco/hive#install-the-suite), in both the
+`core` and `full` profiles. The controller pins the image by digest from a signed release
+manifest and writes its configuration, secrets and Oathweave sign-in. Hive 2.0.1 pins
+Emberpath 2.0.1.
+
+**Legacy npm packages.** `@hivemagnus/emberpath`, this source's package name, is not
+published on npm. The npm package `@hivemagnus/hive-router` and the image
+`ghcr.io/cheftaco/hive-router` are the legacy Hive Router 1.x line, which predates this
+repository: `npm install` and `npx` resolve `@hivemagnus/hive-router` to 1.2.2, not to
+Emberpath 2.x, and it still bundles the old console on the admin listener. The
+[Hive README](https://github.com/ChefTaco/hive#legacy-npm-packages-1x) describes that line.
+
+### Run the image on its own
+
+The image runs both listeners with TLS (`NODE_ENV=production`) and keeps its database and
+traces in the `/data` volume (`/data/router`). It does not include PAM (`pamtester`), so
+administrators sign in through Oathweave (`HIVE_ROUTER_AUTH_MODE=iam-oidc`). This example
+joins the network of the
+[Oathweave container example](https://github.com/ChefTaco/Oathweave/blob/main/apps/iam-core/README.md#run-the-container-image)
+and uses the `hive-router` client secret Oathweave generated on its first start. Put a
+certificate and key for the listeners in `tls/` as `server.crt` and `server.key`, readable by
+the container's `node` user (uid 1000).
+
+```bash
+umask 077
+cat > emberpath.env <<EOF
+HIVE_AUTO_MIGRATE=true
+HIVE_ROUTER_SECRET=$(openssl rand -hex 32)
+HIVE_ROUTER_ADMIN_USERS=admin
+HIVE_ROUTER_AUTH_MODE=iam-oidc
+HIVE_IAM_INTERNAL_URL=http://oathweave:4200
+HIVE_ROUTER_IAM_CLIENT_SECRET=$(docker exec oathweave sed -n 's/^SEED_HIVE_ROUTER_CLIENT_SECRET=//p' /data/iam/initial-credentials.env)
+API_HOST=0.0.0.0
+ADMIN_HOST=0.0.0.0
+TLS_CERT_PATH=/config/tls/server.crt
+TLS_KEY_PATH=/config/tls/server.key
+NODE_EXTRA_CA_CERTS=/config/tls/server.crt
+EOF
+
+docker run --rm --network oathweave -v emberpath-data:/data -v "$PWD/tls:/config/tls:ro" \
+  --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.0.1 check
+docker run -d --name emberpath --network oathweave \
+  -p 127.0.0.1:4020:4020 -p 127.0.0.1:9443:9443 -v emberpath-data:/data \
+  -v "$PWD/tls:/config/tls:ro" --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.0.1
+
+# Once it reports healthy
+curl --cacert tls/server.crt https://localhost:4020/health
+```
+
+`NODE_EXTRA_CA_CERTS` lets the image's health check, which verifies certificates, trust a
+self-signed certificate; omit it for a certificate from a CA the image already trusts. The
+image entry point is the CLI, so its commands (`check`, `migrate`, `create-key`,
+`env-schema`) follow the image name. See [Configuration](#configuration) for public URLs,
+HiveMem and everything else, and [Docker](#docker) for building the image yourself.
+
+## Configure and run from source
+
+These steps run Emberpath from a [source checkout](#run-from-a-source-checkout) with OS
+(PAM) sign-in. Build it first with `npm install` and `npm run build`. The commands below
+are written as `hive-router`, the command name the package keeps alongside `emberpath`; a
+source build runs them as `node dist/src/index.js`.
 
 **Requirements**
 
@@ -34,7 +92,7 @@ which writes the env files and secrets for you. To run Emberpath on its own:
   a prebuilt binary on common platforms, or compiles with a C++ toolchain.
 - For admin sign-in, either Linux with `pamtester` installed
   (`HIVE_ROUTER_AUTH_MODE=os`, the default: operators use their OS password),
-  or a running [Hive IAM](https://github.com/ChefTaco/hive/tree/main/services/hive-iam)
+  or a running [Oathweave](https://github.com/ChefTaco/Oathweave)
   (`HIVE_ROUTER_AUTH_MODE=iam-oidc`).
 
 **1. Write an env file**
@@ -53,30 +111,20 @@ traces go to `${HIVE_HOME:-~/.hive}/router` (created with mode `0700`).
 **2. Check and start**
 
 ```bash
-npx --allow-scripts=better-sqlite3 @hivemagnus/hive-router check --env-file ~/.hive/router.env
-npx --allow-scripts=better-sqlite3 @hivemagnus/hive-router --env-file ~/.hive/router.env
+node dist/src/index.js check --env-file ~/.hive/router.env
+node dist/src/index.js --env-file ~/.hive/router.env
 ```
 
 The administration API is at `http://127.0.0.1:9443/api`. Sign in with
 `POST /api/auth/login` as one of `HIVE_ROUTER_ADMIN_USERS`.
 The OpenAI-compatible API is at `http://127.0.0.1:4020/v1`; both listeners
-answer `GET /health`. You can also install it globally with
-`npm install -g --allow-scripts=better-sqlite3 @hivemagnus/hive-router` and run `hive-router`.
+answer `GET /health`.
 
 **Install scripts (npm 12 and later).** Emberpath uses `better-sqlite3`, a
 native add-on whose install script downloads (or, if none matches your
 platform, builds) its binary. npm 12 blocks dependency install scripts unless
-you allow them, which is what `--allow-scripts=better-sqlite3` does for `npx`
-and global installs. When you add Emberpath to your own project, allow it in
-that project's `package.json` instead (npm rejects the flag there):
-
-```json
-{ "allowScripts": { "better-sqlite3": true } }
-```
-
-Without this, the install succeeds but Emberpath cannot open its database.
-npm 11 runs the script without asking. The `@hivemagnus/hive` launcher sets
-this up for you.
+you allow them. If the database cannot be opened after `npm install`, run
+`npm rebuild better-sqlite3 --ignore-scripts=false`, as CI does.
 
 **TLS.** Set `TLS_CERT_PATH` and `TLS_KEY_PATH` to a PEM certificate and key
 to serve HTTPS on both listeners. TLS is required when `NODE_ENV=production`
@@ -424,18 +472,15 @@ Build the image from the repository root:
 docker build -t emberpath:local .
 ```
 
-`docker-compose.example.yml` publishes both listeners on loopback only. It will
-not start unless you supply a strong `HIVE_ROUTER_SECRET`, an explicit
-`HIVE_ROUTER_ADMIN_USERS`, and TLS certificate and key paths
-(`HIVE_ROUTER_TLS_CERT_PATH`, `HIVE_ROUTER_TLS_KEY_PATH`). The container runs
-as the unprivileged `node` user, so the mounted `./data` directory must be
-writable by that user. The image includes neither a PAM helper nor operator accounts; use
-`HIVE_ROUTER_AUTH_MODE=iam-oidc` or provide your own
-`HIVE_ROUTER_OS_AUTH_COMMAND`.
+Release images are published as `ghcr.io/cheftaco/emberpath`; see
+[Run the image on its own](#run-the-image-on-its-own). Images build from this source, use API
+port 4020 and admin port 9443 by default, run as the unprivileged `node` user and persist state
+under `/data/router`. The image includes neither a PAM helper nor operator accounts; use
+`HIVE_ROUTER_AUTH_MODE=iam-oidc` or provide your own `HIVE_ROUTER_OS_AUTH_COMMAND`. Startup
+migrations require verified backups.
 
-Images build from this source, use API port 4020 and admin port 9443 by default,
-and persist state under `/data/router`. `docker-compose.example.yml` sets explicit ports
-and data paths. Startup migrations require verified backups.
+`docker-compose.example.yml` is the Compose example from the legacy 1.x line: it builds or
+pulls `ghcr.io/cheftaco/hive-router` and does not run Emberpath 2.x.
 
 ### Production checklist
 
