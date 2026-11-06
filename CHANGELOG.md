@@ -17,6 +17,12 @@
 - `check` reports which HiveMem credential is in use and warns a week before a static
   `HIVE_ROUTER_MEMORY_PROXY_TOKEN` expires.
 
+### Fixed
+
+- The page at `GET /` on the admin port names Emberpath and describes its admin API, with
+  HiveXUI as the console in a suite. It no longer says "Hive Router Admin UI" or refers to a
+  nonexistent `npm run build:ui`. The `name: 'Hive Router'` status field is unchanged.
+
 ### Changed
 
 - `HIVE_ROUTER_MEMORY_PROXY_TOKEN` is a fallback when the service credential is

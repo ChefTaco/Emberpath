@@ -1529,7 +1529,7 @@ async function readUiIndex(): Promise<string> {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hive Router</title>
+    <title>Emberpath</title>
     <style>
       body { font-family: "IBM Plex Sans", sans-serif; background: #111827; color: #f9fafb; display: grid; place-items: center; min-height: 100vh; margin: 0; }
       main { max-width: 40rem; padding: 2rem; background: rgba(17,24,39,0.88); border: 1px solid rgba(255,255,255,0.12); border-radius: 1.25rem; }
@@ -1540,8 +1540,9 @@ async function readUiIndex(): Promise<string> {
   </head>
   <body>
     <main>
-      <h1>Hive Router Admin UI</h1>
-      <p>The embedded UI has not been built yet. Run <code>npm run build:ui</code> inside <code>hive-router</code> to serve the compiled admin interface.</p>
+      <h1>Emberpath</h1>
+      <p>This is the Emberpath admin API. Emberpath has no console of its own: its endpoints are under <code>/api/</code> on this port, and the model API is on its API port.</p>
+      <p>In the Hive suite, the console is HiveXUI, which manages Emberpath through the suite's single sign-in.</p>
     </main>
   </body>
 </html>`;
