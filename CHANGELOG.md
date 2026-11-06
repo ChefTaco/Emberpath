@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.2 - 2026-11-06
+
+### Added
+
+- A self-renewing HiveMem credential. With `EMBERPATH_HIVEMEM_CLIENT_ID` and
+  `EMBERPATH_HIVEMEM_CLIENT_SECRET` set to an Oathweave machine client, Emberpath
+  requests a short-lived client credentials token for the `hivemem` audience when it
+  first needs one and fetches the next at 80% of its lifetime, while still serving the
+  current one. The console Memory pages, memory agents in the actors list, and actor
+  onboarding and rotation keep working without anyone re-issuing a token or restarting
+  Emberpath. Concurrent requests share one fetch, an Oathweave outage is ridden out on
+  the current token and retried with backoff, and a token HiveMem refuses is replaced
+  and the call retried once. `EMBERPATH_HIVEMEM_SCOPE` and `EMBERPATH_HIVEMEM_TOKEN_URL`
+  are optional.
+- `check` reports which HiveMem credential is in use and warns a week before a static
+  `HIVE_ROUTER_MEMORY_PROXY_TOKEN` expires.
+
+### Changed
+
+- `HIVE_ROUTER_MEMORY_PROXY_TOKEN` is a fallback when the service credential is
+  configured: it is used only while no service token can be obtained, and never after
+  its own expiry.
+
 ## 2.0.1 - 2026-11-05
 
 ### Security
