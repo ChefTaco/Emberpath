@@ -3,7 +3,7 @@ import { metadata } from '../release/runtime.js';
 import { packageRoot as releasePackageRoot } from '../config/paths.js';
 import { sqliteWrite } from '../storage/sqlite-write.js';
 import { observeStream } from "./observed-stream.js";
-import { TraceOutcome, type Provider as ProviderRecord } from '../generated/prisma/client.js';
+import { TraceOutcome } from '../generated/prisma/client.js';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';

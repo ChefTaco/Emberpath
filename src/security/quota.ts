@@ -88,23 +88,6 @@ export function readClientKeyQuota(metadataJson: string | null): QuotaLimits {
   return metadata.quota ?? {};
 }
 
-function startOfUtcDay(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-}
-
-function startOfUtcMonth(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
-function sumTokens(usageJson: string | null): number {
-  if (!usageJson) {
-    return 0;
-  }
-  const usage = safeJsonParse<{ totalTokens?: number; total_tokens?: number }>(usageJson, {});
-  const total = usage.totalTokens ?? usage.total_tokens;
-  return typeof total === 'number' && Number.isFinite(total) ? total : 0;
-}
-
 let ledger: QuotaLedger | undefined;
 export function quotaLedger(): QuotaLedger {
   return ledger ??= new QuotaLedger(new Database(resolveSqlitePath(loadEnv().DATABASE_URL)));

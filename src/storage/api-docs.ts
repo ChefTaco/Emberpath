@@ -1,4 +1,3 @@
-import { ProviderKind } from '../generated/prisma/client.js';
 import { builtinApiDocs, buildRouterOpenApiDocument } from '../openapi/spec.js';
 import { prisma } from './client.js';
 
@@ -12,19 +11,18 @@ export async function syncBuiltinApiDocs(adminBaseUrl: string): Promise<void> {
       },
     });
 
+    const desired = {
+      implemented: entry.implemented,
+      title: entry.title,
+      summary: entry.summary,
+      rationale: entry.rationale ?? null,
+      docJson: JSON.stringify(entry),
+    };
     if (existing) {
-      const desired = { implemented: entry.implemented, title: entry.title,
-        summary: entry.summary, rationale: entry.rationale ?? null, docJson: JSON.stringify(entry) };
       if (Object.entries(desired).every(([key,value]) => existing[key as keyof typeof desired] === value)) continue;
       await prisma.apiDocEntry.update({
         where: { id: existing.id },
-        data: {
-          implemented: entry.implemented,
-          title: entry.title,
-          summary: entry.summary,
-          rationale: entry.rationale ?? null,
-          docJson: JSON.stringify(entry),
-        },
+        data: desired,
       });
       continue;
     }
@@ -34,11 +32,7 @@ export async function syncBuiltinApiDocs(adminBaseUrl: string): Promise<void> {
         route: entry.route,
         method: entry.method,
         scope: entry.scope,
-        title: entry.title,
-        summary: entry.summary,
-        rationale: entry.rationale ?? null,
-        implemented: entry.implemented,
-        docJson: JSON.stringify(entry),
+        ...desired,
       },
     });
   }

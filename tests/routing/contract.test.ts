@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderKind } from '../../src/generated/prisma/client.js';
-import type { ProviderCapability, RouteObservation } from '../../src/providers/types.js';
+import type { ProviderCapability } from '../../src/providers/types.js';
 import { buildRoute, buildRuntime } from '../fixtures/routing-runtime.js';
 import { defaultRouteRules, defaultHeuristicRules, ROUTING_PROFILE_ALIASES, ROUTING_PROFILE_RULES } from '../../src/routing/defaults.js';
 const mocks = vi.hoisted(() => ({ rules: vi.fn(), alias: vi.fn(), heuristics: vi.fn(), settings: vi.fn(), traces: vi.fn(), decisionEnv: { HIVE_ROUTER_DECISION_MODE: 'off', HIVE_ROUTER_OPENROUTER_KEY: 'test', HIVE_ROUTER_DECISION_MODEL: '~typesafe/jev-latest', HIVE_ROUTER_DECISION_TIMEOUT_MS: 1000 } }));

@@ -10,7 +10,7 @@ import { actorJournal, actorJournalWrite, actorCredentials } from './actor-journ
 import type { ActorLease, ActorStep } from './actor-journal.js';
 import { routingSnapshot, applyRoutingRevision, routingHistory, savedRoutingRevision } from '../routing/revisions.js';
 import { MemoryWriteSchema } from '../contracts/memory-operations.js';
-import { AuthMode, ProviderKind, RouteRuleKind, Prisma, type AdminUser, type ClientApiKey } from '../generated/prisma/client.js';
+import { ProviderKind, Prisma, type AdminUser, type ClientApiKey } from '../generated/prisma/client.js';
 import { Hono, type Context, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getConnInfo } from '@hono/node-server/conninfo';
@@ -87,7 +87,6 @@ import {
   clientKeyUpdateSchema,
   heuristicSchema,
   modelAliasSchema,
-  providerModelSchema,
   providerSchema,
   routingObjectiveSchema,
   routeRuleSchema,
