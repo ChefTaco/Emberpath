@@ -299,6 +299,7 @@ export const routingObjectiveSchema = z.object({
 }).strict();
 
 export const clientKeyMetadataSchema = z.object({
+  tracePrivacy: z.enum(['full', 'metadata-only']).optional(),
   owner: z.string().min(1).optional(),
   purpose: z.string().min(1).optional(),
   scopes: z.array(z.string().min(1)).optional(),

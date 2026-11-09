@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3 - 2026-11-09
+
+- Client API keys accept the documented per-key trace privacy setting through the strict public
+  creation and update contracts. Metadata-only keys omit request and response bodies; invalid
+  privacy values and unknown metadata fields remain rejected.
+
 ## 2.0.2 - 2026-11-06
 
 ### Added

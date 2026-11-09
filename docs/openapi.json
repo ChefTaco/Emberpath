@@ -385,6 +385,13 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "tracePrivacy": {
+                "enum": [
+                  "full",
+                  "metadata-only"
+                ],
+                "type": "string"
               }
             },
             "type": "object"
@@ -649,6 +656,13 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "tracePrivacy": {
+                "enum": [
+                  "full",
+                  "metadata-only"
+                ],
+                "type": "string"
               }
             },
             "type": "object"
@@ -5759,7 +5773,7 @@
   "info": {
     "description": "Model routing baseline and owned browser administration request/response contracts. Native provider proxy payloads remain provider-defined.",
     "title": "Emberpath API",
-    "version": "2.0.2"
+    "version": "2.0.3"
   },
   "openapi": "3.1.0",
   "paths": {
