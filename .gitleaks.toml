@@ -1,0 +1,25 @@
+title = "Repository secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documentation placeholder or public environment setting, not a credential."
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^\.env\.example$''']
+regexes = ['''^replace\-with\-a\-long\-secret\-at\-least\-32\-characters$''']
+
+[[allowlists]]
+description = "Reviewed synthetic test value; exact value and file only."
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^tests/config/cli\.test\.ts$''']
+regexes = ['''^test\-secret\-0123456789abcdef0123456789$''']
+
+[[allowlists]]
+description = "Reviewed synthetic test value; exact value and file only."
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^tests/config/env\-defaults\.test\.ts$''']
+regexes = ['''^test\-secret\-0123456789abcdef0123456789$''']
