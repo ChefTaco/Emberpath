@@ -1,7 +1,7 @@
 import { QuotaLedger } from '../security/quota-ledger.js';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import Database from 'better-sqlite3';
+import Database from './sqlite.js';
 import { loadEnv } from '../config/env.js';
 import { columnMigrations, schemaStatements } from './migrations/managed-format-1.js';
 import { resolveSqlitePath } from './sqlite-path.js';
@@ -16,7 +16,7 @@ export { resolveSqlitePath } from './sqlite-path.js';
  * closes the gap without a destructive rebuild. It only adds safely-addable
  * columns (nullable or constant-default); it never drops or alters columns.
  */
-export function reconcileSqliteColumns(database: Database.Database): string[] {
+export function reconcileSqliteColumns(database: Database): string[] {
   const applied: string[] = [];
   const existingColumnsByTable = new Map<string, Set<string>>();
 

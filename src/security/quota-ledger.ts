@@ -1,18 +1,18 @@
-import Database from 'better-sqlite3';
+import Database from '../storage/sqlite.js';
 import { randomUUID } from 'node:crypto';
 
 export interface LedgerLimits { dailyRequests?: number | undefined; monthlyRequests?: number | undefined; dailyTokens?: number | undefined; monthlyTokens?: number | undefined }
 export interface LedgerUsage { dayRequests: number; monthRequests: number; dayTokens: number; monthTokens: number }
 
 export class QuotaLedger {
-  constructor(private readonly db: Database.Database) { db.exec('PRAGMA busy_timeout=0'); }
+  constructor(private readonly db: Database) { db.exec('PRAGMA busy_timeout=0'); }
   migrateRetainedHistory(now = new Date()): void {
     if (this.db.prepare("SELECT id FROM QuotaLedgerState WHERE id='migration'").get()) return;
     this.db.exec('BEGIN IMMEDIATE');
     try {
       let count = 0;
       const buckets = new Map<string, { requests: number; tokens: number }>();
-      for (const row of this.db.prepare<[], { clientApiKeyId: string; startedAt: string | number; usageJson: string | null }>('SELECT clientApiKeyId,startedAt,usageJson FROM Trace WHERE clientApiKeyId IS NOT NULL').iterate()) {
+      for (const row of this.db.prepare('SELECT clientApiKeyId,startedAt,usageJson FROM Trace WHERE clientApiKeyId IS NOT NULL').iterate() as IterableIterator<{ clientApiKeyId: string; startedAt: string | number; usageJson: string | null }>) {
         const key = String(row.clientApiKeyId); const at = new Date(row.startedAt as string | number);
         if (Number.isNaN(at.getTime())) throw new Error('Invalid historical trace date');
         let usage: { totalTokens?: number; total_tokens?: number } = {};

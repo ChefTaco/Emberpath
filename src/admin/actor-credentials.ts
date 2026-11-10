@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from '../storage/sqlite.js';
 import { z } from 'zod';
 import { HTTPException } from 'hono/http-exception';
 import { digestText, encryptText, decryptText, generateOpenAiStyleApiKey, hashValue } from '../security/crypto.js';
@@ -17,7 +17,7 @@ interface Receipt { ownerId: string; identifiersJson: string; encryptedSecrets: 
 /** Own only Emberpath keys. Native key mutation and its encrypted replay receipt
  * commit atomically; no remote service or administrator credential is involved. */
 export class ActorCredentials {
-  constructor(private readonly database: Database.Database, private readonly cipher = { encrypt: encryptText, decrypt: decryptText }, private readonly now: () => number = Date.now) {
+  constructor(private readonly database: Database, private readonly cipher = { encrypt: encryptText, decrypt: decryptText }, private readonly now: () => number = Date.now) {
     database.pragma('busy_timeout = 0');
   }
   apply(ownerId: string, operationId: string, input: unknown): Record<string, unknown> {

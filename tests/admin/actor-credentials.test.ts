@@ -1,10 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaSqlite } from '../../src/storage/prisma-sqlite/index.js';
 import { PrismaClient } from '../../src/generated/prisma/client.js';
 import { verifyHash } from '../../src/security/crypto.js';
-import Database from 'better-sqlite3';
+import Database from '../../src/storage/sqlite.js';
 import { expect, it } from 'vitest';
 import { ActorCredentials } from '../../src/admin/actor-credentials.js';
 import { schemaStatements } from '../../src/storage/generated-sqlite-schema.js';
@@ -47,7 +47,7 @@ it('makes atomic native keys usable through real Prisma expiry queries and rejec
   const directory = mkdtempSync(join(tmpdir(), 'emberpath-credential-'));
   const path = join(directory, 'fixture.db'), database = new Database(path);
   for (const statement of schemaStatements) database.exec(statement);
-  const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: 'file:' + path }) });
+  const prisma = new PrismaClient({ adapter: new PrismaSqlite({ url: 'file:' + path }) });
   let now = Date.now();
   try {
     const credentials = new ActorCredentials(database, undefined, () => now);

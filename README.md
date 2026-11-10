@@ -88,8 +88,8 @@ source build runs them as `node dist/src/index.js`.
 
 **Requirements**
 
-- Node.js 24 (`>=24.22.1`) or 26 (`>=26.13.0`). `better-sqlite3` installs from
-  a prebuilt binary on common platforms, or compiles with a C++ toolchain.
+- Node.js 24 (`>=24.22.1`) or 26 (`>=26.13.0`). SQLite 3.54.1 is bundled through
+  `@photostructure/sqlite`; supported Linux x64 and arm64 installs need no compiler.
 - For admin sign-in, either Linux with `pamtester` installed
   (`HIVE_ROUTER_AUTH_MODE=os`, the default: operators use their OS password),
   or a running [Oathweave](https://github.com/ChefTaco/Oathweave)
@@ -120,11 +120,9 @@ The administration API is at `http://127.0.0.1:9443/api`. Sign in with
 The OpenAI-compatible API is at `http://127.0.0.1:4020/v1`; both listeners
 answer `GET /health`.
 
-**Install scripts (npm 12 and later).** Emberpath uses `better-sqlite3`, a
-native add-on whose install script downloads (or, if none matches your
-platform, builds) its binary. npm 12 blocks dependency install scripts unless
-you allow them. If the database cannot be opened after `npm install`, run
-`npm rebuild better-sqlite3 --ignore-scripts=false`, as CI does.
+**Native database runtime.** The package includes Node-API binaries for supported
+platforms. `npm install --ignore-scripts` works without a database rebuild or binary
+download. Startup verifies the embedded SQLite version before opening application storage.
 
 **TLS.** Set `TLS_CERT_PATH` and `TLS_KEY_PATH` to a PEM certificate and key
 to serve HTTPS on both listeners. TLS is required when `NODE_ENV=production`

@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from '../storage/sqlite.js';
 import { loadEnv } from '../config/env.js';
 import { resolveSqlitePath } from '../storage/schema.js';
 import { ActorJournal } from './actor-journal.js';

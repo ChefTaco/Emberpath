@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import Database from 'better-sqlite3';
+import Database from '../../src/storage/sqlite.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildColumnMigrations, buildGeneratedModule } from '../../scripts/generate-sqlite-bootstrap.js';
 import { schemaStatements } from '../../src/storage/generated-sqlite-schema.js';
@@ -15,7 +15,7 @@ function newDbPath(): string {
   return join(dir, 'router.db');
 }
 
-function bootstrapFullSchema(database: Database.Database): void {
+function bootstrapFullSchema(database: Database): void {
   for (const statement of schemaStatements) {
     database.exec(statement);
   }

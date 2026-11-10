@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from '../../src/storage/sqlite.js';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

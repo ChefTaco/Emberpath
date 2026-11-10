@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import Database from '../storage/sqlite.js';
 import { HTTPException } from 'hono/http-exception';
 import { encryptText, decryptText } from '../security/crypto.js';
 
@@ -34,7 +34,7 @@ export interface ActorRun {
 /** The SQLite lease is shared by enrollment, rotation and containment. */
 export class ActorJournal {
   constructor(
-    private readonly database: Database.Database,
+    private readonly database: Database,
     private readonly cipher = { encrypt: encryptText, decrypt: decryptText },
     private readonly now: () => number = Date.now,
   ) { database.exec('PRAGMA busy_timeout = 0'); }
@@ -101,7 +101,7 @@ export class ActorJournal {
   private unpack(operation: ActorOperation, lease: ActorLease | null): ActorRun {
     return { operation, lease, steps: JSON.parse(operation.stepsJson) as Record<string, ActorStep>, secrets: operation.encryptedSecrets ? JSON.parse(this.cipher.decrypt(operation.encryptedSecrets)) as Record<string, string> : {} };
   }
-  checkpoint(run: ActorRun, mutate?: (database: Database.Database) => void): void {
+  checkpoint(run: ActorRun, mutate?: (database: Database) => void): void {
     if (!run.lease) throw new Error('Cannot mutate a finished actor operation');
     this.transaction(() => {
       this.renew(run.lease!);
