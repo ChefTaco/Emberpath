@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import Database from '../../src/storage/sqlite.js';
 import { QuotaLedger } from '../../src/security/quota-ledger.js';
 import { sqliteWrite } from '../../src/storage/sqlite-write.js';
 

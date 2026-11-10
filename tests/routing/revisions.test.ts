@@ -1,9 +1,9 @@
-import Database from 'better-sqlite3';
+import Database from '../../src/storage/sqlite.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PrismaClient } from '../../src/generated/prisma/client.js';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaSqlite } from '../../src/storage/prisma-sqlite/index.js';
 import { expect, it } from 'vitest';
 import { schemaStatements } from '../../src/storage/generated-sqlite-schema.js';
 import { applyRoutingRevision, routingSnapshot } from '../../src/routing/revisions.js';
@@ -15,7 +15,7 @@ it('protects a revision snapshot from another SQLite writer and rejects stale co
   const other = new Database(path);
   for (const statement of schemaStatements) other.exec(statement);
   other.exec('PRAGMA busy_timeout = 0');
-  const client = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: path, timeout: 0 }) });
+  const client = new PrismaClient({ adapter: new PrismaSqlite({ url: path, timeout: 0 }) });
   let blocked = 0; let comparing = false;
   const instrumented = client.$extends({ query: { modelAlias: { async findMany({ args, query }) {
     if (!comparing) return query(args);

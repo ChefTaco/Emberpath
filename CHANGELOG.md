@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.4] - 2026-11-10
+
+### Security
+
+- Run containers on a pinned, maintained Node 26 runtime with patched system libraries.
+- Replace the embedded SQLite driver with `@photostructure/sqlite` 3.3.1 (SQLite 3.54.1); retain existing databases, transaction ownership and recovery checks. Supported Linux x64 and arm64 installs include Node-API binaries and require no compiler or dependency install scripts.
+- Keep Prisma query conversion and error handling in a licensed adapter for the patched SQLite driver; release failed transaction acquisitions without disturbing another transaction.
+
 ## 2.0.3 - 2026-11-09
 
 - Client API keys accept the documented per-key trace privacy setting through the strict public
