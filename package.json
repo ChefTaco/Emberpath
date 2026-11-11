@@ -38,7 +38,7 @@
     "dist/src/release/*"
   ],
   "engines": {
-    "node": "^24.22.1 || ^26.13.0"
+    "node": "^24.22.3 || ^26.13.1"
   },
   "publishConfig": {
     "access": "public"
@@ -51,7 +51,7 @@
     "cli": "node scripts/ensure-prisma-client.mjs && tsx src/cli.ts",
     "clean": "rm -rf dist ui/dist coverage tsconfig.tsbuildinfo ui/tsconfig.tsbuildinfo playwright-report test-results",
     "typecheck": "npm run db:generate && npm run contracts:check && tsc --project tsconfig.json --noEmit",
-    "test": "node scripts/ensure-prisma-client.mjs && npm run db:check-bootstrap && vitest run --passWithNoTests",
+    "test": "node scripts/ensure-prisma-client.mjs && npm run db:check-bootstrap && vitest run --passWithNoTests && node --test scripts/check-node-runtime.test.mjs",
     "test:watch": "node scripts/ensure-prisma-client.mjs && vitest",
     "test:e2e": "playwright test",
     "smoke:ollama": "node scripts/ensure-prisma-client.mjs && tsx scripts/smoke-ollama.ts",
@@ -87,7 +87,7 @@
     "@hono/node-server": "2.1.5",
     "@prisma/client": "^7.8.0",
     "dotenv": "^17.3.1",
-    "hono": "4.13.13",
+    "hono": "4.13.18",
     "jose": "^6.1.1",
     "prom-client": "^15.1.3",
     "zod": "^4.6.7",
@@ -113,7 +113,7 @@
     "@hono/node-server": "2.1.5",
     "deepmerge-ts": "8.0.0",
     "fast-uri": "3.1.9",
-    "hono": "4.13.13",
+    "hono": "4.13.18",
     "valibot": "1.4.2",
     "mysql2": "3.24.3"
   },
@@ -122,7 +122,7 @@
     "version": "1.2.2",
     "engineProtocol": 1,
     "engines": {
-      "node": "^24.22.1 || ^26.13.0"
+      "node": "^24.22.3 || ^26.13.1"
     },
     "components": {
       "@hivemagnus/hive": "1.2.2",

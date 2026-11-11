@@ -171,6 +171,14 @@ remote_scp() {
   fi
 }
 
+# Validate both the installation shell and the systemd interpreter before uploads or activation.
+node "$SCRIPT_DIR/check-node-runtime.mjs"
+NODE_RUNTIME_RANGE="$(node "$SCRIPT_DIR/check-node-runtime.mjs" --print-range)"
+if [[ "$DRY_RUN" != "true" ]]; then
+  remote_exec "node --input-type=module - --engines '$NODE_RUNTIME_RANGE'" < "$SCRIPT_DIR/check-node-runtime.mjs"
+  remote_exec "/usr/bin/node --input-type=module - --engines '$NODE_RUNTIME_RANGE'" < "$SCRIPT_DIR/check-node-runtime.mjs"
+fi
+
 cd "$REPO_ROOT"
 
 if [[ ! -f "$RELEASE_MANAGER_LIB" ]]; then
@@ -715,7 +723,7 @@ After=network.target
 Type=simple
 WorkingDirectory=${REMOTE_PATH}/current
 EnvironmentFile=${REMOTE_PATH}/shared/.env
-ExecStart=/usr/bin/env node ${REMOTE_PATH}/current/dist/src/index.js
+ExecStart=/usr/bin/node ${REMOTE_PATH}/current/dist/src/index.js
 Restart=always
 RestartSec=5
 User=\$USER

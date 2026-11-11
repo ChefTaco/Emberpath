@@ -14,7 +14,7 @@ export const BINS: Record<Service, string> = {
   router: 'hive-router',
   skills: 'hive-skills',
 };
-export const NODE_RANGE = '^24.22.1 || ^26.13.0';
+export const NODE_RANGE = '^24.22.3 || ^26.13.1';
 export const ENGINE_PROTOCOL = 1;
 export const NATIVE_POLICY = {
   'better-sqlite3': true,
