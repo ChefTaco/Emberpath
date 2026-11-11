@@ -88,7 +88,7 @@ source build runs them as `node dist/src/index.js`.
 
 **Requirements**
 
-- Node.js 24 (`>=24.22.1`) or 26 (`>=26.13.0`). SQLite 3.54.1 is bundled through
+- Node.js 24 (`>=24.22.3`) or 26 (`>=26.13.1`). SQLite 3.54.1 is bundled through
   `@photostructure/sqlite`; supported Linux x64 and arm64 installs need no compiler.
 - For admin sign-in, either Linux with `pamtester` installed
   (`HIVE_ROUTER_AUTH_MODE=os`, the default: operators use their OS password),
@@ -224,7 +224,7 @@ schemas; `npm run typecheck` fails if the generated file is stale.
 
 ## Requirements (source checkout)
 
-- Node.js 24 (`>=24.22.1`) or 26 (`>=26.13.0`) and npm
+- Node.js 24 (`>=24.22.3`) or 26 (`>=26.13.1`) and npm
 - For OS (PAM) login in production: `pamtester` on the host
 
 ## Run from a source checkout
@@ -630,3 +630,10 @@ Each username must be in the configured administrator allowlist. Startup creates
 only missing accounts and preserves all existing IDs, display names and
 credentials. Conflicting bindings fail instead of merging accounts. Existing
 installations use explicit reviewed Oathweave issuer/subject account links.
+
+## Native deployment runtime checks
+
+Source deployment checks the Node.js used by npm and `/usr/bin/node`, which the
+installed systemd service uses, against the current package `engines.node` policy.
+An unsupported runtime stops deployment before remote writes or service restarts.
+Update the system interpreter as well as any shell-specific Node.js installation.

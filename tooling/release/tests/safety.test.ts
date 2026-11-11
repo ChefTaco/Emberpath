@@ -138,11 +138,15 @@ test('skipped releases retain required configuration and reject edited migration
   assert.throws(() => releaseChanges([first, last]), /Immutable migration checksum/);
 });
 test('strict semver and engine guards reject prereleases, unsupported ranges and future Node majors', () => {
-  assert(satisfies('24.22.1', '^24.22.1 || ^26.13.0'));
-  assert(satisfies('26.13.1', '^24.22.1 || ^26.13.0'));
-  assert(!satisfies('24.22.0', '^24.22.1 || ^26.13.0'));
-  assert(!satisfies('25.0.0', '^24.22.1 || ^26.13.0'));
-  assert(!satisfies('27.0.0', '^24.22.1 || ^26.13.0'));
+  assert(satisfies('24.22.3', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('22.23.5', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('24.22.1', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('24.22.2', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('26.13.0', '^24.22.3 || ^26.13.1'));
+  assert(satisfies('26.13.1', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('24.22.0', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('25.0.0', '^24.22.3 || ^26.13.1'));
+  assert(!satisfies('27.0.0', '^24.22.3 || ^26.13.1'));
   for (const v of ['1.2.0-beta', '01.2.0', '1.2', '1.2.0;id']) assert.throws(() => parseVersion(v));
   assert.throws(() => satisfies('1.2.0', '*'));
 });
