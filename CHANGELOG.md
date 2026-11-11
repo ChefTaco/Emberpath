@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [2.0.5] - 2026-11-11
 
 - Refuse native deployments and service restarts on Node.js below the package security minimum before changing remote state.
 - Require patched Node.js 24.22.3 or 26.13.1, and refresh build and runtime image pins for upstream TLS and HTTP/2 security fixes.
