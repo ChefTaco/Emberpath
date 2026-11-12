@@ -49,7 +49,7 @@
     "build:server": "npm run db:generate && npm run db:generate-bootstrap && tsc --project tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/src/index.js', 0o755)\"",
     "start": "node dist/src/index.js",
     "cli": "node scripts/ensure-prisma-client.mjs && tsx src/cli.ts",
-    "clean": "rm -rf dist ui/dist coverage tsconfig.tsbuildinfo ui/tsconfig.tsbuildinfo playwright-report test-results",
+    "clean": "rm -rf dist coverage tsconfig.tsbuildinfo playwright-report test-results",
     "typecheck": "npm run db:generate && npm run contracts:check && tsc --project tsconfig.json --noEmit",
     "test": "node scripts/ensure-prisma-client.mjs && npm run db:check-bootstrap && vitest run --passWithNoTests && node --test scripts/check-node-runtime.test.mjs",
     "test:watch": "node scripts/ensure-prisma-client.mjs && vitest",
@@ -99,15 +99,9 @@
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "@types/node": "^24.10.1",
-    "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.2",
-    "@vitejs/plugin-react": "^5.1.1",
     "prisma": "^7.0.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vite": "^7.2.2",
     "vitest": "^5.0.5"
   },
   "overrides": {

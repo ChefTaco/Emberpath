@@ -22,6 +22,8 @@ services:
       DATABASE_URL: file:/app/data/router.db
       DATA_DIR: /app/data
       TRACE_DIR: /app/data/traces
+      # Emberpath: redirect the admin listener's old UI paths to HiveXUI (unset: a short page).
+      HIVEXUI_URL: ${HIVEXUI_URL:-}
       HIVE_ROUTER_SECRET: ${HIVE_ROUTER_SECRET:?set a random secret of at least 32 characters}
       HIVE_ROUTER_ADMIN_USERS: ${HIVE_ROUTER_ADMIN_USERS:?set the exact PAM users allowed to sign in}
       REQUIRE_TLS: "true"

@@ -15,12 +15,10 @@ import { Hono, type Context, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { ZodError } from 'zod';
-import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
 import { z } from 'zod';
 import {
   metricsRegistry,
@@ -49,7 +47,7 @@ import {
 import { recordAuditEvent } from '../storage/audit.js';
 import { buildRouterOpenApiDocument, builtinApiDocs } from '../openapi/spec.js';
 import { loadEnv, type Env } from '../config/env.js';
-import { uiDistDir } from '../config/paths.js';
+import { HIVEXUI_STUB_CSP, hiveXuiStubResponse } from './hivexui-stub.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { registerHealthProbes } from '../status/health-probes.js';
 import { getSecurityExporterJwksStatus } from '../security/security-exporter-jwks-status.js';
@@ -1580,37 +1578,6 @@ async function listHiveIncidents(requestId: string): Promise<Response> {
   return Response.json({ data: incidents });
 }
 
-async function readUiIndex(): Promise<string> {
-  const builtIndex = resolve(uiDistDir, 'index.html');
-  if (existsSync(builtIndex)) {
-    return readFile(builtIndex, 'utf8');
-  }
-
-  return `
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Emberpath</title>
-    <style>
-      body { font-family: "IBM Plex Sans", sans-serif; background: #111827; color: #f9fafb; display: grid; place-items: center; min-height: 100vh; margin: 0; }
-      main { max-width: 40rem; padding: 2rem; background: rgba(17,24,39,0.88); border: 1px solid rgba(255,255,255,0.12); border-radius: 1.25rem; }
-      h1 { margin-top: 0; }
-      p { color: #d1d5db; line-height: 1.6; }
-      code { background: rgba(255,255,255,0.08); padding: 0.1rem 0.35rem; border-radius: 0.4rem; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>Emberpath</h1>
-      <p>This is the Emberpath admin API. Emberpath has no console of its own: its endpoints are under <code>/api/</code> on this port, and the model API is on its API port.</p>
-      <p>In the Hive suite, the console is HiveXUI, which manages Emberpath through the suite's single sign-in.</p>
-    </main>
-  </body>
-</html>`;
-}
-
 interface AdminAppDependencies {
   authorizeSecurityExporterToken?: (token: string) => Promise<SecurityExporterAuthResult>;
   authorizeStaticSecurityExporterToken?: (token: string) => boolean;
@@ -1632,7 +1599,10 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.use('*', requestIdMiddleware({ trustInbound: true }));
   app.use('*', async (context, next) => {
     await next();
+    // The HiveXUI stub carries a stricter CSP than the admin default; keep it.
+    const stubCsp = context.res.headers.get('content-security-policy') === HIVEXUI_STUB_CSP;
     applyAdminSecurityHeaders(context.res.headers, env.NODE_ENV === 'production');
+    if (stubCsp) context.res.headers.set('content-security-policy', HIVEXUI_STUB_CSP);
   });
   app.use('/api/*', bodyLimit({
     maxSize: env.MAX_ADMIN_BODY_BYTES,
@@ -2774,30 +2744,13 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
     return context.json({ data: settings.map((setting) => ({ ...setting, parsed: safeJsonParse(setting.valueJson, null) })) });
   });
 
-  app.get('/assets/*', async (context) => {
-    // Resolve and validate that the path stays within ui/dist to prevent traversal.
-    const filePath = resolve(uiDistDir, context.req.path.slice(1));
-    if (!filePath.startsWith(uiDistDir + '/') || !existsSync(filePath)) {
-      return context.notFound();
-    }
-    const content = await readFile(filePath);
-    const contentType = filePath.endsWith('.js')
-      ? 'application/javascript'
-      : filePath.endsWith('.css')
-        ? 'text/css'
-        : filePath.endsWith('.svg')
-          ? 'image/svg+xml'
-          : 'application/octet-stream';
-    context.header('content-type', contentType);
-    return context.body(content);
-  });
-
-  app.get('*', async (context) => {
+  // The bundled UI is retired: HiveXUI is the UI. Unknown non-API paths answer the
+  // HiveXUI stub (or redirect to HIVEXUI_URL); unknown API paths answer as before.
+  app.get('*', (context) => {
     if (context.req.path.startsWith('/api/')) {
       return context.notFound();
     }
-    context.header('content-type', 'text/html; charset=utf-8');
-    return context.body(await readUiIndex());
+    return hiveXuiStubResponse(env.HIVEXUI_URL);
   });
 
   app.onError((err, context) => {

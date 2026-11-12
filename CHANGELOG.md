@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- HiveXUI is the only UI for the Hive:Magnus product line. On the admin listener, `GET /` and
+  every other non-API path that used to fall through to the bundled UI now answer a short page
+  saying Emberpath is managed in HiveXUI (`200`, `Cache-Control: no-store`, a strict
+  `Content-Security-Policy`, no scripts or external assets). Old bookmarks move to HiveXUI:
+  set the new optional `HIVEXUI_URL` to have those paths answer `302` to exactly that URL
+  instead. Emberpath refuses to start unless `HIVEXUI_URL` is unset, empty or an absolute
+  `http(s)` URL without credentials or a fragment. API paths answer exactly as before.
+
+### Removed
+
+- The standalone web UI is retired: the `ui/dist` index fallback, the `/assets/*` static file
+  route, the UI build leftovers in the `clean` script and TypeScript configs, the React and
+  Vite development dependencies, and the Playwright tests of the old UI and their fixture
+  stack. `npm run test:e2e` now checks the HiveXUI page and redirect against two built servers.
+
 ## [2.2.0] - 2026-11-12
 
 ### Added

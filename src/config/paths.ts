@@ -21,9 +21,6 @@ function findPackageRoot(start: string): string {
 
 export const packageRoot = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 
-/** Built console assets (`vite build` output) shipped with the package. */
-export const uiDistDir = resolve(packageRoot, 'ui', 'dist');
-
 interface PackageInfo {
   name: string;
   version: string;

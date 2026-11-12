@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# deploy-hive-router.sh - Build and deploy Hive Router / Hive UI
+# deploy-hive-router.sh - Build and deploy Emberpath (Hive Router)
 #
 # Builds the standalone router, packages source + dist artifacts, uploads via
 # SCP, installs dependencies on the target, writes/preserves .env, and restarts
@@ -25,7 +25,7 @@
 #   DEPLOY_SSH_KEY / HIVE_ROUTER_DEPLOY_SSH_KEY, DEPLOY_SUDO_PASSWORD
 # Values are also read from .env at the repository root and in this service.
 #
-# Runtime ports: API 4020, admin UI 443, both HTTPS when certs are present
+# Runtime ports: API 4020, admin API 443, both HTTPS when certs are present
 #
 # Releases are deployed atomically: code lands in /opt/hive-router/releases/<id>,
 # persistent state (db, .env, certs) lives in /opt/hive-router/shared, and
@@ -296,7 +296,7 @@ elif [[ "$SKIP_BUILD" == "false" ]]; then
   ok "Build complete"
 else
   info "Skipping build (--skip-build)"
-  [[ -d dist && -d ui/dist ]] || { err "Missing dist/ui artifacts; rerun without --skip-build"; exit 1; }
+  [[ -d dist ]] || { err "Missing dist artifacts; rerun without --skip-build"; exit 1; }
 fi
 
 if [[ "$PINNED_STAGE" == false ]]; then

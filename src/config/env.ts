@@ -38,6 +38,33 @@ const optionalStringSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().optional(),
 );
+/**
+ * HIVEXUI_URL: where the retired UI paths redirect. It must be an absolute
+ * http(s) URL without credentials or a fragment; the normalized form is stored.
+ */
+export const HIVEXUI_URL_ERROR = 'HIVEXUI_URL must be an absolute http(s) URL';
+export function normalizeHiveXuiUrl(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password || url.hash || value.includes('#')) return null;
+  return url.toString();
+}
+const hiveXuiUrlSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().transform((value, context) => {
+    const normalized = normalizeHiveXuiUrl(value.trim());
+    if (normalized === null) {
+      context.addIssue({ code: 'custom', message: HIVEXUI_URL_ERROR });
+      return z.NEVER;
+    }
+    return normalized;
+  }).optional(),
+);
 const booleanStringSchema = z
   .string()
   .optional()
@@ -80,6 +107,7 @@ export const envSchema = z.object({
   PUBLIC_API_URL: optionalUrlSchema,
   PUBLIC_ADMIN_URL: optionalUrlSchema,
   HIVE_UI_PUBLIC_URL: optionalUrlSchema,
+  HIVEXUI_URL: hiveXuiUrlSchema,
   HIVE_SKILLS_INTERNAL_URL: z.url().optional(),
   HIVE_SKILLS_PUBLIC_URL: z.url().optional(),
   HIVEMEM_INTERNAL_URL: z.url().default('http://127.0.0.1:18790'),
@@ -211,6 +239,10 @@ function describeIssue(variable: string, issue: z.core.$ZodIssue, source: NodeJS
   }
   if (raw === undefined) {
     return `${variable} is not set. Set it ${FIX_HINT}.`;
+  }
+  if (variable === 'HIVEXUI_URL') {
+    // Never echo the value: it may carry credentials.
+    return `${HIVEXUI_URL_ERROR} without credentials or a fragment, or unset. Fix it ${FIX_HINT}.`;
   }
   if (variable.endsWith('_PORT')) {
     return `${variable} must be a TCP port between 1 and 65535 (got "${raw}"). Fix it ${FIX_HINT}.`;
