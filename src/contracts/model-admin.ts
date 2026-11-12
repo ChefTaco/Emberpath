@@ -373,6 +373,7 @@ export const traceEventSchema = z.object({id: z.string(), traceId: z.string(), t
 export const traceReadSchema = z.object({id: z.string(), requestId: z.string(), method: z.string(), path: z.string(),
   endpointKind: z.string(), routeKey: z.string(), statusCode: z.number().nullable(), outcome: z.string(), estimatedUsage: z.boolean(),
   providerId: nullableText, providerKind: nullableText, providerModel: nullableText, clientApiKeyId: nullableText,
+  actorId: nullableText.optional(),
   decisionJson: z.string(), requestHeadersJson: nullableText, responseHeadersJson: nullableText, requestMetaJson: nullableText,
   responseMetaJson: nullableText, usageJson: nullableText, retentionJson: nullableText, requestBodyPath: nullableText,
   responseBodyPath: nullableText, reasoningBodyPath: nullableText, startedAt: timestamp, endedAt: timestamp.nullable(),
@@ -380,6 +381,22 @@ export const traceReadSchema = z.object({id: z.string(), requestId: z.string(), 
   provider: providerSummarySchema.nullable().optional(), clientApiKey: clientKeyReadSchema.nullable().optional(),
   events: z.array(traceEventSchema).optional(),
 });
+export const traceListDefaultLimit = 50;
+export const traceListMaxLimit = 200;
+/**
+ * Optional `GET /api/traces` filters. Passing any of them selects the paginated
+ * `{data, nextCursor}` response; passing none keeps the original latest-100 list.
+ * `cursor` is opaque: send back the previous page's `nextCursor` unchanged.
+ */
+export const traceListQuerySchema = z.object({
+  actorId: z.string().regex(/^[a-z0-9_-]{2,32}$/u).optional(),
+  clientKeyId: z.string().min(1).max(128).optional(),
+  since: z.iso.datetime({offset: true}).optional(),
+  cursor: z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/u).optional(),
+  limit: z.coerce.number().int().min(1).max(traceListMaxLimit).optional(),
+});
+export const traceListQueryKeys = ['actorId', 'clientKeyId', 'since', 'cursor', 'limit'] as const;
+export const tracePageSchema = z.object({data: z.array(traceReadSchema), nextCursor: z.string().nullable()});
 export const telemetrySchema = z.object({totals: z.object({traces: z.number(), failures: z.number(), failovers: z.number()}), latestTrace: traceReadSchema.nullable()});
 export const adminUserReadSchema = z.object({id: z.string(), username: z.string(), displayName: nullableText, ...timestamps});
 export const auditReadSchema = z.object({id: z.string(), actorType: z.string(), adminUserId: nullableText, action: z.string(),
@@ -420,7 +437,7 @@ export const modelConsoleSchemas = {
   heuristics: dataSchema(z.array(heuristicReadSchema)), heuristic: dataSchema(heuristicReadSchema),
   clientKeys: dataSchema(z.array(clientKeyReadSchema)), clientKey: dataSchema(clientKeyReadSchema),
   createdClientKey: dataSchema(clientKeyCreatedSchema), rotatedClientKey: dataSchema(clientKeyRotatedSchema),
-  clientKeyUsage: dataSchema(clientKeyUsageSchema), traces: dataSchema(z.array(traceReadSchema)), telemetry: telemetrySchema,
+  clientKeyUsage: dataSchema(clientKeyUsageSchema), traces: dataSchema(z.array(traceReadSchema)), tracePage: tracePageSchema, telemetry: telemetrySchema,
   audit: dataSchema(z.array(auditReadSchema)), runtimeSettings: dataSchema(z.array(runtimeSettingReadSchema)),
   routingObjective: dataSchema(z.object({config: routingObjectiveReadSchema})), routingTest: dataSchema(routingTestResultSchema),
   routingRevisions: routingRevisionsSchema, routingApplied: routingAppliedSchema, routingSnapshot: routingSnapshotSchema,
@@ -437,6 +454,8 @@ export type ClientKeyUpdateRequest = z.input<typeof clientKeyUpdateSchema>;
 export type ClientKey = z.infer<typeof clientKeyReadSchema>;
 export type Telemetry = z.infer<typeof telemetrySchema>;
 export type Trace = z.infer<typeof traceReadSchema>;
+export type TraceListQuery = z.input<typeof traceListQuerySchema>;
+export type TracePage = z.infer<typeof tracePageSchema>;
 export type AuditEvent = z.infer<typeof auditReadSchema>;
 export type RuntimeSetting = z.infer<typeof runtimeSettingReadSchema>;
 export type RoutingObjectiveConfig = z.input<typeof routingObjectiveSchema>;

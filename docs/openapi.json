@@ -5108,6 +5108,12 @@
             "anyOf": [
               {
                 "properties": {
+                  "actorId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "clientApiKey": {
                     "anyOf": [
                       {
@@ -5449,6 +5455,12 @@
       "Trace": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "actorId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "clientApiKey": {
             "anyOf": [
               {
@@ -5753,6 +5765,340 @@
           "endedAt",
           "durationMs",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "TracePage": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "data": {
+            "items": {
+              "properties": {
+                "actorId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "clientApiKey": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "expiresAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "keyPrefix": {
+                          "type": "string"
+                        },
+                        "lastUsedAt": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "metadataJson": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "keyPrefix",
+                        "enabled",
+                        "metadataJson",
+                        "lastUsedAt",
+                        "expiresAt",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "clientApiKeyId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "decisionJson": {
+                  "type": "string"
+                },
+                "durationMs": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "endedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "endpointKind": {
+                  "type": "string"
+                },
+                "estimatedUsage": {
+                  "type": "boolean"
+                },
+                "events": {
+                  "items": {
+                    "properties": {
+                      "dataJson": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "occurredAt": {
+                        "type": "string"
+                      },
+                      "phase": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "traceId": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "traceId",
+                      "type",
+                      "phase",
+                      "message",
+                      "dataJson",
+                      "occurredAt"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "method": {
+                  "type": "string"
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "provider": {
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "enum": [
+                            "OPENAI",
+                            "CODEX",
+                            "OPENAI_GENERIC",
+                            "OPENROUTER",
+                            "ANTHROPIC",
+                            "OLLAMA",
+                            "LLAMACPP",
+                            "VLLM"
+                          ],
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "slug",
+                        "name",
+                        "kind"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "providerKind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "providerModel": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reasoningBodyPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "requestBodyPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "requestHeadersJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "requestId": {
+                  "type": "string"
+                },
+                "requestMetaJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responseBodyPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responseHeadersJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "responseMetaJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retentionJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "routeKey": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "type": "string"
+                },
+                "statusCode": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "usageJson": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "requestId",
+                "method",
+                "path",
+                "endpointKind",
+                "routeKey",
+                "statusCode",
+                "outcome",
+                "estimatedUsage",
+                "providerId",
+                "providerKind",
+                "providerModel",
+                "clientApiKeyId",
+                "decisionJson",
+                "requestHeadersJson",
+                "responseHeadersJson",
+                "requestMetaJson",
+                "responseMetaJson",
+                "usageJson",
+                "retentionJson",
+                "requestBodyPath",
+                "responseBodyPath",
+                "reasoningBodyPath",
+                "startedAt",
+                "endedAt",
+                "durationMs",
+                "createdAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "nextCursor"
         ],
         "type": "object"
       }
@@ -8805,24 +9151,90 @@
     },
     "/api/traces": {
       "get": {
+        "description": "Without any of these query parameters, returns the latest 100 traces as {data}. With at least one, returns a newest-first page as {data, nextCursor}; nextCursor is null on the last page. Invalid parameters return 400.",
         "operationId": "readTraces",
+        "parameters": [
+          {
+            "description": "Only traces attributed to this agent ID (from the authenticating client key metadata)",
+            "in": "query",
+            "name": "actorId",
+            "required": false,
+            "schema": {
+              "pattern": "^[a-z0-9_-]{2,32}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only traces authenticated by this client key ID",
+            "in": "query",
+            "name": "clientKeyId",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only traces created at or after this ISO 8601 timestamp",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque nextCursor from the previous page",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size; default 50, maximum 200",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "properties": {
-                    "data": {
-                      "items": {
-                        "$ref": "#/components/schemas/Trace"
+                  "anyOf": [
+                    {
+                      "properties": {
+                        "data": {
+                          "items": {
+                            "$ref": "#/components/schemas/Trace"
+                          },
+                          "type": "array"
+                        }
                       },
-                      "type": "array"
+                      "required": [
+                        "data"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TracePage"
                     }
-                  },
-                  "required": [
-                    "data"
-                  ],
-                  "type": "object"
+                  ]
                 }
               }
             },

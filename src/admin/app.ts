@@ -1,4 +1,4 @@
-import {routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema} from '../contracts/model-admin.js';
+import {routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema, traceListDefaultLimit, traceListQueryKeys, traceListQuerySchema} from '../contracts/model-admin.js';
 import { maintenanceActive } from '../release/runtime.js';
 import { metadata } from '../release/runtime.js';
 import { packageRoot as releasePackageRoot } from '../config/paths.js';
@@ -1173,24 +1173,87 @@ async function listTelemetry(): Promise<Response> {
   });
 }
 
-async function listTraces(): Promise<Response> {
-  const traces = await prisma.trace.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-    include: {
-      events: {
-        orderBy: { occurredAt: 'asc' },
-      },
-      provider: { select: { id: true, slug: true, name: true, kind: true } },
-      clientApiKey: true,
-    },
-  });
+const traceListInclude = {
+  events: {
+    orderBy: { occurredAt: 'asc' },
+  },
+  provider: { select: { id: true, slug: true, name: true, kind: true } },
+  clientApiKey: true,
+} satisfies Prisma.TraceInclude;
 
+function serializeTraces(traces: Prisma.TraceGetPayload<{ include: typeof traceListInclude }>[]) {
+  return traces.map((trace) => ({
+    ...trace,
+    clientApiKey: trace.clientApiKey ? sanitizeClientApiKey(trace.clientApiKey) : null,
+  }));
+}
+
+/** Opaque, stable page cursor: base64url of the last row's [createdAt ISO, id]. */
+export function encodeTraceCursor(createdAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify([createdAt.toISOString(), id]), 'utf8').toString('base64url');
+}
+
+export function decodeTraceCursor(cursor: string): { createdAt: Date; id: string } | null {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (!Array.isArray(value) || value.length !== 2) return null;
+    const [createdAt, id] = value as unknown[];
+    if (typeof createdAt !== 'string' || typeof id !== 'string' || !id || id.length > 128) return null;
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime()) || date.toISOString() !== createdAt) return null;
+    return { createdAt: date, id };
+  } catch {
+    return null;
+  }
+}
+
+const serverTraceListQuerySchema = traceListQuerySchema.transform((query, context) => {
+  const cursor = query.cursor === undefined ? undefined : decodeTraceCursor(query.cursor);
+  if (cursor === null) {
+    context.addIssue({ code: 'custom', path: ['cursor'], message: 'Invalid cursor' });
+    return z.NEVER;
+  }
+  return { ...query, cursor };
+});
+
+async function listTraces(context: AdminContext): Promise<Response> {
+  const url = new URL(context.req.url);
+  if (!traceListQueryKeys.some((key) => url.searchParams.has(key))) {
+    // Original response: the latest 100 traces as {data}, unchanged for existing callers.
+    const traces = await prisma.trace.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: traceListInclude,
+    });
+    return Response.json({ data: serializeTraces(traces) });
+  }
+
+  const query = serverTraceListQuerySchema.parse(Object.fromEntries(traceListQueryKeys
+    .filter((key) => url.searchParams.has(key))
+    .map((key) => [key, url.searchParams.get(key)])));
+  const limit = query.limit ?? traceListDefaultLimit;
+  const where: Prisma.TraceWhereInput = {
+    ...(query.actorId ? { actorId: query.actorId } : {}),
+    ...(query.clientKeyId ? { clientApiKeyId: query.clientKeyId } : {}),
+    ...(query.since ? { createdAt: { gte: new Date(query.since) } } : {}),
+    ...(query.cursor ? {
+      OR: [
+        { createdAt: { lt: query.cursor.createdAt } },
+        { createdAt: query.cursor.createdAt, id: { lt: query.cursor.id } },
+      ],
+    } : {}),
+  };
+  const rows = await prisma.trace.findMany({
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: limit + 1,
+    include: traceListInclude,
+  });
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
   return Response.json({
-    data: traces.map((trace) => ({
-      ...trace,
-      clientApiKey: trace.clientApiKey ? sanitizeClientApiKey(trace.clientApiKey) : null,
-    })),
+    data: serializeTraces(page),
+    nextCursor: rows.length > limit && last ? encodeTraceCursor(last.createdAt, last.id) : null,
   });
 }
 
@@ -1702,7 +1765,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.get('/api/providers', requireAdminAuth, async () => listProviders());
   app.get('/api/routes', requireAdminAuth, async () => listRoutes());
   app.get('/api/telemetry', requireAdminAuth, async () => listTelemetry());
-  app.get('/api/traces', requireAdminAuth, async () => listTraces());
+  app.get('/api/traces', requireAdminAuth, async (context) => listTraces(context));
   app.get('/api/hive/status', requireAdminAuth, async (context) => context.json(await buildHiveStatus(env, context.get('requestId'))));
   app.get('/api/hive/updates', requireAdminAuth, async (context) => context.json({
     ...await updateStatus(metadata(releasePackageRoot).release, upgradeHome()),
