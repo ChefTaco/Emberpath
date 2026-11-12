@@ -15,7 +15,7 @@ The repository is a monorepo of independently locked workspaces:
 
 | Path | Workspace |
 |---|---|
-| `services/hive-router` | Model gateway and Hive console |
+| `services/hive-router` | Model gateway (Emberpath) |
 | `services/hive-iam` | IAM service and `@hivemagnus/hive-iam-sdk` |
 | `services/hive-mem` | HiveMem core, SDKs, and Hermes plugin |
 | `services/hive-skills` | Skills registry |

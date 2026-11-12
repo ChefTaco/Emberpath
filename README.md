@@ -9,10 +9,12 @@ This project was extracted from Hive with its migration history and client proto
 It is a single Node.js process written in strict TypeScript (Hono, Prisma 7,
 SQLite).
 
-**There is no built-in console.** The admin listener serves the administration API;
-`GET /` returns only a short fallback page. In the suite, the browser console is a
-separate product, [HiveXUI](https://github.com/ChefTaco/HiveXUI), which signs in through
-Oathweave (see [direct browser authorization](docs/OATHWEAVE.md)). Running on its own,
+**The UI lives in HiveXUI.** Emberpath has no web UI of its own: the standalone UI is
+retired, and [HiveXUI](https://github.com/ChefTaco/HiveXUI) is the UI for the Hive:Magnus
+product line. It signs in through Oathweave (see
+[direct browser authorization](docs/OATHWEAVE.md)). The admin listener serves the
+administration API; its old UI paths (`GET /` and any other non-API path) serve a short
+page that points to HiveXUI, or redirect to `HIVEXUI_URL` when you set it. Running on its own,
 Emberpath is managed through the admin API ([OpenAPI document](docs/openapi.json)) and the
 `hive-router` command.
 
@@ -61,6 +63,8 @@ ADMIN_HOST=0.0.0.0
 TLS_CERT_PATH=/config/tls/server.crt
 TLS_KEY_PATH=/config/tls/server.key
 NODE_EXTRA_CA_CERTS=/config/tls/server.crt
+# Optional: redirect old UI bookmarks on the admin listener to HiveXUI
+# HIVEXUI_URL=https://hivexui.example.com/
 EOF
 
 docker run --rm --network oathweave -v emberpath-data:/data -v "$PWD/tls:/config/tls:ro" \
@@ -193,7 +197,7 @@ expires); with it, that token is only a fallback until its own expiry. See
   lists into the catalog and keeps any operator overrides.
 - **Administration API**: providers and routing, traces, incidents, API keys,
   audit, and (when configured) IAM and Memory proxies, all behind PAM or IAM
-  OIDC login. HiveXUI is its browser console.
+  OIDC login. HiveXUI is its UI.
 - **Shadow decision model (optional)**: classifies prompts with the TypeSafe
   Jev decision API (with OpenRouter as fallback) and records the result on the
   trace without changing routing.
@@ -206,7 +210,7 @@ clients ──► API plane (API_HOST:API_PORT) ──► providers (OpenAI, Ant
                      └─ traces, metrics, quotas ─► SQLite (DATABASE_URL)
 
 operators ─► Admin plane (ADMIN_HOST:ADMIN_PORT)
-               ├─ GET /             fallback page only (the console is HiveXUI)
+               ├─ other paths       HiveXUI page, or 302 to HIVEXUI_URL (the UI is HiveXUI)
                ├─ /api/*            admin API (session cookie + permission checks)
                ├─ /api/iam/*        proxied to Hive IAM with a server-side client-credentials token
                ├─ /api/memory/*     proxied to HiveMem with a self-renewing Oathweave service token
@@ -291,7 +295,8 @@ directory. Variables with no default are optional unless marked **required**.
 | `ADMIN_PORT` | `9443` | Admin plane port. |
 | `PUBLIC_API_URL` | `http(s)://localhost:API_PORT` | Externally visible API URL, used in docs and enrollment output. The default scheme is `https` when TLS is configured. |
 | `PUBLIC_ADMIN_URL` | `http(s)://localhost:ADMIN_PORT` | Externally visible admin URL. Also the base of the default OIDC redirect URI. |
-| `HIVE_UI_PUBLIC_URL` | `PUBLIC_ADMIN_URL` | Public URL of the browser console. |
+| `HIVE_UI_PUBLIC_URL` | `PUBLIC_ADMIN_URL` | Public UI URL reported in the Hive status response. |
+| `HIVEXUI_URL` | | HiveXUI address. When set, the admin listener's old UI paths (`/` and any other non-API path) answer `302` to exactly this URL; unset, they serve a short page that points to HiveXUI. Must be an absolute `http(s)` URL without credentials or a fragment, or Emberpath refuses to start. API paths are unaffected. |
 | `TLS_CERT_PATH` / `TLS_KEY_PATH` | | PEM certificate and key. Both are required when `NODE_ENV=production` or `REQUIRE_TLS=true`. |
 | `REQUIRE_TLS` | `false` | Refuse to start without TLS, even outside production. |
 
@@ -414,7 +419,7 @@ npm run typecheck
 npm test                   # unit and integration tests (vitest)
 npm run test:routing-contract
 npm run build
-npm run test:e2e           # Playwright console tests (builds and serves a local stack)
+npm run test:e2e           # Playwright checks of the HiveXUI page and redirect (builds and starts two local servers)
 ```
 
 Live smoke tests against a running backend:
@@ -488,7 +493,8 @@ under `/data/router`. The image includes neither a PAM helper nor operator accou
 migrations require verified backups.
 
 `docker-compose.example.yml` is the Compose example from the legacy 1.x line: it builds or
-pulls `ghcr.io/cheftaco/hive-router` and does not run Emberpath 2.x.
+pulls `ghcr.io/cheftaco/hive-router` and does not run Emberpath 2.x. Its `HIVEXUI_URL` line
+shows where the setting goes; only Emberpath reads it.
 
 ### Production checklist
 
@@ -541,7 +547,7 @@ The evaluation reads credentials from the repository-root `.env` (override with
 | Path | Contents |
 |---|---|
 | `src/api` | API-plane routes, proxy execution, streaming failover |
-| `src/admin` | Admin API, permission checks, IAM/HiveMem proxies, fallback page |
+| `src/admin` | Admin API, permission checks, IAM/HiveMem proxies, HiveXUI page and redirect |
 | `src/providers` | Provider adapters, discovery, runtime and capability parsing |
 | `src/routing` | Aliases, rules, heuristics, adaptive ranking, decision model |
 | `src/security` | Admin sessions, PAM/OIDC auth, API keys, quotas, crypto |
@@ -549,7 +555,7 @@ The evaluation reads credentials from the repository-root `.env` (override with
 | `src/telemetry` | Logging, metrics, tracing, retention |
 | `prisma` | Prisma schema |
 | `scripts` | Deploy, smoke, evaluation and code-generation scripts |
-| `tests` | Vitest suites, Playwright console tests and fixtures |
+| `tests` | Vitest suites, Playwright HiveXUI page/redirect checks and fixtures |
 
 ## Managed upgrades
 

@@ -35,7 +35,6 @@
   ],
   "exclude": [
     "dist",
-    "ui/dist",
     "node_modules"
   ]
 }

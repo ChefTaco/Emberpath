@@ -71,6 +71,7 @@ export const routerEnvCatalog: EnvVarSpec[] = [
   { name: 'PUBLIC_API_URL', required: false, secret: false, default: 'http(s)://localhost:$API_PORT', description: 'Externally visible API URL, shown in docs and agent enrollment. The scheme follows the TLS configuration.' },
   { name: 'PUBLIC_ADMIN_URL', required: false, secret: false, default: 'http(s)://localhost:$ADMIN_PORT', description: 'Externally visible console URL. Also the base of the default OIDC redirect URI.' },
   { name: 'HIVE_UI_PUBLIC_URL', required: false, secret: false, default: '$PUBLIC_ADMIN_URL', description: 'Public URL of the Hive console.' },
+  { name: 'HIVEXUI_URL', required: false, secret: false, description: 'HiveXUI address. Emberpath has no UI of its own: when set, old UI paths on the admin listener redirect here; unset, they show a short page that points to HiveXUI. Absolute http(s) URL without credentials or a fragment.' },
   { name: 'TLS_CERT_PATH', required: false, secret: false, description: 'PEM certificate (chain) served on both listeners. Required with TLS_KEY_PATH when NODE_ENV=production or REQUIRE_TLS=true.' },
   { name: 'TLS_KEY_PATH', required: false, secret: false, description: 'PEM private key for TLS_CERT_PATH.' },
   { name: 'REQUIRE_TLS', required: false, secret: false, default: 'false', description: 'Refuse to start without TLS even outside production.' },
