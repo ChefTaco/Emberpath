@@ -34,7 +34,7 @@ published on npm. The npm package `@hivemagnus/hive-router` and the image
 `ghcr.io/cheftaco/hive-router` are the legacy Hive Router 1.x line, which predates this
 repository: `npm install` and `npx` resolve `@hivemagnus/hive-router` to 1.2.2, not to
 Emberpath 2.x, and it still bundles the old console on the admin listener. The
-[Hive README](https://github.com/ChefTaco/hive#legacy-npm-packages-1x) describes that line.
+[Hive README](https://github.com/ChefTaco/hive#the-retired-npm-packages) describes that line.
 
 ### Run the image on its own
 
@@ -531,8 +531,8 @@ The evaluation reads credentials from the repository-root `.env` (override with
 `EVAL_FIXTURES`, `EVAL_OUTPUT`, `EVAL_LIMIT`, `EVAL_REPEATS` (1–5),
 `EVAL_TIMEOUT_MS`, `EVAL_MAX_TOKENS`, `LLAMACPP_MODEL`, `LLAMACPP_API_KEY` and
 `LLAMACPP_THINKING=low`. See
-[the routing contract](https://github.com/ChefTaco/hive/blob/main/docs/HIVEROUTER_ROUTING_CONTRACT.md) and
-[the TypeSafe direct API notes](https://github.com/ChefTaco/hive/blob/main/docs/TYPESAFE_DIRECT_API.md).
+[the routing contract](docs/ROUTING_CONTRACT.md) and
+[the TypeSafe direct API notes](docs/TYPESAFE_DIRECT_API.md).
 
 ## Repository layout
 
@@ -556,7 +556,7 @@ Use `hive upgrade --dry-run`, then `hive upgrade` for the enrolled release bundl
 is read-only; migration requires a verified backup. Set `HIVE_AUTO_MIGRATE=true` explicitly for
 startup migrations outside a managed install. Slow or one-way automatic migrations are refused.
 `check --json` reports configuration without initializing state. No upgrade rotates signing keys
-or reseeds existing accounts. See [UPGRADING.md](https://github.com/ChefTaco/hive/blob/main/UPGRADING.md)
+or reseeds existing accounts. See [UPGRADING.md](https://github.com/ChefTaco/hive/blob/v1.2.2/UPGRADING.md)
 for adoption, compatibility, recovery, update notices and container controls.
 
 Container probes use a loopback `HIVE_HEALTH_URL`. Override its port/protocol for
