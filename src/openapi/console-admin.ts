@@ -14,7 +14,7 @@ export function consoleAdminOpenApi() {
     RoutingApplyRequest: contracts.routingApplyRequestSchema, RoutingRollbackRequest: contracts.routingRollbackRequestSchema,
     RoutingPreview: contracts.routingPreviewSchema, RoutingRevisions: contracts.routingRevisionsSchema,
     RoutingApplied: contracts.routingAppliedSchema, RoutingSnapshot: contracts.routingSnapshotSchema,
-    AdminMe: contracts.adminMeSchema, DocsIndex: contracts.docsIndexSchema, Trace: contracts.traceReadSchema, Telemetry: contracts.telemetrySchema, AuditEvent: contracts.auditReadSchema,
+    AdminMe: contracts.adminMeSchema, DocsIndex: contracts.docsIndexSchema, Trace: contracts.traceReadSchema, TracePage: contracts.tracePageSchema, Telemetry: contracts.telemetrySchema, AuditEvent: contracts.auditReadSchema,
     RuntimeSetting: contracts.runtimeSettingReadSchema, CodexOAuthStatus: contracts.codexOAuthStatusSchema,
     CodexOAuthStart: contracts.codexOAuthStartSchema, CodexOAuthCheck: contracts.codexOAuthCheckSchema,
     CodexOAuthResult: contracts.codexOAuthResultSchema, ConsoleOk: contracts.okSchema,
@@ -61,6 +61,22 @@ export function consoleAdminOpenApi() {
   for (const [path, name, result] of [['/api/telemetry', 'Telemetry', ref('Telemetry')], ['/api/traces', 'Traces', data(array('Trace'))],
     ['/api/audit', 'Audit', data(array('AuditEvent'))], ['/api/runtime-settings', 'RuntimeSettings', data(array('RuntimeSetting'))]] as const)
     operation(path, 'get', 'read' + name, path === '/api/runtime-settings' ? 'router:settings:read' : 'router:admin:read', result);
+  const traces = paths['/api/traces']!.get as {description?: string; parameters?: unknown[]; responses: Record<string, {description: string; content?: unknown}>};
+  const traceQuery = z.toJSONSchema(contracts.traceListQuerySchema, {io: 'input'}) as {properties: Record<string, unknown>};
+  const traceParameterDescriptions: Record<string, string> = {
+    actorId: 'Only traces attributed to this agent ID (from the authenticating client key metadata)',
+    clientKeyId: 'Only traces authenticated by this client key ID',
+    since: 'Only traces created at or after this ISO 8601 timestamp',
+    cursor: 'Opaque nextCursor from the previous page',
+    limit: 'Page size; default ' + contracts.traceListDefaultLimit + ', maximum ' + contracts.traceListMaxLimit,
+  };
+  traces.description = 'Without any of these query parameters, returns the latest 100 traces as {data}. With at least one, returns '
+    + 'a newest-first page as {data, nextCursor}; nextCursor is null on the last page. Invalid parameters return 400.';
+  traces.parameters = contracts.traceListQueryKeys.map((name) => ({name, in: 'query', required: false,
+    description: traceParameterDescriptions[name], schema: name === 'limit'
+      ? {type: 'integer', minimum: 1, maximum: contracts.traceListMaxLimit, default: contracts.traceListDefaultLimit}
+      : traceQuery.properties[name]}));
+  traces.responses['200'] = {...traces.responses['200']!, content: json({anyOf: [data(array('Trace')), ref('TracePage')]})};
   operation('/api/providers/codex-oauth/status', 'get', 'readCodexOAuthStatus', 'router:providers:read', data(ref('CodexOAuthStatus')));
   operation('/api/providers/codex-oauth/start', 'post', 'startCodexOAuth', 'router:providers:write', data(ref('CodexOAuthStart')));
   operation('/api/providers/codex-oauth/check', 'post', 'checkCodexOAuth', 'router:providers:write', data(ref('CodexOAuthResult')), 'CodexOAuthCheck');

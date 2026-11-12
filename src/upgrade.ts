@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path';
 import { loadEnv } from './config/env.js';
 import { packageRoot, hiveHome } from './config/paths.js';
 import { resolveSqlitePath, ensureSqliteSchema } from './storage/schema.js';
-import { schemaStatements, columnMigrations } from './storage/migrations/managed-format-1.js';
+import { schemaStatements, columnMigrations } from './storage/migrations/managed-format-2.js';
 import Database from './storage/sqlite.js';
 import { existsSync } from 'node:fs';
 import {

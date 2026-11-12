@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- Traces record the agent they belong to in a new nullable `actorId`, copied at trace start from
+  the authenticating client key's metadata (`actorId`, or `memoryAgentId` when the key has none)
+  and only when it is a valid agent ID. Request headers and bodies are never used. Existing
+  traces and unauthenticated requests keep `actorId: null`.
+- `GET /api/traces` accepts optional `actorId`, `clientKeyId`, `since` (ISO 8601) and `limit`
+  (default 50, maximum 200) filters with opaque `cursor` pagination. Passing any of them returns
+  a newest-first `{data, nextCursor}` page; invalid values return the existing `400` validation
+  error. Calls without them return the same latest-100 `{data}` list as before. The model admin
+  contract adds `traceListQuerySchema`, `tracePageSchema` and the optional `actorId` trace field.
+- Router data format `managed-format-2` adds the `Trace.actorId` column and
+  `(actorId, createdAt)` and `(clientApiKeyId, createdAt)` indexes. It is additive and fast;
+  apply it with `emberpath migrate` (or `HIVE_AUTO_MIGRATE=true`) when upgrading.
+
 ### Changed
 
 - Verify Oathweave admin tokens with the suite's shared verifier from `@hivemagnus/hive-common`,

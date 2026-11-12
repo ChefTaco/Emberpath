@@ -178,6 +178,7 @@ model Trace {
   providerKind        String?
   providerModel       String?
   clientApiKeyId      String?
+  actorId             String?
   decisionJson        String
   requestHeadersJson  String?
   responseHeadersJson String?
@@ -195,6 +196,9 @@ model Trace {
   provider            Provider?      @relation(fields: [providerId], references: [id], onDelete: SetNull)
   clientApiKey        ClientApiKey?  @relation(fields: [clientApiKeyId], references: [id], onDelete: SetNull)
   events              TraceEvent[]
+
+  @@index([actorId, createdAt])
+  @@index([clientApiKeyId, createdAt])
 }
 
 model TraceEvent {

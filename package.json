@@ -263,6 +263,14 @@
         "note": "Adopt existing compatible state and record its format; no destructive conversion."
       },
       {
+        "component": "router",
+        "id": "managed-format-2",
+        "checksum": "52116dfa91f7f4b02dc70538c18354f158fc9a627451bd700befec7db1a1e572",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Add nullable Trace.actorId with actor and client-key time indexes; additive, existing rows keep null."
+      },
+      {
         "component": "memory",
         "id": "managed-format-1",
         "checksum": "ed0f08de635923fe627dcf5e133555911da81f52157552cf8c0f5035e5b1dac7",

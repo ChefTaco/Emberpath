@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from './sqlite.js';
 import { loadEnv } from '../config/env.js';
-import { columnMigrations, schemaStatements } from './migrations/managed-format-1.js';
+import { columnMigrations, schemaStatements } from './migrations/managed-format-2.js';
 import { resolveSqlitePath } from './sqlite-path.js';
 import { log } from '../telemetry/logger.js';
 
@@ -59,11 +59,17 @@ export async function ensureSqliteSchema(): Promise<void> {
     database.exec('PRAGMA foreign_keys = ON;');
     database.exec('PRAGMA journal_mode = WAL;');
 
+    // Tables first, then additive columns, then indexes: an index can cover a
+    // column that an existing database only gains through reconciliation.
+    const indexStatements = schemaStatements.filter((statement) => /^CREATE (UNIQUE )?INDEX /u.test(statement));
     for (const statement of schemaStatements) {
-      database.exec(statement);
+      if (!indexStatements.includes(statement)) database.exec(statement);
     }
 
     const applied = reconcileSqliteColumns(database);
+    for (const statement of indexStatements) {
+      database.exec(statement);
+    }
     new QuotaLedger(database).migrateRetainedHistory();
     if (applied.length > 0) {
       log('info', 'Applied additive SQLite column migrations', { columns: applied });

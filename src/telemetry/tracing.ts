@@ -58,6 +58,24 @@ export function shouldCaptureTraceBodies(metadataJson: string | null | undefined
   return safeJsonParse<{ tracePrivacy?: string }>(metadataJson, {}).tracePrivacy !== 'metadata-only';
 }
 
+const ACTOR_ID_PATTERN = /^[a-z0-9_-]{2,32}$/u;
+
+/**
+ * Resolve the actor a trace belongs to from the authenticating client key's
+ * stored metadata only (`actorId`, or `memoryAgentId` when the key has no
+ * `actorId`). Request headers and bodies are never consulted, so callers cannot
+ * claim another actor's traffic. Values outside the agent ID format are ignored.
+ */
+export function traceActorIdFromKeyMetadata(metadataJson: string | null | undefined): string | null {
+  const metadata = safeJsonParse<unknown>(metadataJson, null);
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const record = metadata as Record<string, unknown>;
+  // memoryAgentId is only a fallback when the key has no actorId at all; an
+  // invalid actorId is not silently replaced by a different identifier.
+  const value = record['actorId'] !== undefined && record['actorId'] !== null ? record['actorId'] : record['memoryAgentId'];
+  return typeof value === 'string' && ACTOR_ID_PATTERN.test(value) ? value : null;
+}
+
 export async function startTrace(input: {
   requestId: string;
   method: string;
@@ -89,6 +107,7 @@ export async function startTrace(input: {
       decisionJson: prettyJson(input.decision),
       requestBodyPath: requestBodyHandle?.path ?? null,
       clientApiKeyId: input.clientApiKeyId ?? null,
+      actorId: traceActorIdFromKeyMetadata(key?.metadataJson),
     } satisfies Prisma.TraceUncheckedCreateInput,
   });
 
