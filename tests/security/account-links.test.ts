@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseAccountLinks,
   linkedLocalId,
-} from '../../src/security/account-links.js';
+} from '../../src/security/admin-identity.js';
 describe('explicit product identity links', () => {
   const identity = {
     issuer: 'https://identity.example.com',

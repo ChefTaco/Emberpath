@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Verify Oathweave admin tokens with the suite's shared verifier from `@hivemagnus/hive-common`,
+  keeping Emberpath's rules: people only, exact `emberpath` audience, required `clientId` and
+  `roles` claims, no clock-skew tolerance, an online session check on every request, and the
+  existing `EMBERPATH_OATHWEAVE_IDENTITIES_JSON` link format. The shared Oathweave conformance
+  vectors now run in the test suite. Error responses are unchanged.
+- `/health/live` and `/health/ready` on both listeners return the suite-standard health body
+  (`status`, `service`, `version`, `time`, named `checks`) with the same status codes as before.
+  `/health`, `/ready` and `/health/dependencies` keep their existing report bodies.
+- Every request runs in a request context, and log lines written while serving it carry its
+  request ID. The admin listener accepts a safe inbound `x-request-id`, `x-hive-request-id` or
+  `x-correlation-id` and W3C `traceparent`; the inference listener ignores them and always
+  generates its own ID, so external clients cannot choose request IDs. Both still echo the ID
+  as `x-request-id` and `x-hive-request-id`.
+
 ## [2.0.5] - 2026-11-11
 
 - Refuse native deployments and service restarts on Node.js below the package security minimum before changing remote state.

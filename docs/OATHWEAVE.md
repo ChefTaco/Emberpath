@@ -5,8 +5,12 @@ The optional suite integration verifies RS256 credentials against explicit
 configuration. Configure all three together; the issuer is the browser issuer
 selected in Oathweave, not an inferred native JWT issuer. TLS verification and
 online session revocation are mandatory. Tokens have one exact product audience
-and a maximum fifteen-minute lifetime. Permissions are not inferred from roles.
-Native machine credentials and standalone authentication remain available.
+and a maximum fifteen-minute lifetime, with no clock-skew tolerance. Tokens must
+carry `clientId` and `roles` claims, and only people (not service accounts) are
+accepted. Permissions are not inferred from roles. Verification uses the suite's
+shared verifier in `@hivemagnus/hive-common`, and the shared Oathweave conformance
+vectors run in the test suite. Native machine credentials and standalone
+authentication remain available.
 
 `EMBERPATH_OATHWEAVE_IDENTITIES_JSON` is a protected JSON array of explicit account links:
 
@@ -14,7 +18,8 @@ Native machine credentials and standalone authentication remain available.
 [{"issuer":"https://identity.example.com","subject":"example-subject","localId":"existing-product-identity"}]
 ```
 
-`localId` means existing AdminUser ID. Unlinked subjects are denied.
+`localId` means existing AdminUser ID; it may not be `system` or start with `service:`.
+Link issuers must be HTTPS URLs. Unlinked subjects are denied.
 Duplicate issuer/subject links, extra fields, and email-based mappings are rejected.
 Do not put live links or credentials in Git. Prepare and review links independently
 for each installation before applying configuration. No API request creates a

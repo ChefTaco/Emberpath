@@ -1,3 +1,4 @@
+import { getRequestContext } from '@hivemagnus/hive-common/context';
 import { loadEnv } from '../config/env.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -18,11 +19,14 @@ export function log(level: LogLevel, message: string, fields: Record<string, unk
     return;
   }
 
+  // Lines written while serving a request carry its request ID unless the caller set one.
+  const requestId = getRequestContext()?.requestId;
   const payload = {
     level,
     message,
     service: 'hive-router',
     timestamp: new Date().toISOString(),
+    ...(requestId ? { requestId } : {}),
     ...fields,
   };
 

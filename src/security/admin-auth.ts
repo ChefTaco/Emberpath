@@ -1,11 +1,10 @@
-import { parseAccountLinks, linkedLocalId } from './account-links.js';
 import type { AdminUser } from '../generated/prisma/client.js';
 import { SignJWT, jwtVerify } from 'jose';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Context, Next } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { randomUUID } from 'node:crypto';
-import { configuredOathweaveVerifier } from './oathweave.js';
+import { configuredOathweaveVerifier, linkedLocalId, parseAccountLinks } from './admin-identity.js';
 import { loadEnv } from '../config/env.js';
 import { expandAdminPermissions } from './admin-permissions.js';
 import { authenticateIamOidcUser } from './iam-oidc.js';

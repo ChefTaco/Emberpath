@@ -26,6 +26,7 @@ import { prisma } from '../storage/client.js';
 import { log } from '../telemetry/logger.js';
 import { loadEnv } from '../config/env.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
+import { registerHealthProbes } from '../status/health-probes.js';
 
 class Semaphore {
   private current = 0;
@@ -794,7 +795,7 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
   const app = new Hono<{ Variables: AppVariables }>();
   app.use('*', async (c,next)=>{if(maintenanceActive(new URL(c.req.url).pathname))return c.json({error:'Hive is undergoing maintenance'},503);await next();});
 
-  app.use('*', requestIdMiddleware);
+  app.use('*', requestIdMiddleware({ trustInbound: false }));
   app.use('*', bodyLimit({
     maxSize: env.MAX_REQUEST_BODY_BYTES,
     onError: (context) => context.json({ error: 'Request body too large' }, 413),
@@ -807,15 +808,11 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
 
   app.get('/', (context) => context.json({ service: 'hive-router-api', status: 'ok' }));
   app.get('/health', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'api' }));
-  app.get('/health/live', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'api', checks: [{ name: 'process', status: 'pass', message: 'running' }] }));
   app.get('/health/dependencies', async (context) => {
     const report = await buildRouterDependencyReport();
     return context.json(report, report.status === 'ready' ? 200 : 503);
   });
-  app.get('/health/ready', async (context) => {
-    const report = await buildRouterDependencyReport();
-    return context.json(report, report.status === 'ready' ? 200 : 503);
-  });
+  registerHealthProbes(app);
 
   app.get('/v1/models', async () => listAggregatedModels());
   app.post('/v1/responses', (context) => handleRouteExecution(context, 'v1.responses'));
