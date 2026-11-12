@@ -9,7 +9,7 @@ Security fixes are released for the latest `1.x` version.
 Please **do not** report security vulnerabilities through public GitHub issues.
 
 Report them privately through
-[GitHub private vulnerability reporting](https://github.com/ChefTaco/hive/security/advisories/new).
+[GitHub private vulnerability reporting](https://github.com/ChefTaco/Emberpath/security/advisories/new).
 Please include:
 
 - the affected component (Router, IAM, HiveMem, Skills, or an SDK) and version or commit
