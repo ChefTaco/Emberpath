@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
-import { createOathweaveVerifier } from '../../src/security/oathweave.js';
+import { createOathweaveVerifier } from '../../src/security/admin-identity.js';
 
 describe('Oathweave resource authentication', () => {
   let keys: Awaited<ReturnType<typeof generateKeyPair>>;

@@ -251,6 +251,8 @@ to `https://127.0.0.1:9443`. TLS is turned on when both `TLS_CERT_PATH` and
 `TLS_KEY_PATH` point at existing files. In development, with no certificate,
 the listeners use plain HTTP. Health endpoints on both listeners:
 `/health`, `/health/live`, `/health/ready` and `/health/dependencies`.
+`/health/live` and `/health/ready` use the suite-standard body; `/health/ready`
+answers 503 when the database is down or every enabled provider is unhealthy.
 
 Next steps:
 

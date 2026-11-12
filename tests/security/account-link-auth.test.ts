@@ -10,7 +10,8 @@ const identity = vi.hoisted(() => ({
   roles: ['SUPER_ADMIN'],
   permissions: ['router:providers:read'],
 }));
-vi.mock('../../src/security/oathweave.js', () => ({
+vi.mock('../../src/security/admin-identity.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/security/admin-identity.js')>()),
   configuredOathweaveVerifier: () => async () => identity,
 }));
 import { requireAdminAuth } from '../../src/security/admin-auth.js';

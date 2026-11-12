@@ -51,6 +51,7 @@ import { buildRouterOpenApiDocument, builtinApiDocs } from '../openapi/spec.js';
 import { loadEnv, type Env } from '../config/env.js';
 import { uiDistDir } from '../config/paths.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
+import { registerHealthProbes } from '../status/health-probes.js';
 import { getSecurityExporterJwksStatus } from '../security/security-exporter-jwks-status.js';
 import { inspectTlsCertificate } from '../status/tls-certificate.js';
 import {
@@ -1565,7 +1566,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       && verifyHash(token, env.HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH),
     ));
 
-  app.use('*', requestIdMiddleware);
+  app.use('*', requestIdMiddleware({ trustInbound: true }));
   app.use('*', async (context, next) => {
     await next();
     applyAdminSecurityHeaders(context.res.headers, env.NODE_ENV === 'production');
@@ -1626,15 +1627,11 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.all('/api/iam/*', requireAdminAuth, proxyIamRequest);
 
   app.get('/health', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'admin' }));
-  app.get('/health/live', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'admin', checks: [{ name: 'process', status: 'pass', message: 'running' }] }));
   app.get('/health/dependencies', async (context) => {
     const report = await buildRouterDependencyReport();
     return context.json(report, report.status === 'ready' ? 200 : 503);
   });
-  app.get('/health/ready', async (context) => {
-    const report = await buildRouterDependencyReport();
-    return context.json(report, report.status === 'ready' ? 200 : 503);
-  });
+  registerHealthProbes(app);
   app.get('/ready', async (context) => {
     const report = await buildRouterDependencyReport();
     return context.json(report, report.status === 'ready' ? 200 : 503);
