@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.1.0] - 2026-11-12
+## [2.2.0] - 2026-11-12
 
 ### Added
 
@@ -16,6 +16,8 @@
 - Router data format `managed-format-2` adds the `Trace.actorId` column and
   `(actorId, createdAt)` and `(clientApiKeyId, createdAt)` indexes. It is additive and fast;
   apply it with `emberpath migrate` (or `HIVE_AUTO_MIGRATE=true`) when upgrading.
+
+## [2.1.0] - 2026-11-12
 
 ### Changed
 
