@@ -259,6 +259,13 @@ function estimateUsage(route: RouteRequest, responseBody?: string, reasoningBody
   };
 }
 
+const CLIENT_DISCONNECTED = 'Client disconnected before a provider responded';
+
+/** Cancel a response body that will never be read so its connection is released. */
+function discardResponse(response: Response): void {
+  if (response.body && !response.bodyUsed) void response.body.cancel().catch(() => undefined);
+}
+
 async function runExecutionWithFailover(
   route: RouteRequest,
   decision: RouteDecision,
@@ -272,8 +279,19 @@ async function runExecutionWithFailover(
 
   let lastFailureResponse: Response | undefined;
   let lastFailureError: string | undefined;
+  // Only the last failed response is ever read (to answer the client), so every
+  // superseded one is cancelled to hand its upstream connection back.
+  const keepFailureResponse = (response: Response | undefined): void => {
+    if (lastFailureResponse && lastFailureResponse !== response) discardResponse(lastFailureResponse);
+    lastFailureResponse = response;
+  };
+  const nextCandidateAfter = (provider: ProviderRuntime): ProviderRuntime | undefined => {
+    const currentIndex = candidateProviders.indexOf(provider);
+    return candidateProviders.find((candidate, index) => index > currentIndex && !isCircuitOpen(candidate.id));
+  };
 
   for (const provider of candidateProviders) {
+    if (route.signal?.aborted) break;
     if (isCircuitOpen(provider.id)) {
       await addTraceEvent(traceId, {
         type: 'provider.skipped',
@@ -294,7 +312,7 @@ async function runExecutionWithFailover(
 
         if (shouldFailoverStatus(execution.response.status)) {
           markProviderFailure(provider.id);
-          lastFailureResponse = execution.response;
+          keepFailureResponse(execution.response);
           lastFailureError = `Upstream returned ${execution.response.status}`;
           await addTraceEvent(traceId, {
             type: 'provider.failover',
@@ -302,7 +320,7 @@ async function runExecutionWithFailover(
             message: `Provider ${provider.slug} returned ${execution.response.status}`,
           });
 
-          const nextProvider = candidateProviders.find((candidate) => candidate.id !== provider.id);
+          const nextProvider = nextCandidateAfter(provider);
           if (nextProvider) {
             failoverCounter.inc({
               route: route.routeKey,
@@ -316,10 +334,7 @@ async function runExecutionWithFailover(
         // Streaming-aware, retry-before-first-token failover: for SSE responses
         // with a downstream candidate still available, peek the first chunk to
         // catch upstreams that return 200 then immediately emit an error event.
-        const currentIndex = candidateProviders.indexOf(provider);
-        const hasNextCandidate = candidateProviders.some(
-          (candidate, index) => index > currentIndex && !isCircuitOpen(candidate.id),
-        );
+        const hasNextCandidate = nextCandidateAfter(provider) !== undefined;
         const responseContentType = execution.response.headers.get('content-type') ?? '';
         if (
           route.stream &&
@@ -331,6 +346,8 @@ async function runExecutionWithFailover(
         ) {
           const peeked = await peekStreamStart(execution.response.body);
           if (looksLikeStreamError(peeked.firstChunkText)) {
+            // The failed stream is abandoned here; release its upstream connection.
+            void peeked.stream.cancel().catch(() => undefined);
             markProviderFailure(provider.id);
             lastFailureError = `Provider ${provider.slug} emitted a stream error before the first token`;
             await addTraceEvent(traceId, {
@@ -340,9 +357,7 @@ async function runExecutionWithFailover(
               data: { phase: 'pre-first-byte' },
             });
             streamFailureCounter.inc({ route: route.routeKey, provider: provider.slug, phase: 'pre-first-byte' });
-            const nextProvider = candidateProviders.find(
-              (candidate, index) => index > currentIndex && !isCircuitOpen(candidate.id),
-            );
+            const nextProvider = nextCandidateAfter(provider);
             if (nextProvider) {
               failoverCounter.inc({
                 route: route.routeKey,
@@ -354,6 +369,7 @@ async function runExecutionWithFailover(
           }
 
           resetProviderCircuit(provider.id);
+          keepFailureResponse(undefined);
           const rebuiltResponse = new Response(peeked.stream, {
             status: execution.response.status,
             headers: execution.response.headers,
@@ -362,8 +378,22 @@ async function runExecutionWithFailover(
         }
 
         resetProviderCircuit(provider.id);
+        keepFailureResponse(undefined);
         return { provider, execution };
       } catch (error) {
+        if (route.signal?.aborted) {
+          // The caller went away. That says nothing about the provider, so it must
+          // not count towards its circuit breaker, and no other provider is tried.
+          keepFailureResponse(undefined);
+          lastFailureError = CLIENT_DISCONNECTED;
+          await addTraceEvent(traceId, {
+            type: 'provider.error',
+            phase: 'execution',
+            message: lastFailureError,
+            data: { providerId: provider.id, attempt },
+          });
+          return { failureError: lastFailureError };
+        }
         markProviderFailure(provider.id);
         lastFailureError = error instanceof Error ? error.message : 'Unknown provider execution error';
         await addTraceEvent(traceId, {
@@ -552,10 +582,14 @@ async function handleRouteExecution(
         streamFirstByteDuration.observe({ route: route.routeKey, provider: provider.slug }, tracePayload.firstByteMs);
       }
       const usage = execution.usage ?? tracePayload.usage ?? estimateUsage(route, tracePayload.responseBody, tracePayload.reasoningText);
+      const streamFailed = tracePayload.errored === true;
+      if (streamFailed) {
+        streamFailureCounter.inc({ route: route.routeKey, provider: provider.slug, phase: tracePayload.firstByteMs === undefined ? 'pre-first-byte' : 'mid-stream' });
+      }
       await finalizeTrace({
         traceId: trace.traceId,
         statusCode: execution.response.status,
-        outcome: TraceOutcome.SUCCEEDED,
+        outcome: streamFailed ? TraceOutcome.STREAM_FAILED : TraceOutcome.SUCCEEDED,
         providerId: provider.id,
         providerKind: provider.kind,
         providerModel: execution.providerModel ?? decision.targetModel ?? route.model,
@@ -578,7 +612,7 @@ async function handleRouteExecution(
         method: route.method,
         status: `${execution.response.status}`,
         provider: provider.slug,
-        outcome: 'succeeded',
+        outcome: streamFailed ? 'stream_failed' : 'succeeded',
       });
     }).catch((error) => {
       log('error', 'Failed to finalize streaming trace', { error: error instanceof Error ? error.message : String(error) });
