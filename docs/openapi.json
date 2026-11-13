@@ -791,6 +791,7 @@
                             "v1.audio.translations",
                             "v1.images.generations",
                             "v1.moderations",
+                            "v1.decisions",
                             "ollama.native",
                             "vllm.native"
                           ],
@@ -1127,6 +1128,7 @@
                             "v1.audio.translations",
                             "v1.images.generations",
                             "v1.moderations",
+                            "v1.decisions",
                             "ollama.native",
                             "vllm.native"
                           ],
@@ -2602,6 +2604,7 @@
                     "v1.audio.translations",
                     "v1.images.generations",
                     "v1.moderations",
+                    "v1.decisions",
                     "ollama.native",
                     "vllm.native"
                   ],
@@ -2844,6 +2847,7 @@
                 "v1.audio.translations",
                 "v1.images.generations",
                 "v1.moderations",
+                "v1.decisions",
                 "ollama.native",
                 "vllm.native"
               ],
@@ -2990,6 +2994,7 @@
                     "v1.audio.translations",
                     "v1.images.generations",
                     "v1.moderations",
+                    "v1.decisions",
                     "ollama.native",
                     "vllm.native"
                   ],
@@ -3126,6 +3131,7 @@
                     "v1.audio.translations",
                     "v1.images.generations",
                     "v1.moderations",
+                    "v1.decisions",
                     "ollama.native",
                     "vllm.native"
                   ],
@@ -3262,6 +3268,7 @@
                           "v1.audio.translations",
                           "v1.images.generations",
                           "v1.moderations",
+                          "v1.decisions",
                           "ollama.native",
                           "vllm.native"
                         ],
@@ -3477,6 +3484,7 @@
                     "v1.audio.translations",
                     "v1.images.generations",
                     "v1.moderations",
+                    "v1.decisions",
                     "ollama.native",
                     "vllm.native"
                   ],
@@ -3794,6 +3802,7 @@
                               "v1.audio.translations",
                               "v1.images.generations",
                               "v1.moderations",
+                              "v1.decisions",
                               "ollama.native",
                               "vllm.native"
                             ],
@@ -4328,6 +4337,7 @@
                           "v1.audio.translations",
                           "v1.images.generations",
                           "v1.moderations",
+                          "v1.decisions",
                           "ollama.native",
                           "vllm.native"
                         ],
@@ -9354,6 +9364,203 @@
           }
         },
         "summary": "OpenAI-compatible completions proxy endpoint"
+      }
+    },
+    "/v1/decisions": {
+      "post": {
+        "operationId": "post__v1_decisions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": {},
+                "properties": {
+                  "input": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 131072,
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "model": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "prompt_cache_key": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "prompt_cache_options": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {},
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "questions": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {
+                        "choices": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {
+                              "description": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "value": {
+                                "type": [
+                                  "string",
+                                  "boolean"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "value"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 255,
+                          "minItems": 2,
+                          "type": "array"
+                        },
+                        "instructions": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "items": {
+                                "additionalProperties": {},
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "type": "object"
+                              },
+                              "minItems": 1,
+                              "type": "array"
+                            }
+                          ]
+                        },
+                        "levels": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {
+                              "description": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "label": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 10,
+                          "minItems": 2,
+                          "type": "array"
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "type": {
+                          "enum": [
+                            "predicate",
+                            "choice",
+                            "score"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "instructions"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 400,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "safety_identifier": {
+                    "anyOf": [
+                      {
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stream": {}
+                },
+                "required": [
+                  "model",
+                  "questions",
+                  "input"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decision: `{model, answers[], usage}` with one answer per question, in question order"
+          },
+          "400": {
+            "description": "Invalid request, or no configured backend supports a feature the request uses (the error names it)"
+          },
+          "403": {
+            "description": "Client key scope or a routing rule denies the request"
+          },
+          "429": {
+            "description": "Client key quota exceeded"
+          },
+          "503": {
+            "description": "No eligible decisions backend is configured or reachable"
+          }
+        },
+        "summary": "OpenAI-compatible Decisions API, served by OpenAI gpt-6-luna or by Jev (TypeSafe or OpenRouter) through translation"
       }
     },
     "/v1/embeddings": {

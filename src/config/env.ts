@@ -169,6 +169,9 @@ export const envSchema = z.object({
   HIVE_ROUTER_DECISION_MODEL: z.string().min(1).default("~typesafe/jev-latest"),
   HIVE_ROUTER_DECISION_MODE: z.enum(["off", "shadow"]).default("shadow"),
   HIVE_ROUTER_DECISION_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(10_000),
+  // Public POST /v1/decisions only (unrelated to the shadow decision model above):
+  // when true, startup seeds Jev provider records from the shadow keys.
+  EMBERPATH_DECISIONS_JEV_ENABLED: booleanStringSchema.prefault('false'),
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrlSchema,
   PROMETHEUS_PREFIX: z.string().default('hive_router_'),
   DEFAULT_TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).default(7),

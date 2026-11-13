@@ -13,6 +13,7 @@ export const endpointKindSchema = z.enum([
   'v1.audio.translations',
   'v1.images.generations',
   'v1.moderations',
+  'v1.decisions',
   'ollama.native',
   'vllm.native',
 ]);

@@ -47,6 +47,10 @@ Official sources: [HTTP API reference](https://docs.typesafe.ai/api),
 [quick start](https://docs.typesafe.ai/introduction/quickstart),
 [model names and aliases](https://docs.typesafe.ai/models).
 
+The public `POST /v1/decisions` endpoint can also be served by Jev, translated
+from the OpenAI Decisions format. That is separate from the shadow classifier
+described here and is opt-in; see the README's Decisions API section.
+
 ## Router adapter
 
 [`src/routing/typesafe.ts`](../src/routing/typesafe.ts)

@@ -6,6 +6,7 @@ import { prettyJson, safeJsonParse } from '../utils/json.js';
 import { storeBody } from '../storage/bodies.js';
 import { loadEnv } from '../config/env.js';
 import type { RouteDecision } from '../providers/types.js';
+import type { DecisionsRequestSummary } from '../decisions-api/schema.js';
 
 export interface UsageSnapshot {
   inputTokens?: number | undefined;
@@ -15,6 +16,10 @@ export interface UsageSnapshot {
   outputWords?: number | undefined;
   totalWords?: number | undefined;
   reasoningTokens?: number | undefined;
+  /** Input tokens served from the provider's prompt cache (Decisions API). */
+  cachedInputTokens?: number | undefined;
+  /** Input tokens written to the provider's prompt cache (Decisions API). */
+  cacheWriteInputTokens?: number | undefined;
 }
 
 export interface TraceRequestMeta {
@@ -23,6 +28,13 @@ export interface TraceRequestMeta {
   routingTrait: string | undefined;
   stream: boolean;
   modalities: string[];
+  /** Decisions API only: counts and types, never question or input text. */
+  decisionsApi?: DecisionsRequestSummary | undefined;
+}
+
+export interface DecisionsResponseSummary {
+  backend: string;
+  answerTypes: Record<string, number>;
 }
 
 export type TraceResponseMeta =
@@ -30,6 +42,8 @@ export type TraceResponseMeta =
   | { contentType: string; streamPhase: 'pre-first-byte' | 'mid-stream'; reachedClient: boolean; retrySafe: boolean }
   | { denialReason: string }
   | { error: string }
+  | { contentType: string; decisionsApi: DecisionsResponseSummary }
+  | { error: string; decisionsApi: { rejections: Array<{ provider: string; backend?: string | undefined; reason: string }> } }
   | Record<string, never>;
 
 export type TraceEventInput =
@@ -37,7 +51,8 @@ export type TraceEventInput =
   | { type: 'provider.failover'; phase: 'execution'; message: string }
   | { type: 'provider.stream_failover'; phase: 'execution'; message: string; data: { phase: string } }
   | { type: 'provider.error'; phase: 'execution'; message: string; data: { providerId: string; attempt: number } }
-  | { type: 'route.denied'; phase: 'routing'; message: string };
+  | { type: 'route.denied'; phase: 'routing'; message: string }
+  | { type: 'provider.ineligible'; phase: 'routing'; message: string; data: { provider: string; backend?: string | undefined } };
 
 export interface FinalizeTraceInput {
   traceId: string;
@@ -52,6 +67,11 @@ export interface FinalizeTraceInput {
   estimatedUsage?: boolean | undefined;
   responseBody?: string | undefined;
   reasoningBody?: string | undefined;
+  /**
+   * `input-only` prices input tokens alone (the Decisions API bills only input
+   * tokens), so only the provider's declared input price is required.
+   */
+  pricing?: 'input-and-output' | 'input-only' | undefined;
 }
 
 export function shouldCaptureTraceBodies(metadataJson: string | null | undefined): boolean {
@@ -135,7 +155,10 @@ export async function finalizeTrace(input: FinalizeTraceInput): Promise<void> {
   const provider = input.providerId ? await prisma.provider.findUnique({ where: { id: input.providerId }, select: { capabilityJson: true } }) : null;
   const prices = safeJsonParse<{ inputCostPerMillionTokens?: number; outputCostPerMillionTokens?: number }>(provider?.capabilityJson, {});
   const known = !input.estimatedUsage && [prices.inputCostPerMillionTokens, prices.outputCostPerMillionTokens, input.usage?.inputTokens, input.usage?.outputTokens].every((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0) && typeof prices.inputCostPerMillionTokens === 'number' && typeof prices.outputCostPerMillionTokens === 'number' && typeof input.usage?.inputTokens === 'number' && typeof input.usage?.outputTokens === 'number';
-  const costUsd = known ? (input.usage!.inputTokens! * prices.inputCostPerMillionTokens! + input.usage!.outputTokens! * prices.outputCostPerMillionTokens!) / 1_000_000 : undefined;
+  const inputOnlyKnown = input.pricing === 'input-only' && !input.estimatedUsage && typeof prices.inputCostPerMillionTokens === 'number' && Number.isFinite(prices.inputCostPerMillionTokens) && prices.inputCostPerMillionTokens >= 0 && typeof input.usage?.inputTokens === 'number' && Number.isFinite(input.usage.inputTokens) && input.usage.inputTokens >= 0;
+  const costUsd = input.pricing === 'input-only'
+    ? inputOnlyKnown ? (input.usage!.inputTokens! * prices.inputCostPerMillionTokens!) / 1_000_000 : undefined
+    : known ? (input.usage!.inputTokens! * prices.inputCostPerMillionTokens! + input.usage!.outputTokens! * prices.outputCostPerMillionTokens!) / 1_000_000 : undefined;
   await sqliteWrite(() => quotaLedger().settle(input.traceId, input.outcome === TraceOutcome.DENIED ? 0 : input.estimatedUsage ? undefined : input.usage?.totalTokens, { ...(costUsd !== undefined ? { costUsd, source: 'operator-declared-provider-prices' } : {}), estimated: input.estimatedUsage ?? input.usage?.totalTokens === undefined }));
   const env = loadEnv();
   const responseBodyHandle = captureBodies && env.CAPTURE_RESPONSE_BODIES && input.responseBody

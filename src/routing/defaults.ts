@@ -115,3 +115,32 @@ export const ROUTING_PROFILE_RULES = [
     actionJson: JSON.stringify({ providerKinds: [ProviderKind.CODEX, ProviderKind.OPENROUTER, ProviderKind.ANTHROPIC, ProviderKind.OPENAI] }),
   },
 ];
+
+// Public OpenAI-compatible Decisions API (POST /v1/decisions). Kept apart from
+// ROUTING_PROFILE_ALIASES, whose vocabulary is the shadow decision model's
+// profile contract; `decision` is not a routing profile.
+export const DECISIONS_API_ALIASES = [
+  {
+    alias: 'decision',
+    upstreamModel: 'jev-latest',
+    description: 'Decisions API (POST /v1/decisions): Jev through TypeSafe or OpenRouter, with OpenAI gpt-6-luna as the alternative.',
+  },
+];
+
+export const DECISIONS_API_RULES = [
+  {
+    name: 'route-decision-alias',
+    kind: RouteRuleKind.MODEL_ALIAS,
+    priority: 50,
+    matchJson: JSON.stringify({ models: ['decision'], endpointKinds: ['v1.decisions'] }),
+    actionJson: JSON.stringify({ providerKinds: [ProviderKind.OPENAI_GENERIC, ProviderKind.OPENROUTER, ProviderKind.OPENAI] }),
+  },
+  {
+    // Jev is a decision model, not a chat model.
+    name: 'deny-decision-alias-chat',
+    kind: RouteRuleKind.MODEL_ALIAS,
+    priority: 51,
+    matchJson: JSON.stringify({ models: ['decision'], endpointKinds: ['v1.chat.completions', 'v1.responses', 'v1.completions'] }),
+    actionJson: JSON.stringify({ deny: true, denyReason: 'The decision alias serves POST /v1/decisions only' }),
+  },
+];

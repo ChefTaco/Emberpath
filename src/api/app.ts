@@ -28,6 +28,9 @@ import { loadEnv } from '../config/env.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { registerHealthProbes } from '../status/health-probes.js';
 import { getSemaphore, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
+import { decisionsError, decisionsRequestSchema, summarizeDecisionsRequest, type DecisionsErrorBody } from '../decisions-api/schema.js';
+import { planDecisions, type DecisionsRejection } from '../decisions-api/backends.js';
+import { executeDecisionsPlan } from '../decisions-api/execute.js';
 
 function toHeaderObject(headers: Headers): Record<string, string> {
   return Object.fromEntries(headers.entries());
@@ -392,6 +395,39 @@ function copyResponseHeaders(headers: Headers): Headers {
   return copied;
 }
 
+/**
+ * Reserve `tokenReservation` tokens against the calling client key's quota.
+ * Returns the response to send when the request must stop here.
+ */
+async function reserveClientQuota(
+  context: Context<{ Variables: AppVariables }>,
+  route: RouteRequest,
+  tokenReservation: number,
+): Promise<Response | { reservationId: string | undefined; warnings: string[] }> {
+  const clientKey = context.get('clientApiKey')!;
+  const quota = await enforceClientKeyQuota(clientKey, tokenReservation);
+  if (quota.unavailable) return context.json({ error: 'Quota accounting unavailable' }, 503, { 'retry-after': '5' });
+  if (!quota.allowed) {
+    requestCounter.inc({
+      plane: 'api',
+      route: route.routeKey,
+      method: route.method,
+      status: '429',
+      provider: 'quota',
+      outcome: 'quota_exceeded',
+    });
+    return context.json(
+      {
+        error: 'Quota exceeded',
+        quota: { exceeded: quota.exceeded },
+      },
+      429,
+      { 'retry-after': '3600', 'x-hive-quota-exceeded': quota.exceeded.join(',') },
+    );
+  }
+  return { reservationId: quota.reservationId, warnings: quota.warnings };
+}
+
 async function handleRouteExecution(
   context: Context<{ Variables: AppVariables }>,
   endpointKind: EndpointKind,
@@ -413,27 +449,9 @@ async function handleRouteExecution(
     const completions = Number(rawBody?.n ?? 1);
     if (!Number.isSafeInteger(completions) || completions < 1 || completions > 128) return context.json({ error: 'Invalid completion count' }, 400);
     const tokenReservation = Buffer.byteLength(route.requestBodyText ?? "") + (Number.isSafeInteger(maxOutput) && maxOutput >= 0 ? maxOutput * completions : 4096);
-    const quota = await enforceClientKeyQuota(clientKey, tokenReservation);
-    if (quota.unavailable) return context.json({ error: 'Quota accounting unavailable' }, 503, { 'retry-after': '5' });
+    const quota = await reserveClientQuota(context, route, tokenReservation);
+    if (quota instanceof Response) return quota;
     quotaReservationId = quota.reservationId;
-    if (!quota.allowed) {
-      requestCounter.inc({
-        plane: 'api',
-        route: route.routeKey,
-        method: route.method,
-        status: '429',
-        provider: 'quota',
-        outcome: 'quota_exceeded',
-      });
-      return context.json(
-        {
-          error: 'Quota exceeded',
-          quota: { exceeded: quota.exceeded },
-        },
-        429,
-        { 'retry-after': '3600', 'x-hive-quota-exceeded': quota.exceeded.join(',') },
-      );
-    }
     quotaWarnings = quota.warnings;
   }
 
@@ -663,6 +681,159 @@ async function handleRouteExecution(
   });
 }
 
+/** Output allowance per question when reserving client quota for a decision. */
+const DECISIONS_OUTPUT_TOKENS_PER_QUESTION = 64;
+
+function decisionsJson(body: DecisionsErrorBody, status: number, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
+}
+
+/** 400 when only request features stand in the way, otherwise 503. */
+function decisionsUnavailable(rejections: DecisionsRejection[]): { status: number; body: DecisionsErrorBody } {
+  const details = rejections.map(({ provider, backend, reason }) => ({ provider, ...(backend ? { backend } : {}), reason }));
+  const features = [...new Set(rejections.filter((rejection) => rejection.kind === 'feature').map((rejection) => rejection.reason))];
+  if (features.length > 0) {
+    return {
+      status: 400,
+      body: decisionsError(`No configured decisions backend supports this request: ${features.join('; ')}`, 'invalid_request_error', 'unsupported_decision_feature', details),
+    };
+  }
+  return {
+    status: 503,
+    body: decisionsError(
+      rejections.length > 0
+        ? `No configured decisions backend can serve this request: ${[...new Set(rejections.map((rejection) => rejection.reason))].join('; ')}`
+        : 'No provider is configured for /v1/decisions',
+      'service_unavailable', 'no_decisions_backend', details,
+    ),
+  };
+}
+
+/**
+ * POST /v1/decisions: the OpenAI Decisions wire format in and out, routed like
+ * every other inference call (client key, aliases, rules, failover, traces,
+ * quotas), served by OpenAI natively or by Jev through translation.
+ */
+async function handleDecisionsExecution(context: Context<{ Variables: AppVariables }>): Promise<Response> {
+  const startedAt = Date.now();
+  // Routing traits are a chat-path feature; a trait header never applies here.
+  const route = { ...await buildRouteRequest(context, 'v1.decisions'), routingTrait: undefined };
+  if (!route.requestBodyJson || typeof route.requestBodyJson !== 'object' || Array.isArray(route.requestBodyJson)) {
+    return decisionsJson(decisionsError('The request body must be a JSON object', 'invalid_request_error', 'invalid_json'), 400);
+  }
+  const parsed = decisionsRequestSchema.safeParse(route.requestBodyJson);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const param = issue?.path.map(String).join('.') || undefined;
+    return decisionsJson(decisionsError(issue ? `${param ? `${param}: ` : ''}${issue.message}` : 'Invalid request', 'invalid_request_error', 'invalid_request', undefined, param), 400);
+  }
+  const body = parsed.data;
+  const summary = summarizeDecisionsRequest(body);
+
+  let quotaWarnings: string[] = [];
+  let quotaReservationId: string | undefined;
+  if (context.get('clientApiKey')) {
+    // Decisions have no max-output parameter; answers are bounded per question.
+    const tokenReservation = Buffer.byteLength(route.requestBodyText ?? '') + body.questions.length * DECISIONS_OUTPUT_TOKENS_PER_QUESTION;
+    const quota = await reserveClientQuota(context, route, tokenReservation);
+    if (quota instanceof Response) return quota;
+    quotaReservationId = quota.reservationId;
+    quotaWarnings = quota.warnings;
+  }
+
+  const providers = await listProviderRuntimes();
+  // Images are judged per backend by the planner, which names the feature when
+  // a backend cannot take them, so they do not filter candidates here.
+  const decision = await resolveRoute({ ...route, modalities: [] }, providers);
+  const trace = await startTrace({
+    requestId: route.requestId,
+    method: route.method,
+    path: route.path,
+    endpointKind: route.endpointKind,
+    routeKey: route.routeKey,
+    requestHeaders: redactHeaders(route.headers),
+    requestMeta: {
+      contentType: route.contentType,
+      model: route.model,
+      routingTrait: undefined,
+      stream: false,
+      modalities: route.modalities,
+      decisionsApi: summary,
+    },
+    decision,
+    requestBody: route.requestBodyText,
+    clientApiKeyId: context.get('clientApiKey')?.id,
+  });
+  if (quotaReservationId) await sqliteWrite(() => quotaLedger().attach(quotaReservationId, trace.traceId));
+  context.set('traceContext', { traceId: trace.traceId, requestId: route.requestId });
+
+  const fail = async (status: number, responseBody: DecisionsErrorBody | string, meta: Parameters<typeof finalizeTrace>[0]['responseMeta'], outcome: TraceOutcome = TraceOutcome.FAILED, counterOutcome = 'failed'): Promise<Response> => {
+    const text = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
+    await finalizeTrace({
+      traceId: trace.traceId,
+      statusCode: status,
+      outcome,
+      responseBody: text,
+      ...(outcome === TraceOutcome.DENIED ? {} : { estimatedUsage: true, usage: estimateUsage(route, text) }),
+      responseMeta: meta,
+    });
+    requestCounter.inc({ plane: 'api', route: route.routeKey, method: route.method, status: `${status}`, provider: outcome === TraceOutcome.DENIED ? 'denied' : 'none', outcome: counterOutcome });
+    return new Response(text, { status, headers: { 'content-type': 'application/json' } });
+  };
+
+  if (decision.denialReason) {
+    await addTraceEvent(trace.traceId, { type: 'route.denied', phase: 'routing', message: decision.denialReason });
+    return fail(403, decisionsError(decision.denialReason, 'permission_error', 'route_denied'), { denialReason: decision.denialReason }, TraceOutcome.DENIED, 'denied');
+  }
+
+  const candidates = decision.candidateProviderIds
+    .map((providerId) => providers.find((provider) => provider.id === providerId))
+    .filter((provider): provider is ProviderRuntime => Boolean(provider));
+  const targetModel = decision.targetModel ?? body.model;
+  const plan = planDecisions(body, candidates, { model: targetModel, viaAlias: targetModel !== body.model });
+  for (const rejection of plan.rejections) {
+    await addTraceEvent(trace.traceId, { type: 'provider.ineligible', phase: 'routing', message: `Provider ${rejection.provider} is ineligible: ${rejection.reason}`, data: { provider: rejection.provider, backend: rejection.backend } });
+  }
+  if (plan.entries.length === 0) {
+    const unavailable = decisionsUnavailable(plan.rejections);
+    return fail(unavailable.status, unavailable.body, { error: unavailable.body.error.message, decisionsApi: { rejections: plan.rejections.map(({ provider, backend, reason }) => ({ provider, backend, reason })) } });
+  }
+
+  const executed = await executeDecisionsPlan(route, plan.entries, trace.traceId);
+  if (!executed.result) {
+    if (executed.failureResponse) {
+      // Upstream error shapes are not documented; pass the last one through.
+      return fail(executed.failureResponse.status, executed.failureResponse.text, { error: executed.failureError ?? `Upstream returned ${executed.failureResponse.status}` });
+    }
+    const error = executed.failureError ?? 'All candidate providers failed';
+    return fail(503, decisionsError(error, 'service_unavailable', 'decisions_backend_failed'), { error });
+  }
+
+  const { entry, execution, responseText, answerTypes } = executed.result;
+  const provider = entry.provider;
+  const status = execution.response.status;
+  const responseHeaders = copyResponseHeaders(execution.response.headers);
+  if (quotaWarnings.length > 0) responseHeaders.set('x-hive-quota-warning', quotaWarnings.join(','));
+  const contentType = execution.response.headers.get('content-type') ?? 'application/json';
+  await finalizeTrace({
+    traceId: trace.traceId,
+    statusCode: status,
+    outcome: execution.response.ok ? TraceOutcome.SUCCEEDED : TraceOutcome.FAILED,
+    providerId: provider.id,
+    providerKind: provider.kind,
+    providerModel: entry.model,
+    responseHeaders: redactHeaders(toHeaderObject(responseHeaders)),
+    usage: execution.usage ?? estimateUsage(route, responseText),
+    estimatedUsage: execution.usage === undefined,
+    pricing: 'input-only',
+    responseBody: responseText,
+    responseMeta: { contentType, decisionsApi: { backend: entry.backend, answerTypes } },
+  });
+  requestDuration.observe({ plane: 'api', route: route.routeKey, method: route.method, provider: provider.slug }, Date.now() - startedAt);
+  requestCounter.inc({ plane: 'api', route: route.routeKey, method: route.method, status: `${status}`, provider: provider.slug, outcome: execution.response.ok ? 'succeeded' : 'failed' });
+  return new Response(responseText, { status, headers: responseHeaders });
+}
+
 async function listAggregatedModels(): Promise<Response> {
   const [providers, aliases, runtimes] = await Promise.all([
     prisma.providerModel.findMany({
@@ -767,6 +938,7 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
   app.post('/v1/audio/translations', (context) => handleRouteExecution(context, 'v1.audio.translations'));
   app.post('/v1/images/generations', (context) => handleRouteExecution(context, 'v1.images.generations'));
   app.post('/v1/moderations', (context) => handleRouteExecution(context, 'v1.moderations'));
+  app.post('/v1/decisions', (context) => handleDecisionsExecution(context));
 
   app.get('/api/tags', (context) => handleRouteExecution(context, 'ollama.native'));
   app.post('/api/show', (context) => handleRouteExecution(context, 'ollama.native'));

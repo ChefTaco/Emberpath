@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Added
+
+- `POST /v1/decisions`: the OpenAI Decisions API (`questions[]` of `predicate`, `choice` and
+  `score`, answered with `{model, answers[], usage}` in question order). It is routed like
+  `/v1/chat/completions`, with client key scopes, aliases, routing rules, provider priority,
+  failover, traces (`actorId`, `metadata-only`), quotas and usage. Backends: OpenAI
+  `gpt-6-luna` (passed through), and Jev through TypeSafe (`OPENAI_GENERIC` tagged
+  `jev-decisions`) or OpenRouter, translated both ways. A backend that cannot express a request
+  feature (Jev: images, tool items, prompt caching, `safety_identifier`) is skipped for that
+  request, and with none left the answer is `400 unsupported_decision_feature` naming it.
+  `CODEX` and other chat-only kinds never serve decisions. `OPENAI` providers list
+  `v1.decisions` in their default supported routes; `v1.decisions` is a new endpoint kind in the
+  model-admin contract and the OpenAPI document.
+- `EMBERPATH_DECISIONS_JEV_ENABLED` (default `false`): explicit opt-in that seeds the
+  decisions-only `typesafe-jev` and `openrouter-jev` provider records from the shadow decision
+  keys. Without it the shadow keys are never used for `/v1/decisions`. Shadow mode and its
+  settings are unchanged.
+- A built-in `decision` alias (to `jev-latest`, with `gpt-6-luna` as the alternative) and the
+  rules `route-decision-alias` and `deny-decision-alias-chat`, seeded on fresh installs only.
+  Existing installations add them with a routing revision; the README's Decisions API section
+  has the exact patch.
+- Decisions traces record question counts and types, the input shape, the backend and answer
+  types, never the question text. Cost uses only the declared input price, since only input
+  tokens are billed. Decisions usage counts toward the calling key's quota; shadow decision
+  calls still do not.
+
+### Changed
+
+- Providers that do not list `v1.models` in their supported routes are healthy when their
+  host answers without a server error, so decisions-only records do not show as down.
+
 ### Security
 
 - Update `@hono/node-server` to 2.1.8 for GHSA-qv5m-9pm6-hqp3 and GHSA-jpvv-r467-5p4w.

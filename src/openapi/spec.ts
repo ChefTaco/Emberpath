@@ -4,6 +4,7 @@ import { packageInfo } from '../config/paths.js';
 import { z } from 'zod';
 import { actorCredentialSchema } from '../admin/actor-credentials.js';
 import {modelAdminOpenApi} from './model-admin.js';
+import { decisionsRequestSchema } from '../decisions-api/schema.js';
 
 export interface BuiltinApiDocEntry {
   scope: 'router' | 'provider';
@@ -26,6 +27,7 @@ export const builtinApiDocs: BuiltinApiDocEntry[] = [
   { scope: 'router', method: 'POST', route: '/v1/audio/translations', title: 'Audio Translations', summary: 'OpenAI-compatible audio translation proxy endpoint', implemented: true },
   { scope: 'router', method: 'POST', route: '/v1/images/generations', title: 'Image Generations', summary: 'OpenAI-compatible image generation proxy endpoint', implemented: true },
   { scope: 'router', method: 'POST', route: '/v1/moderations', title: 'Moderations', summary: 'OpenAI-compatible moderation proxy endpoint', implemented: true },
+  { scope: 'router', method: 'POST', route: '/v1/decisions', title: 'Decisions', summary: 'OpenAI-compatible Decisions API, served by OpenAI gpt-6-luna or by Jev (TypeSafe or OpenRouter) through translation', implemented: true },
   { scope: 'provider', method: 'GET', route: '/api/tags', title: 'Ollama Tags', summary: 'Enumerate Ollama models', implemented: true, providerKind: 'OLLAMA' },
   { scope: 'provider', method: 'POST', route: '/api/show', title: 'Ollama Show', summary: 'Show Ollama model metadata', implemented: true, providerKind: 'OLLAMA' },
   { scope: 'provider', method: 'GET', route: '/api/ps', title: 'Ollama Running Models', summary: 'List active Ollama model runners', implemented: true, providerKind: 'OLLAMA' },
@@ -59,6 +61,15 @@ export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string,
     ]),
   );
 
+  const decisions = paths['/v1/decisions'] as { post: Record<string, unknown> };
+  decisions.post.requestBody = { required: true, content: { 'application/json': { schema: z.toJSONSchema(decisionsRequestSchema, { io: 'input', unrepresentable: 'any' }) } } };
+  decisions.post.responses = {
+    '200': { description: 'Decision: `{model, answers[], usage}` with one answer per question, in question order' },
+    '400': { description: 'Invalid request, or no configured backend supports a feature the request uses (the error names it)' },
+    '403': { description: 'Client key scope or a routing rule denies the request' },
+    '429': { description: 'Client key quota exceeded' },
+    '503': { description: 'No eligible decisions backend is configured or reachable' },
+  };
   for (const [path,method,summary] of [
     ['/api/hive/updates','get','Available same-major Hive release and configuration changes'],
     ['/api/hive/upgrades/status','get','Durable upgrade coordinator outcome'],

@@ -174,7 +174,8 @@ expires); with it, that token is only a fallback until its own expiry. See
 
 - **OpenAI-compatible API**: `/v1/models`, `/v1/responses`,
   `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, audio
-  transcription/translation, image generation and moderations.
+  transcription/translation, image generation, moderations and
+  [decisions](#decisions-api) (OpenAI `gpt-6-luna` or Jev).
 - **Many providers**: `OPENAI`, `CODEX`, `OPENAI_GENERIC`, `OPENROUTER`,
   `ANTHROPIC` (native translation), `OLLAMA` (including native `/api/*`
   passthrough), `LLAMACPP` and `VLLM` (including `/tokenize`, `/detokenize`,
@@ -372,6 +373,7 @@ directory. Variables with no default are optional unless marked **required**.
 | `HIVE_ROUTER_DECISION_MODEL` | `~typesafe/jev-latest` | Decision model ID used on OpenRouter. |
 | `HIVE_ROUTER_DECISION_MODE` | `shadow` | `shadow` records decisions on traces; `off` disables them. |
 | `HIVE_ROUTER_DECISION_TIMEOUT_MS` | `10000` | Timeout for each decision provider call. |
+| `EMBERPATH_DECISIONS_JEV_ENABLED` | `false` | Public Decisions API only: `true` seeds the `typesafe-jev` and `openrouter-jev` provider records from the two shadow keys above on startup. See [Decisions API](#decisions-api). |
 
 ## Admin access model
 
@@ -506,6 +508,171 @@ shows where the setting goes; only Emberpath reads it.
 - Expose only the listeners you need. Bind the admin plane to a private
   interface, or put it behind a VPN or an authenticating proxy.
 - Set `HIVE_ROUTER_METRICS_TOKEN` if Prometheus scrapes `/metrics`.
+
+## Decisions API
+
+`POST /v1/decisions` speaks the
+[OpenAI Decisions API](https://developers.openai.com/api/docs/guides/decisions)
+wire format in and out: `model`, `questions[]` (`predicate`, `choice`, `score`)
+and `input`, answered with `{model, answers[], usage}` in question order. It is
+not streamed. It works like `/v1/chat/completions`: client key auth with the
+`inference:write` scope, aliases, routing rules, provider priority, failover,
+traces (with `actorId` and the `metadata-only` privacy mode), quotas and usage.
+
+This is unrelated to the [shadow decision model](#shadow-decision-model) and
+its `HIVE_ROUTER_DECISION_*` settings, which classify chat traffic for trace
+observations and never answer clients.
+
+### Backends
+
+| Backend | Provider record | Model names | Wire format |
+|---|---|---|---|
+| OpenAI | `OPENAI` provider (serves `v1.decisions` by default) | `gpt-6-luna` | Passed through unchanged, except that an alias becomes `gpt-6-luna` |
+| TypeSafe Jev | `OPENAI_GENERIC`, base URL `https://api.typesafe.ai/v1`, tag `jev-decisions`, `supportedRoutes: ["v1.decisions"]` | `jev-latest`, `jev-1.13.0`, ... | Translated to `/v1/systemone` |
+| OpenRouter Jev | `OPENROUTER`, base URL `https://openrouter.ai/api/v1`, `supportedRoutes: ["v1.decisions"]` | `jev-latest` (sent as `~typesafe/jev-latest`), `~typesafe/...` | Translated to `/api/alpha/decisions` |
+
+`CODEX`, Anthropic and local providers never serve decisions. An
+`OPENAI_GENERIC` provider with `v1.decisions` and no `jev-decisions` tag is
+treated as an OpenAI-wire-format server.
+
+Jev answers `predicate` (sent as `noul`), `choice` and `score` questions. Text,
+`input_json` data and user, developer, system and assistant messages are sent
+as its `state`. Jev cannot take `input_image` parts, tool items
+(`function_call`, `function_call_output`, `custom_tool_call`,
+`custom_tool_call_output`), `prompt_cache_key`, `prompt_cache_options`,
+`prompt_cache_breakpoint` or `safety_identifier`. When a request uses one of
+these, Jev backends are skipped for that request (the trace records a
+`provider.ineligible` event) and the next eligible backend serves it. With none
+left Emberpath answers `400 unsupported_decision_feature` naming the feature.
+Questions are never dropped. Unnamed questions get stable keys (`question_2`
+for the second question) for Jev, and answers come back with the original
+`name`.
+
+### Choosing a backend
+
+- `model: "decision"`: the built-in alias. Jev serves it first, and
+  `gpt-6-luna` is the alternative when Jev fails or cannot express the request.
+  Within each group, routing rules and provider priority decide the order (the
+  seeded TypeSafe record ranks ahead of OpenRouter).
+- `model: "jev-latest"` (or a pinned Jev version): Jev backends only.
+- `model: "gpt-6-luna"`: OpenAI only.
+
+Fresh installs seed the `decision` alias (to `jev-latest`) with the rules
+`route-decision-alias`, which limits it to `OPENAI_GENERIC`, `OPENROUTER` and
+`OPENAI` providers on `/v1/decisions`, and `deny-decision-alias-chat`, which
+refuses the alias on the chat endpoints. Existing installations manage aliases
+as routing revisions, so an admin adds them there (see below). They are never
+re-created on restart.
+
+### Enabling Jev
+
+Shadow mode keeps its keys to itself. To serve `/v1/decisions` with the same
+TypeSafe and OpenRouter keys, opt in explicitly:
+
+```bash
+EMBERPATH_DECISIONS_JEV_ENABLED=true   # with HIVE_TYPESAFE_AI_KEY and/or HIVE_ROUTER_OPENROUTER_KEY
+```
+
+On the next start Emberpath creates the `typesafe-jev` (priority 90) and
+`openrouter-jev` (priority 95) provider records from those keys. They serve
+only `v1.decisions`, so chat traffic never reaches them. They are ordinary
+provider records from then on: they are never overwritten, a rotated shadow
+key is not copied into them, and setting the flag back to `false` does not
+remove them. Disable or delete them in the provider admin to stop serving Jev.
+Alternatively, skip the flag and create the same records yourself with
+separate keys. Shadow mode is unchanged either way.
+
+Shadow decision calls never count toward client quotas. `/v1/decisions` calls
+count toward the calling key's quota like any other request: the reservation
+is the request size plus 64 tokens per question, settled to the reported
+`total_tokens`. Cost uses only the provider's declared
+`inputCostPerMillionTokens`, because only input tokens are billed.
+
+### Adding the alias to an existing installation
+
+Append the alias and both rules in one routing revision through the admin API
+(`router:routing:write`), which HiveXUI's routing pages also use:
+
+```bash
+ADMIN=https://emberpath-admin.example.com
+AUTH="Authorization: Bearer $EMBERPATH_ADMIN_TOKEN"
+curl -fsS -H "$AUTH" "$ADMIN/api/routing/revisions" | jq '{
+  baseRevision: .revision,
+  patch: {
+    aliases: (.config.aliases + [{alias: "decision", upstreamModel: "jev-latest", enabled: true,
+      description: "Decisions API (POST /v1/decisions): Jev through TypeSafe or OpenRouter, with OpenAI gpt-6-luna as the alternative."}]),
+    rules: (.config.rules + [
+      {name: "route-decision-alias", kind: "MODEL_ALIAS", priority: 50, enabled: true,
+       matchJson: {models: ["decision"], endpointKinds: ["v1.decisions"]},
+       actionJson: {providerKinds: ["OPENAI_GENERIC", "OPENROUTER", "OPENAI"]}},
+      {name: "deny-decision-alias-chat", kind: "MODEL_ALIAS", priority: 51, enabled: true,
+       matchJson: {models: ["decision"], endpointKinds: ["v1.chat.completions", "v1.responses", "v1.completions"]},
+       actionJson: {deny: true, denyReason: "The decision alias serves POST /v1/decisions only"}}
+    ])
+  }
+}' > decision-revision.json
+curl -fsS -H "$AUTH" -H 'content-type: application/json' \
+  -X POST "$ADMIN/api/routing/revisions" --data @decision-revision.json
+```
+
+A `409` means routing changed in the meantime; fetch and apply again.
+
+### Examples
+
+```bash
+EMBERPATH=https://emberpath.example.com
+curl -sS "$EMBERPATH/v1/decisions" \
+  -H "Authorization: Bearer $EMBERPATH_API_KEY" -H 'content-type: application/json' \
+  -d '{
+    "model": "decision",
+    "input": "I was charged twice for my subscription this month.",
+    "questions": [
+      {"type": "predicate", "name": "is_billing", "instructions": "Is this message about billing?"},
+      {"type": "choice", "name": "team", "instructions": "Which team should handle it?",
+       "choices": [{"value": "billing", "description": "Payments and invoices"}, {"value": "support"}]},
+      {"type": "score", "name": "urgency", "instructions": "How urgent is it?",
+       "levels": [{"label": "low"}, {"label": "medium"}, {"label": "high"}]}
+    ]
+  }'
+```
+
+```json
+{
+  "model": "jev-1.13.0",
+  "answers": [
+    {"type": "predicate", "name": "is_billing", "probability": 0.97},
+    {"type": "choice", "name": "team", "choice": "billing", "confidence": 0.93,
+     "probabilities": [{"value": "billing", "probability": 0.93}, {"value": "support", "probability": 0.07}]},
+    {"type": "score", "name": "urgency", "score": 1.1, "confidence": 0.62,
+     "probabilities": [{"value": 0, "label": "low", "probability": 0.14}, {"value": 1, "label": "medium", "probability": 0.62}, {"value": 2, "label": "high", "probability": 0.24}]}
+  ],
+  "usage": {"input_tokens": 182, "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+            "output_tokens": 11, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 193}
+}
+```
+
+Send `"model": "gpt-6-luna"` to use OpenAI, for example with images or prompt
+caching:
+
+```bash
+curl -sS "$EMBERPATH/v1/decisions" \
+  -H "Authorization: Bearer $EMBERPATH_API_KEY" -H 'content-type: application/json' \
+  -d '{
+    "model": "gpt-6-luna",
+    "prompt_cache_key": "support-triage",
+    "input": [{"role": "user", "content": [
+      {"type": "input_text", "text": "Is this receipt itemized?"},
+      {"type": "input_image", "image_url": "https://images.example.com/receipt.png", "detail": "auto"}]}],
+    "questions": [{"type": "predicate", "name": "itemized", "instructions": "Is the receipt itemized?"}]
+  }'
+```
+
+Traces record the question count and types, the input shape and the backend
+and answer types (`requestMeta.decisionsApi`, `responseMeta.decisionsApi`),
+never the question text. Bodies are stored only when body capture is on and
+the key does not use `tracePrivacy: "metadata-only"`. OpenAI error bodies are
+passed through unchanged; Jev errors arrive as an OpenAI-style `error` object
+with the upstream body under `error.details`.
 
 ## Shadow decision model
 

@@ -129,6 +129,11 @@ export class OpenAiCompatibleAdapter implements ProviderAdapter {
       if (response.ok || response.status === 401 || response.status === 403) {
         return { healthy: true };
       }
+      // Providers that do not list models (for example a Decisions-only Jev
+      // record) are healthy when the host answers without a server error.
+      if (!provider.capabilities.supportedRoutes.includes('v1.models') && response.status < 500) {
+        return { healthy: true };
+      }
 
       return { healthy: false, error: `Health probe returned ${response.status}` };
     } catch (error) {
