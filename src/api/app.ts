@@ -27,75 +27,7 @@ import { log } from '../telemetry/logger.js';
 import { loadEnv } from '../config/env.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { registerHealthProbes } from '../status/health-probes.js';
-
-class Semaphore {
-  private current = 0;
-  private readonly queue: Array<() => void> = [];
-
-  constructor(private readonly capacity: number) {}
-
-  async acquire(): Promise<void> {
-    if (this.current < this.capacity) {
-      this.current += 1;
-      return;
-    }
-
-    await new Promise<void>((resolve) => {
-      this.queue.push(() => {
-        this.current += 1;
-        resolve();
-      });
-    });
-  }
-
-  release(): void {
-    this.current = Math.max(0, this.current - 1);
-    const next = this.queue.shift();
-    if (next) {
-      next();
-    }
-  }
-}
-
-const semaphores = new Map<string, Semaphore>();
-const circuitBreakers = new Map<string, { failures: number; openUntil?: number }>();
-
-function getSemaphore(provider: ProviderRuntime): Semaphore {
-  const existing = semaphores.get(provider.id);
-  if (existing) {
-    return existing;
-  }
-
-  const semaphore = new Semaphore(Math.max(1, provider.concurrency));
-  semaphores.set(provider.id, semaphore);
-  return semaphore;
-}
-
-function isCircuitOpen(providerId: string): boolean {
-  const state = circuitBreakers.get(providerId);
-  return state?.openUntil !== undefined && state.openUntil > Date.now();
-}
-
-function markProviderFailure(providerId: string): void {
-  const state = circuitBreakers.get(providerId) ?? { failures: 0 };
-  state.failures += 1;
-  if (state.failures >= 3) {
-    state.openUntil = Date.now() + 30_000;
-  }
-  circuitBreakers.set(providerId, state);
-}
-
-function resetProviderCircuit(providerId: string): void {
-  circuitBreakers.delete(providerId);
-}
-
-function shouldRetry(route: RouteRequest): boolean {
-  return ['GET', 'HEAD', 'OPTIONS'].includes(route.method) || Boolean(route.headers['x-idempotency-key']);
-}
-
-function shouldFailoverStatus(status: number): boolean {
-  return status >= 500 || status === 408 || status === 429;
-}
+import { getSemaphore, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
 
 function toHeaderObject(headers: Headers): Record<string, string> {
   return Object.fromEntries(headers.entries());
