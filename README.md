@@ -396,8 +396,54 @@ directory. Variables with no default are optional unless marked **required**.
   admin session for a short-lived client-credentials token. The HiveMem proxy
   passes on only HiveMem's own `hivemem_*` cookies, never Emberpath's session
   cookie.
-- Configuration exports never include encrypted provider secrets. When you
-  import an export, providers that already exist keep their stored secrets.
+- Configuration exports never include provider credentials: not the auth
+  secret, and `[redacted]` in place of default header values that may carry
+  one. When you import an export, providers that already exist keep their
+  stored secret and header values; on a fresh installation those headers are
+  left out and listed in the answer (`redactedHeadersNotImported`) so you can
+  enter them again.
+- Provider credentials stay with the server they were entered for. See
+  [Editing a provider](#editing-a-provider).
+
+### Editing a provider
+
+`PUT /api/providers/:id` replaces a provider's settings. Leaving `authSecret`
+out keeps the stored secret.
+
+- **Reads hide credentials.** `GET /api/providers` returns `hasAuthSecret` and
+  a masked `authSecretMasked`, never the secret. Default headers are returned in
+  clear only when they are known to be harmless (`anthropic-version`,
+  `HTTP-Referer`, `X-Title`, `User-Agent` and similar). Every other value comes
+  back as `[redacted]` and its name is listed in `redactedDefaultHeaders`. Send
+  `[redacted]` back unchanged to keep the stored value; it is never stored
+  itself, and using it for a header that has no stored value is refused
+  (`400`, code `provider_redacted_value_not_stored`).
+- **A stored credential is bound to its origin.** If an update changes the
+  scheme, host or port of `baseUrl`, the same request must send `authSecret`
+  again and give every credential header its real value (or leave the header
+  out). Otherwise nothing is changed, the attempt is written to the audit log
+  as `provider.update.denied`, and the answer is `422` with code
+  `provider_origin_change_requires_secret`. This stops someone who may edit
+  providers, but never saw the secret, from pointing it at a server of their
+  choice. A path change on the same origin (`/v1` to `/api/v1`) keeps the
+  stored credentials, because the same server already receives them.
+- To move a provider to a server that needs no credential, set `authMode` to
+  `NONE` in the same request: the stored secret is discarded.
+- The `CODEX` provider is authorized through OpenAI sign-in, so there is no
+  secret to send again. Moving it is refused with code
+  `provider_origin_change_requires_reauthorization`; authorize Codex again
+  (which restores its official address) or delete the provider.
+- `POST /api/config/import` follows the same rule for providers that already
+  exist (matched by slug). An archive that moves one to another origin must set
+  `encryptedAuthSecret` (a new value, or `null` to discard the stored secret)
+  and must not rely on stored credential headers; otherwise the whole import is
+  refused and rolled back.
+- `baseUrl` must not contain `user:password@`. Such URLs never reached a
+  provider; use the auth secret or a default header.
+- **Redirects are not followed.** If a provider answers with a redirect, the
+  request fails with a reason that names the target server, and the next
+  provider is tried. A custom auth header or `x-api-key` would otherwise follow
+  the redirect to another server. Set `baseUrl` to the final address.
 
 ## API keys from the command line
 

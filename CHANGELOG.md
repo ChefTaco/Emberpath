@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+### Security
+
+- A stored provider credential is bound to the origin (scheme, host and port) of the provider's
+  `baseUrl`. `PUT /api/providers/:id` used to keep the stored secret when `baseUrl` changed, so
+  anyone allowed to edit providers could point a credential they had never seen at a server of
+  their choice. An update that changes the origin must now send `authSecret` again and give
+  every credential default header its real value (or leave it out); otherwise it is refused
+  with `422` and code `provider_origin_change_requires_secret`, nothing is changed and the
+  attempt is audited as `provider.update.denied` (also in the security export). Setting
+  `authMode` to `NONE` with the new address discards the stored secret instead. The OAuth
+  `CODEX` provider cannot be moved (`provider_origin_change_requires_reauthorization`):
+  authorize it again or delete it. `POST /api/config/import` applies the same rule to providers
+  that already exist and refuses the whole archive. A path change on the same origin still
+  keeps the stored credentials. The check and the write are atomic: a provider that changes in
+  between answers `409` with code `provider_changed_concurrently`.
+- Provider requests no longer follow redirects. The HTTP client drops `Authorization` on a
+  cross-origin redirect but forwarded `x-api-key`, custom auth headers, default headers and
+  (for 307/308) the request body. A redirect is now a provider failure whose trace reason names
+  the target server; health checks and model discovery report it the same way. No supported
+  provider API redirects. The Codex sign-in and token requests refuse redirects too.
+- Provider reads (`GET /api/providers`, the write answers, the Codex status) and
+  `GET /api/config/export` no longer return default header values that may carry a credential.
+  Headers known to be harmless (`anthropic-version`, `HTTP-Referer`, `X-Title`, `User-Agent`
+  and similar) are shown; every other value is `[redacted]` and named in the new
+  `redactedDefaultHeaders` field, next to the new `hasAuthSecret`. Sending `[redacted]` back
+  keeps the stored value, so an edit round-trips; it is never stored itself
+  (`400 provider_redacted_value_not_stored` when there is nothing stored to keep). A
+  `user:password@` part of a stored `baseUrl` is left out of every read and export.
+
+### Upgrade notes
+
+- Scripts that `PUT` a provider with a new `baseUrl` host, port or scheme without `authSecret`
+  are now refused with `422` when the provider has a stored secret. Send the secret in the same
+  request. The same applies to default headers other than the harmless ones listed above: send
+  their real values with the new address.
+- Scripts that read `defaultHeaders` from `GET /api/providers` and write the object back keep
+  working: `[redacted]` values are resolved to the stored ones. Scripts that read header
+  *values* from the API or from an export now get `[redacted]`.
+- Configuration archives no longer carry credential header values. Importing one into another
+  installation leaves those headers out and lists them in `redactedHeadersNotImported`; enter
+  them again there. Stored header text that is not a JSON object is exported as `null`.
+- `baseUrl` with `user:password@` is rejected on create, update and import. It never worked
+  (the HTTP client refuses such URLs); move the credential to the auth secret or a header.
+- A provider behind a redirect (for example `http://` redirecting to `https://`, or a moved
+  host) now fails until `baseUrl` is set to the final address. The trace and the provider's
+  health error say where it redirects to.
+- Error answers of the model administration API may carry a stable `code` next to `error`.
+
 ### Fixed
 
 - A client that disconnects before a provider answers no longer counts as a provider failure.
