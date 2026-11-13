@@ -1,6 +1,6 @@
 import { AuthMode, ProviderKind } from '../generated/prisma/client.js';
 import { prisma } from '../storage/client.js';
-import { encryptText } from '../security/crypto.js';
+import { decryptText, encryptText } from '../security/crypto.js';
 import { shouldForwardClientHeader } from '../security/headers.js';
 import { buildProviderCreateData } from './runtime.js';
 import type { UsageSnapshot } from '../telemetry/tracing.js';
@@ -734,6 +734,46 @@ async function updateStoredBundle(providerId: string, bundle: CodexOAuthTokenBun
   });
 }
 
+const pendingRefreshes = new Map<string, Promise<CodexOAuthTokenBundle>>();
+
+/**
+ * Refresh a provider's token bundle at most once at a time. Codex refresh tokens
+ * rotate: two requests presenting the same one would leave the loser with a 401,
+ * which quarantines the token and overwrites the bundle the winner just stored.
+ * Concurrent callers share one refresh, and a caller whose snapshot predates a
+ * finished refresh picks up the stored bundle instead of spending a stale token.
+ */
+async function refreshStoredBundle(provider: ProviderRuntime, stale: CodexOAuthTokenBundle): Promise<CodexOAuthTokenBundle> {
+  const pending = pendingRefreshes.get(provider.id);
+  if (pending) {
+    return pending;
+  }
+
+  const refresh = (async () => {
+    const row = await prisma.provider.findUnique({ where: { id: provider.id }, select: { encryptedAuthSecret: true } });
+    const stored = row?.encryptedAuthSecret ? parseCodexTokenBundle(decryptText(row.encryptedAuthSecret)) : null;
+    if (stored && stored.accessToken !== stale.accessToken && !stored.refreshTokenQuarantined) {
+      return stored;
+    }
+
+    try {
+      const refreshed = await refreshCodexTokenBundle(stale);
+      await updateStoredBundle(provider.id, refreshed);
+      return refreshed;
+    } catch (error) {
+      if (stale.refreshTokenQuarantined) {
+        await updateStoredBundle(provider.id, stale);
+      }
+      throw error;
+    }
+  })().finally(() => {
+    pendingRefreshes.delete(provider.id);
+  });
+
+  pendingRefreshes.set(provider.id, refresh);
+  return refresh;
+}
+
 async function freshTokenBundle(provider: ProviderRuntime): Promise<CodexOAuthTokenBundle | null> {
   const bundle = parseCodexTokenBundle(provider.authSecret);
   if (!bundle) {
@@ -743,16 +783,7 @@ async function freshTokenBundle(provider: ProviderRuntime): Promise<CodexOAuthTo
     return bundle;
   }
 
-  try {
-    const refreshed = await refreshCodexTokenBundle(bundle);
-    await updateStoredBundle(provider.id, refreshed);
-    return refreshed;
-  } catch (error) {
-    if (bundle.refreshTokenQuarantined) {
-      await updateStoredBundle(provider.id, bundle);
-    }
-    throw error;
-  }
+  return refreshStoredBundle(provider, bundle);
 }
 
 async function runCodexRequest(route: RouteRequest, provider: ProviderRuntime, bundle: CodexOAuthTokenBundle): Promise<ProviderExecution> {
@@ -862,8 +893,8 @@ export class CodexOAuthAdapter implements ProviderAdapter {
       return first;
     }
 
-    const refreshed = await refreshCodexTokenBundle(bundle);
-    await updateStoredBundle(provider.id, refreshed);
+    void first.response.body?.cancel().catch(() => undefined);
+    const refreshed = await refreshStoredBundle(provider, bundle);
     return runCodexRequest(route, provider, refreshed);
   }
 

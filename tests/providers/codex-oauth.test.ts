@@ -8,6 +8,8 @@ import {
   type CodexOAuthTokenBundle,
 } from '../../src/providers/codex-oauth.js';
 import type { ProviderRuntime, RouteRequest } from '../../src/providers/types.js';
+import { decryptText, encryptText } from '../../src/security/crypto.js';
+import { prisma } from '../../src/storage/client.js';
 
 function jwt(claims: Record<string, unknown>): string {
   return `header.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.sig`;
@@ -222,5 +224,83 @@ describe('providers/codex-oauth', () => {
       totalTokens: 7,
       reasoningTokens: undefined,
     });
+  });
+});
+
+describe('providers/codex-oauth token refresh', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const expired = (): CodexOAuthTokenBundle => ({
+    accessToken: 'access_old',
+    refreshToken: 'refresh_old',
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    lastRefreshAt: new Date().toISOString(),
+  });
+
+  /** A stored provider row that updates like the database would, and a token endpoint that rotates. */
+  function harness(stored: CodexOAuthTokenBundle) {
+    const state = { secret: encryptText(JSON.stringify(stored)), refreshes: [] as string[], health: [] as unknown[] };
+    vi.spyOn(prisma.provider, 'findUnique').mockImplementation((async () => ({ encryptedAuthSecret: state.secret })) as never);
+    vi.spyOn(prisma.provider, 'update').mockImplementation((async ({ data }: { data: { encryptedAuthSecret: string; lastHealthStatus?: string } }) => {
+      state.secret = data.encryptedAuthSecret;
+      if (data.lastHealthStatus) state.health.push(data.lastHealthStatus);
+      return {};
+    }) as never);
+    const upstreamTokens: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init: RequestInit = {}) => {
+      if (String(input).endsWith('/oauth/token')) {
+        const presented = (JSON.parse(String(init.body)) as { refresh_token: string }).refresh_token;
+        state.refreshes.push(presented);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        // Refresh tokens rotate: only the first presentation of one is honoured.
+        if (state.refreshes.filter((token) => token === presented).length > 1) {
+          return Response.json({ error: 'refresh_token_reused' }, { status: 401 });
+        }
+        return Response.json({ access_token: 'access_new', refresh_token: 'refresh_new' });
+      }
+      upstreamTokens.push(new Headers(init.headers).get('authorization') ?? '');
+      return Response.json({ id: 'resp_1', output_text: 'ok' });
+    }) as never);
+    return { state, upstreamTokens, bundle: () => JSON.parse(decryptText(state.secret)) as CodexOAuthTokenBundle };
+  }
+
+  it('refreshes once when concurrent requests all hold the expiring token', async () => {
+    const { state, upstreamTokens, bundle } = harness(expired());
+    const adapter = new CodexOAuthAdapter();
+
+    const executions = await Promise.all([1, 2, 3].map(() => adapter.execute(buildChatRoute(), buildRuntime(expired()))));
+
+    expect(executions.map((execution) => execution.response.status)).toEqual([200, 200, 200]);
+    expect(state.refreshes).toEqual(['refresh_old']);
+    expect(upstreamTokens).toEqual(['Bearer access_new', 'Bearer access_new', 'Bearer access_new']);
+    expect(bundle()).toMatchObject({ accessToken: 'access_new', refreshToken: 'refresh_new' });
+    expect(bundle().refreshTokenQuarantined).toBeFalsy();
+    expect(state.health).toEqual([]);
+  });
+
+  it('uses the stored bundle when its own snapshot predates a finished refresh', async () => {
+    const { state, upstreamTokens, bundle } = harness(expired());
+    const adapter = new CodexOAuthAdapter();
+
+    await adapter.execute(buildChatRoute(), buildRuntime(expired()));
+    // A request that loaded the provider before the refresh above was stored.
+    const late = await adapter.execute(buildChatRoute(), buildRuntime(expired()));
+
+    expect(late.response.status).toBe(200);
+    expect(state.refreshes).toEqual(['refresh_old']);
+    expect(upstreamTokens).toEqual(['Bearer access_new', 'Bearer access_new']);
+    expect(bundle().refreshTokenQuarantined).toBeFalsy();
+  });
+
+  it('still quarantines a refresh token the issuer rejects', async () => {
+    const { state, bundle } = harness(expired());
+    state.refreshes.push('refresh_old');
+
+    await expect(new CodexOAuthAdapter().execute(buildChatRoute(), buildRuntime(expired()))).rejects.toThrow('Codex OAuth token refresh failed');
+
+    expect(bundle()).toMatchObject({ accessToken: 'access_old', refreshTokenQuarantined: true });
+    expect(state.health).toEqual(['unhealthy']);
   });
 });

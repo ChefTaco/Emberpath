@@ -2085,6 +2085,10 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
     context.header('Cache-Control', 'no-store');
     const user = context.get('adminUser');
     const deviceCode = await requestCodexDeviceCode();
+    // Abandoned authorizations are otherwise only dropped when they are polled.
+    for (const [id, entry] of pendingCodexOAuth) {
+      if (Date.parse(entry.expiresAt) <= Date.now()) pendingCodexOAuth.delete(id);
+    }
     const loginId = randomUUID();
     const pending = { ...deviceCode, loginId };
     pendingCodexOAuth.set(loginId, pending);
