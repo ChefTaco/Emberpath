@@ -68,10 +68,10 @@ NODE_EXTRA_CA_CERTS=/config/tls/server.crt
 EOF
 
 docker run --rm --network oathweave -v emberpath-data:/data -v "$PWD/tls:/config/tls:ro" \
-  --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.4.0 check
+  --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.5.0 check
 docker run -d --name emberpath --network oathweave \
   -p 127.0.0.1:4020:4020 -p 127.0.0.1:9443:9443 -v emberpath-data:/data \
-  -v "$PWD/tls:/config/tls:ro" --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.4.0
+  -v "$PWD/tls:/config/tls:ro" --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.5.0
 
 # Once it reports healthy
 curl --cacert tls/server.crt https://localhost:4020/health
