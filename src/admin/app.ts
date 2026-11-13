@@ -1,4 +1,4 @@
-import {routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema, traceListDefaultLimit, traceListQueryKeys, traceListQuerySchema} from '../contracts/model-admin.js';
+import {providerWriteErrorCodes, routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema, traceListDefaultLimit, traceListQueryKeys, traceListQuerySchema} from '../contracts/model-admin.js';
 import { maintenanceActive } from '../release/runtime.js';
 import { metadata } from '../release/runtime.js';
 import { packageRoot as releasePackageRoot } from '../config/paths.js';
@@ -35,6 +35,7 @@ import { applyAdminSecurityHeaders } from '../security/headers.js';
 import { prisma } from '../storage/client.js';
 import { getProviderAdapter, listProviderRuntimes } from '../providers/index.js';
 import { buildProviderCreateData, parseProviderRuntime } from '../providers/runtime.js';
+import { parseStoredHeaders, ProviderWriteRefusal, redactBaseUrl, redactDefaultHeaders, redactDefaultHeadersJson, resolveProviderCredentialWrite } from '../providers/credential-origin.js';
 import { discoverAndReconcileProviderModels } from '../providers/discovery.js';
 import {
   exchangeCodexAuthorizationCode,
@@ -887,16 +888,20 @@ async function requireMetricsAccess(context: AdminContext, next: Next): Promise<
 
 function sanitizeProvider(provider: Awaited<ReturnType<typeof prisma.provider.findUniqueOrThrow>> & { models?: Array<unknown> }): Record<string, unknown> {
   const runtime = parseProviderRuntime(provider);
+  // Default headers may carry credentials: only values known to be harmless are returned.
+  const defaultHeaders = redactDefaultHeaders(parseStoredHeaders(provider.defaultHeadersJson) ?? {});
   return {
     id: provider.id,
     slug: provider.slug,
     name: provider.name,
     kind: provider.kind,
-    baseUrl: provider.baseUrl,
+    baseUrl: redactBaseUrl(provider.baseUrl),
     authMode: provider.authMode,
     authHeaderName: provider.authHeaderName,
     authSecretMasked: maskSecret(runtime.authSecret),
-    defaultHeaders: runtime.defaultHeaders,
+    hasAuthSecret: Boolean(provider.encryptedAuthSecret),
+    defaultHeaders: defaultHeaders.headers,
+    redactedDefaultHeaders: defaultHeaders.redacted,
     capabilities: runtime.capabilities,
     timeoutMs: provider.timeoutMs,
     maxRetries: provider.maxRetries,
@@ -2013,6 +2018,8 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.post('/api/providers', requireAdminAuth, async (context) => {
     const user = context.get('adminUser');
     const body = providerSchema.parse(await context.req.json());
+    // A new provider has no stored values for the redaction stand-in to refer to.
+    resolveProviderCredentialWrite(null, { baseUrl: body.baseUrl, secret: 'keep', authDisabled: false, defaultHeaders: body.defaultHeaders, unresolvedStandIn: 'refuse' });
     const encryptedAuthSecret = body.authSecret ? encryptText(body.authSecret) : undefined;
     const provider = await prisma.provider.create({
       data: {
@@ -2166,8 +2173,37 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.put('/api/providers/:id', requireAdminAuth, async (context) => {
     const user = context.get('adminUser');
     const body = providerSchema.parse(await context.req.json());
-    const encryptedAuthSecret = body.authSecret ? encryptText(body.authSecret) : undefined;
     const providerId = getParamId(context);
+    const stored = await prisma.provider.findUnique({ where: { id: providerId } });
+    if (!stored) {
+      return context.json({ error: 'Provider not found' }, 404);
+    }
+
+    // A stored credential stays with the server it was entered for: see credential-origin.ts.
+    let resolved: ReturnType<typeof resolveProviderCredentialWrite>;
+    try {
+      resolved = resolveProviderCredentialWrite(stored, {
+        baseUrl: body.baseUrl,
+        secret: body.authSecret ? 'replace' : 'keep',
+        authDisabled: body.authMode === 'NONE',
+        defaultHeaders: body.defaultHeaders,
+        unresolvedStandIn: 'refuse',
+      });
+    } catch (error) {
+      if (error instanceof ProviderWriteRefusal) {
+        await recordAuditEvent({
+          actorType: 'admin-user',
+          adminUserId: user?.id,
+          action: 'provider.update.denied',
+          entityType: 'provider',
+          entityId: stored.id,
+          metadata: { slug: stored.slug, kind: stored.kind, reason: error.code },
+        });
+      }
+      throw error;
+    }
+
+    const encryptedAuthSecret = body.authSecret ? encryptText(body.authSecret) : undefined;
     const providerData: Partial<ReturnType<typeof buildProviderCreateData>> = buildProviderCreateData({
       slug: body.slug,
       name: body.name,
@@ -2176,7 +2212,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       authMode: body.authMode,
       authHeaderName: body.authHeaderName,
       encryptedAuthSecret,
-      defaultHeaders: body.defaultHeaders,
+      defaultHeaders: resolved.defaultHeaders ?? {},
       capabilities: normalizeProviderCapabilities(body.capabilities),
       timeoutMs: body.timeoutMs,
       maxRetries: body.maxRetries,
@@ -2186,21 +2222,36 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       failoverGroup: body.failoverGroup,
       enabled: body.enabled,
     });
-    if (!encryptedAuthSecret) {
+    if (!encryptedAuthSecret && !resolved.clearSecret) {
       delete providerData.encryptedAuthSecret;
     }
 
-    const updated = await prisma.provider.update({
-      where: { id: providerId },
-      data: {
-        ...providerData,
-        models: {
-          deleteMany: {},
-          create: buildProviderModelInputs(body.models),
+    let updated: Awaited<ReturnType<typeof prisma.provider.update>> & { models: unknown[] };
+    try {
+      updated = await prisma.provider.update({
+        // The check above read these three values; the write only applies while they still hold.
+        where: {
+          id: providerId,
+          baseUrl: stored.baseUrl,
+          encryptedAuthSecret: stored.encryptedAuthSecret,
+          defaultHeadersJson: stored.defaultHeadersJson,
         },
-      },
-      include: { models: true },
-    });
+        data: {
+          ...providerData,
+          models: {
+            deleteMany: {},
+            create: buildProviderModelInputs(body.models),
+          },
+        },
+        include: { models: true },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new ProviderWriteRefusal(409, providerWriteErrorCodes.changedConcurrently,
+          'This provider was changed or removed by another request while this one was being checked. Reload it and try again. Nothing was changed.');
+      }
+      throw error;
+    }
 
     await recordAuditEvent({
       actorType: 'admin-user',
@@ -2208,7 +2259,12 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       action: 'provider.update',
       entityType: 'provider',
       entityId: updated.id,
-      metadata: { slug: updated.slug, kind: updated.kind },
+      metadata: {
+        slug: updated.slug,
+        kind: updated.kind,
+        ...(resolved.originChanged ? { originChanged: true } : {}),
+        ...(resolved.clearSecret ? { secretCleared: true } : {}),
+      },
     });
     return context.json({ data: sanitizeProvider(updated) });
   });
@@ -2688,7 +2744,12 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       version: 1,
       exportedAt: new Date().toISOString(),
       data: {
-        providers: providers.map(({ encryptedAuthSecret: _encryptedAuthSecret, ...provider }) => provider),
+        // Archives carry no credentials: not the secret, not credential header values, not URL user info.
+        providers: providers.map(({ encryptedAuthSecret: _encryptedAuthSecret, ...provider }) => ({
+          ...provider,
+          baseUrl: redactBaseUrl(provider.baseUrl),
+          defaultHeadersJson: redactDefaultHeadersJson(provider.defaultHeadersJson),
+        })),
         aliases,
         routeRules,
         heuristicRules,
@@ -2698,15 +2759,15 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   });
 
   app.post('/api/config/import', requireAdminAuth, async (context) => {
-    await importConfiguration(await context.req.json(), context.get('adminUser')?.id);
-    return context.json({ ok: true });
+    const result = await importConfiguration(await context.req.json(), context.get('adminUser')?.id);
+    return context.json({ ok: true, ...(result.redactedHeadersNotImported.length > 0 ? { redactedHeadersNotImported: result.redactedHeadersNotImported } : {}) });
   });
 
   for (const route of ['/api-docs/index', '/api/docs/index']) app.get(route, requireAdminAuth, async (context) => {
     const providers = await prisma.provider.findMany({ orderBy: { name: 'asc' } });
     return context.json({
       docs: builtinApiDocs,
-      providers: providers.map(({ id, slug, name, kind, baseUrl, enabled }) => ({ id, slug, name, kind, baseUrl, enabled })),
+      providers: providers.map(({ id, slug, name, kind, baseUrl, enabled }) => ({ id, slug, name, kind, baseUrl: redactBaseUrl(baseUrl), enabled })),
     });
   });
 
@@ -2724,7 +2785,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
     const entries = builtinApiDocs.filter((entry) => entry.providerKind === provider.kind || entry.scope === 'router');
     return context.json({
-      provider: { id: provider.id, slug: provider.slug, name: provider.name, kind: provider.kind, baseUrl: provider.baseUrl, enabled: provider.enabled },
+      provider: { id: provider.id, slug: provider.slug, name: provider.name, kind: provider.kind, baseUrl: redactBaseUrl(provider.baseUrl), enabled: provider.enabled },
       docs: entries,
     });
   });
@@ -2759,6 +2820,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.onError((err, context) => {
     if (err instanceof HTTPException) return context.json({ error: err.message }, err.status);
+    if (err instanceof ProviderWriteRefusal) return context.json({ error: err.message, code: err.code }, err.status);
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return context.json({ error: 'A record with these unique fields already exists. Review the existing record before saving.' }, 409);
     }

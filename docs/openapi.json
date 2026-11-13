@@ -842,6 +842,9 @@
                       "null"
                     ]
                   },
+                  "hasAuthSecret": {
+                    "type": "boolean"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -939,6 +942,12 @@
                   },
                   "priority": {
                     "type": "number"
+                  },
+                  "redactedDefaultHeaders": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "slug": {
                     "type": "string"
@@ -1179,6 +1188,9 @@
                       "null"
                     ]
                   },
+                  "hasAuthSecret": {
+                    "type": "boolean"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -1276,6 +1288,12 @@
                   },
                   "priority": {
                     "type": "number"
+                  },
+                  "redactedDefaultHeaders": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "slug": {
                     "type": "string"
@@ -2167,6 +2185,39 @@
         ],
         "type": "object"
       },
+      "ConfigImportResult": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "redactedHeadersNotImported": {
+            "items": {
+              "properties": {
+                "headers": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "provider": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "headers"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
       "ConsoleOk": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
@@ -2401,6 +2452,9 @@
       "ModelAdminError": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "code": {
+            "type": "string"
+          },
           "error": {
             "type": "string"
           },
@@ -2655,6 +2709,9 @@
               "null"
             ]
           },
+          "hasAuthSecret": {
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -2752,6 +2809,12 @@
           },
           "priority": {
             "type": "number"
+          },
+          "redactedDefaultHeaders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "slug": {
             "type": "string"
@@ -6851,6 +6914,7 @@
     },
     "/api/config/export": {
       "get": {
+        "description": "The archive holds no auth secret, no user name or password from a base URL, and \"[redacted]\" in place of credential default header values. Stored header text that is not a JSON object is exported as null.",
         "operationId": "exportConfiguration",
         "responses": {
           "200": {
@@ -6878,13 +6942,13 @@
             "adminSession": []
           }
         ],
-        "summary": "Download a native version-1 configuration archive without encrypted provider credentials",
+        "summary": "Download a native version-1 configuration archive without provider credentials",
         "x-permission": "router:settings:write"
       }
     },
     "/api/config/import": {
       "post": {
-        "description": "Only known archive metadata is accepted. Provider source IDs map through slugs to local IDs; unknown references fail. Omitted credentials and optional provider state stay unchanged. Historical runtime-setting JSON is preserved as opaque data.",
+        "description": "Only known archive metadata is accepted. Provider source IDs map through slugs to local IDs; unknown references fail. Omitted credentials and optional provider state stay unchanged. Historical runtime-setting JSON is preserved as opaque data. A default header whose value is \"[redacted]\" keeps the value stored at the destination; where none is stored the header is left out and listed in redactedHeadersNotImported. For a provider that already exists (matched by slug) the origin rule of PUT /api/providers/{id} applies: an archive that moves it to another origin must set encryptedAuthSecret (a new value, or null to discard the stored secret) and must not rely on stored credential headers, or the whole import is refused with 422.",
         "operationId": "importConfiguration",
         "requestBody": {
           "content": {
@@ -6901,15 +6965,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "type": "object"
+                  "$ref": "#/components/schemas/ConfigImportResult"
                 }
               }
             },
@@ -6940,6 +6996,16 @@
               }
             },
             "description": "A unique record conflicts with existing state; no stored value is disclosed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "The base URL moved to another origin without the stored credentials being supplied again (code provider_origin_change_requires_secret or provider_origin_change_requires_reauthorization); nothing was changed"
           },
           "500": {
             "content": {
@@ -7734,6 +7800,7 @@
     },
     "/api/providers": {
       "get": {
+        "description": "Default header values that may carry a credential are returned as \"[redacted]\" and named in redactedDefaultHeaders; sending that value back keeps the stored one, and it is never stored itself.",
         "operationId": "listProviders",
         "responses": {
           "200": {
@@ -7776,6 +7843,7 @@
         "x-permission": "router:providers:read"
       },
       "post": {
+        "description": "A default header sent as \"[redacted]\" is refused with 400 and code provider_redacted_value_not_stored.",
         "operationId": "createProvider",
         "requestBody": {
           "content": {
@@ -7917,6 +7985,7 @@
         "x-permission": "router:providers:write"
       },
       "put": {
+        "description": "A stored auth secret or credential default header is bound to the origin (scheme, host and port) of baseUrl. When a write changes the origin, the secret must be sent again in the same request (or authMode set to NONE, which discards it) and each credential header must be sent with its real value or left out; otherwise the write is refused with 422 and code provider_origin_change_requires_secret (provider_origin_change_requires_reauthorization for an OAuth-authorized CODEX provider), nothing is changed and the attempt is audited. A path change on the same origin keeps stored credentials. Default header values that may carry a credential are returned as \"[redacted]\" and named in redactedDefaultHeaders; sending that value back keeps the stored one, and it is never stored itself. An omitted authSecret keeps the stored secret.",
         "operationId": "updateProvider",
         "parameters": [
           {
@@ -7974,6 +8043,16 @@
           "403": {
             "description": "Product permission required"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "Provider not found"
+          },
           "409": {
             "content": {
               "application/json": {
@@ -7982,7 +8061,17 @@
                 }
               }
             },
-            "description": "A unique record conflicts with existing state; no stored value is disclosed"
+            "description": "A unique record conflicts with existing state, or the provider changed while the request was checked (code provider_changed_concurrently); no stored value is disclosed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdminError"
+                }
+              }
+            },
+            "description": "The base URL moved to another origin without the stored credentials being supplied again (code provider_origin_change_requires_secret or provider_origin_change_requires_reauthorization); nothing was changed"
           }
         },
         "security": [

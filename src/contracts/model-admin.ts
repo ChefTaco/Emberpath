@@ -51,7 +51,29 @@ export const providerModelSchema = z.object({
  * `javascript:` and so on) are rejected when the record is written rather than
  * failing later on every request.
  */
-const providerBaseUrlSchema = z.url({ protocol: /^https?$/, error: 'baseUrl must be an http(s) URL' });
+const providerBaseUrlSchema = z.url({ protocol: /^https?$/, error: 'baseUrl must be an http(s) URL' })
+  // `user:password@host` never reached a provider (the HTTP client refuses such URLs) and would
+  // put a credential in a field that is shown to every reader.
+  .refine((value) => { try { const url = new URL(value); return url.username === '' && url.password === ''; } catch { return false; } }, { error: 'baseUrl must not contain a user name or password; use the auth secret or a default header' });
+
+/**
+ * Stand-in for a stored value the API does not return: a default header that may carry a
+ * credential. Sending it back unchanged keeps the stored value; it is never stored itself.
+ */
+export const providerRedactedValue = '[redacted]';
+
+/** Stable `code` values on refused provider writes (`PUT /api/providers/{id}`, `POST /api/config/import`). */
+export const providerWriteErrorCodes = {
+  /** The base URL moved to another origin and a stored secret or header was not supplied again. */
+  originChangeRequiresSecret: 'provider_origin_change_requires_secret',
+  /** The same, for an OAuth-authorized provider: it must be authorized again instead. */
+  originChangeRequiresReauthorization: 'provider_origin_change_requires_reauthorization',
+  /** A header value was the redaction stand-in, but no stored value exists for that header. */
+  redactedValueNotStored: 'provider_redacted_value_not_stored',
+  /** The provider's destination or credentials changed while this request was being checked. */
+  changedConcurrently: 'provider_changed_concurrently',
+} as const;
+export type ProviderWriteErrorCode = (typeof providerWriteErrorCodes)[keyof typeof providerWriteErrorCodes];
 
 export const providerSchema = z.object({
   slug: z.string().min(2),
@@ -97,6 +119,8 @@ export const providerReadSchema = z.object({
   id: z.string(), slug: z.string(), name: z.string(), kind: providerSchema.shape.kind,
   baseUrl: z.string(), authMode: z.enum(['NONE', 'BEARER', 'API_KEY', 'HEADER']), authHeaderName: z.string(),
   authSecretMasked: z.string().nullable(), defaultHeaders: z.record(z.string(), z.string()),
+  // Optional: absent from releases that returned every default header in clear.
+  hasAuthSecret: z.boolean().optional(), redactedDefaultHeaders: z.array(z.string()).optional(),
   capabilities: providerCapabilityReadSchema, timeoutMs: z.number(), maxRetries: z.number(), concurrency: z.number(),
   priority: z.number(), weight: z.number(), failoverGroup: z.string().nullable(), enabled: z.boolean(),
   lastHealthStatus: z.string().nullable(), lastHealthError: z.string().nullable(), lastHealthAt: z.string().nullable(),
@@ -108,7 +132,7 @@ export const modelAliasReadSchema = z.object({
   enabled: z.boolean(), description: z.string().nullable(), createdAt: z.string(), updatedAt: z.string(),
   provider: providerSummarySchema.nullable().optional(),
 });
-export const modelAdminErrorSchema = z.object({error: z.string(), issues: z.array(z.unknown()).optional()});
+export const modelAdminErrorSchema = z.object({error: z.string(), code: z.string().optional(), issues: z.array(z.unknown()).optional()});
 export type ProviderWriteRequest = z.input<typeof providerSchema>;
 export type ProviderModelWriteRequest = z.input<typeof providerModelSchema>;
 export type ModelAliasWriteRequest = z.input<typeof modelAliasSchema>;
@@ -360,6 +384,14 @@ const timestamp = z.string(); // Wire dates remain strings; legacy records are n
 const nullableText = z.string().nullable();
 const timestamps = {createdAt: timestamp, updatedAt: timestamp};
 export const okSchema = z.object({ok: z.boolean()});
+/**
+ * `POST /api/config/import`. An archive carries the redaction stand-in instead of credential
+ * header values; where the destination has no stored value to keep, the header is left out and
+ * named here so it can be entered again.
+ */
+export const configImportResultSchema = okSchema.extend({
+  redactedHeadersNotImported: z.array(z.object({provider: z.string(), headers: z.array(z.string())})).optional(),
+});
 export const routeRuleReadSchema = z.object({id: z.string(), name: z.string(), kind: routeRuleSchema.shape.kind,
   priority: z.number(), enabled: z.boolean(), matchJson: z.string(), actionJson: z.string(), ...timestamps});
 export const heuristicReadSchema = z.object({id: z.string(), name: z.string(), category: z.string(), pattern: z.string(),
