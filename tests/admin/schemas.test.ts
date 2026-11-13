@@ -9,6 +9,7 @@ import {
   routeRuleMatchSchema,
   routeRuleSchema,
 } from '../../src/admin/schemas.js';
+import { providerSchema } from '../../src/contracts/model-admin.js';
 
 describe('admin JSON schemas', () => {
   it('accepts typed provider capabilities and rejects unknown capability flags', () => {
@@ -79,6 +80,18 @@ describe('admin JSON schemas', () => {
 
     expect(() => clientKeyMetadataSchema.parse({ environment: 'production' })).toThrow();
     expect(() => clientKeyMetadataSchema.parse({ nestedFreeform: { unsafe: true } })).toThrow();
+  });
+
+  it('accepts only http(s) provider base URLs, including local and private hosts', () => {
+    const provider = (baseUrl: string) => ({ slug: 'fixture', name: 'Fixture', kind: ProviderKind.OPENAI_GENERIC, baseUrl });
+    for (const baseUrl of ['http://127.0.0.1:11434', 'http://localhost:8080/v1', 'http://gpu-host:8000', 'http://[::1]:11434', 'https://provider.example.com/v1']) {
+      expect(providerSchema.parse(provider(baseUrl)).baseUrl).toBe(baseUrl);
+      expect(configImportSchema.safeParse({ data: { providers: [provider(baseUrl)] } }).success).toBe(true);
+    }
+    for (const baseUrl of ['file:///etc/hostname', 'ftp://provider.example.com', 'javascript:void(0)', 'data:text/plain,x', 'provider.example.com']) {
+      expect(providerSchema.safeParse(provider(baseUrl)).success, baseUrl).toBe(false);
+      expect(configImportSchema.safeParse({ data: { providers: [provider(baseUrl)] } }).success, baseUrl).toBe(false);
+    }
   });
 
   it('validates imported config JSON before storage writes', () => {
