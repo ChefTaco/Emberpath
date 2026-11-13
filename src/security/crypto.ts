@@ -1,9 +1,17 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { loadEnv } from '../config/env.js';
 
+// scrypt is deliberately slow and synchronous. Provider secrets are decrypted on
+// every inference request, so the derived key is kept for the current secret
+// instead of blocking the event loop once per provider per request.
+let derivedKey: { secret: string; key: Buffer } | undefined;
+
 function getEncryptionKey(): Buffer {
-  const env = loadEnv();
-  return scryptSync(env.HIVE_ROUTER_SECRET, 'hive-router-envelope', 32);
+  const secret = loadEnv().HIVE_ROUTER_SECRET;
+  if (derivedKey?.secret !== secret) {
+    derivedKey = { secret, key: scryptSync(secret, 'hive-router-envelope', 32) };
+  }
+  return derivedKey.key;
 }
 
 export function hashValue(value: string): string {
