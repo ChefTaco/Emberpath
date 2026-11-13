@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A client that disconnects before a provider answers no longer counts as a provider failure.
+  Three such disconnects used to open the circuit breaker of every candidate provider for 30
+  seconds, because each aborted request was also retried against the remaining providers.
+- Upstream responses abandoned during failover (a retryable status, or a stream that reported
+  an error before its first token) are now cancelled, so their connections are released
+  instead of being held until garbage collection. The `failover` metric names the provider
+  that is actually tried next.
+- Ollama streaming: an upstream error status is returned as is, so it can fail over, instead of
+  becoming an empty `200` event stream. The trace is written when the stream ends, with the
+  relayed text and first-byte time (it used to be finalized empty when the stream started).
+  The stream is relayed with backpressure, an error Ollama reports mid-stream is passed on as
+  an `error` event, and a client that leaves cancels the upstream request.
+- Ollama providers send their configured credential and default headers on every call. The
+  stored secret was never sent, and default headers only on native `/api/*` routes.
+- Codex OAuth: concurrent requests share one token refresh. Rotating refresh tokens made the
+  second concurrent refresh fail with `401`, which quarantined the token and overwrote the
+  bundle the first refresh had just stored.
+- Trace retention removes the stored request body, which is filed under the request ID and was
+  left on disk when its trace expired. Body directories orphaned this way by earlier releases
+  are removed once they are older than the retention window. Expired traces are deleted in
+  batches, so a large backlog can no longer exceed SQLite's parameter limit.
+- vLLM native routes (`/tokenize`, `/detokenize`, `/version`) stop the upstream request when
+  the client disconnects, like every other route.
+- Expired Codex device authorizations that were never polled are dropped.
+
+### Changed
+
+- Client API key verification and provider secret decryption no longer run scrypt on every
+  request. The envelope key is derived once per process, and a key that has verified is
+  recognised by a digest held in memory. Key rows are still read on every request, so
+  disabling, expiry, rotation and scope changes apply immediately.
+- Dependency reports requested within five seconds share one provider health sweep, so polling
+  the unauthenticated `/health/ready`, `/health/dependencies` or `/ready` endpoints cannot
+  multiply calls to the providers.
+- Provider `baseUrl` must be an `http:` or `https:` URL when a provider is created, updated or
+  imported. Other schemes never worked and are now rejected with a validation error.
+
 ## [2.4.0] - 2026-11-13
 
 ### Added
