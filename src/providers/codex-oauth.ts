@@ -5,6 +5,7 @@ import { shouldForwardClientHeader } from '../security/headers.js';
 import { buildProviderCreateData } from './runtime.js';
 import type { UsageSnapshot } from '../telemetry/tracing.js';
 import type { ProviderAdapter, ProviderExecution, ProviderRuntime, RouteRequest } from './types.js';
+import { providerFetch } from './upstream-fetch.js';
 
 export const CODEX_OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 export const CODEX_OAUTH_ISSUER = 'https://auth.openai.com';
@@ -221,6 +222,8 @@ async function readErrorText(response: Response): Promise<string> {
 export async function requestCodexDeviceCode(fetchImpl: FetchLike = fetch): Promise<CodexDeviceCode> {
   const response = await fetchImpl(`${authBaseUrl()}/deviceauth/usercode`, {
     method: 'POST',
+    // Device codes, authorization codes and refresh tokens are never re-sent to a redirect target.
+    redirect: 'error',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ client_id: CODEX_OAUTH_CLIENT_ID }),
   });
@@ -256,6 +259,7 @@ export async function pollCodexDeviceCode(
 ): Promise<{ status: 'pending' } | ({ status: 'authorized' } & CodexDevicePollSuccess) | { status: 'error'; message: string }> {
   const response = await fetchImpl(`${authBaseUrl()}/deviceauth/token`, {
     method: 'POST',
+    redirect: 'error',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       device_auth_id: deviceCode.deviceAuthId,
@@ -302,6 +306,7 @@ export async function exchangeCodexAuthorizationCode(
 
   const response = await fetchImpl(tokenEndpoint(), {
     method: 'POST',
+    redirect: 'error',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
@@ -323,6 +328,7 @@ export async function refreshCodexTokenBundle(
 
   const response = await fetchImpl(tokenEndpoint(), {
     method: 'POST',
+    redirect: 'error',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       client_id: CODEX_OAUTH_CLIENT_ID,
@@ -804,7 +810,7 @@ async function runCodexRequest(route: RouteRequest, provider: ProviderRuntime, b
   }
 
   const body = JSON.stringify(buildResponsesBody(route));
-  const response = await fetch(buildCodexUrl(provider.baseUrl), {
+  const response = await providerFetch(buildCodexUrl(provider.baseUrl), {
     method: 'POST',
     headers: copyRequestHeaders(route, provider, bundle),
     body,

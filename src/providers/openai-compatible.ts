@@ -3,6 +3,7 @@ import { prettyJson } from '../utils/json.js';
 import { shouldForwardClientHeader } from '../security/headers.js';
 import { parseOpenAiModels } from './model-parsers.js';
 import type { DiscoveredModel, ProviderAdapter, ProviderExecution, ProviderRuntime, RouteRequest } from './types.js';
+import { providerFetch } from './upstream-fetch.js';
 
 function buildUrl(baseUrl: string, path: string, queryString: string): string {
   const normalizedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
@@ -90,7 +91,7 @@ export class OpenAiCompatibleAdapter implements ProviderAdapter {
       : route.bodyBuffer
         ? Buffer.from(route.bodyBuffer)
         : undefined;
-    const response = await fetch(buildUrl(provider.baseUrl, route.path, route.queryString), {
+    const response = await providerFetch(buildUrl(provider.baseUrl, route.path, route.queryString), {
       method: route.method,
       headers: buildHeaders(route, provider),
       ...(body ? { body } : {}),
@@ -106,7 +107,7 @@ export class OpenAiCompatibleAdapter implements ProviderAdapter {
 
   async healthCheck(provider: ProviderRuntime): Promise<{ healthy: boolean; error?: string }> {
     try {
-      const response = await fetch(buildUrl(provider.baseUrl, '/v1/models', ''), {
+      const response = await providerFetch(buildUrl(provider.baseUrl, '/v1/models', ''), {
         method: 'GET',
         headers: buildHeaders(
           {
@@ -142,7 +143,7 @@ export class OpenAiCompatibleAdapter implements ProviderAdapter {
   }
 
   async discoverModels(provider: ProviderRuntime): Promise<DiscoveredModel[]> {
-    const response = await fetch(buildUrl(provider.baseUrl, '/v1/models', ''), {
+    const response = await providerFetch(buildUrl(provider.baseUrl, '/v1/models', ''), {
       method: 'GET',
       headers: buildHeaders(
         {
