@@ -1,6 +1,6 @@
 {
   "name": "@hivemagnus/emberpath",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Emberpath: OpenAI-compatible model routing, providers, quotas and telemetry.",
   "keywords": [
     "hive",
