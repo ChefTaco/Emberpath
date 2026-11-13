@@ -122,6 +122,7 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
   let failureResponse: DecisionsExecutionResult['failureResponse'];
   let failureError: string | undefined;
   for (const [index, entry] of entries.entries()) {
+    if (route.signal?.aborted) break;
     const provider = entry.provider;
     if (isCircuitOpen(provider.id)) {
       await addTraceEvent(traceId, { type: 'provider.skipped', phase: 'routing', message: `Provider ${provider.slug} skipped because its circuit is open` });
@@ -153,6 +154,13 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
           },
         };
       } catch (error) {
+        if (route.signal?.aborted) {
+          // A caller that went away is not a provider failure: leave the circuit
+          // breaker alone and stop trying other backends.
+          failureError = 'Client disconnected before a provider responded';
+          await addTraceEvent(traceId, { type: 'provider.error', phase: 'execution', message: failureError, data: { providerId: provider.id, attempt } });
+          return { failureError };
+        }
         markProviderFailure(provider.id);
         failureError = error instanceof JevResponseMismatch ? error.message
           : error instanceof Error && error.name === 'TimeoutError' ? `Provider ${provider.slug} timed out`

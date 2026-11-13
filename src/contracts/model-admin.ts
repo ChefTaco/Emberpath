@@ -46,11 +46,18 @@ export const providerModelSchema = z.object({
   capabilityJson: providerCapabilitySchema.default({}),
 }).strict();
 
+/**
+ * Providers are only ever called over HTTP(S). Other schemes (`file:`, `ftp:`,
+ * `javascript:` and so on) are rejected when the record is written rather than
+ * failing later on every request.
+ */
+const providerBaseUrlSchema = z.url({ protocol: /^https?$/, error: 'baseUrl must be an http(s) URL' });
+
 export const providerSchema = z.object({
   slug: z.string().min(2),
   name: z.string().min(2),
   kind: z.enum(['OPENAI', 'CODEX', 'OPENAI_GENERIC', 'OPENROUTER', 'ANTHROPIC', 'OLLAMA', 'LLAMACPP', 'VLLM']),
-  baseUrl: z.url(),
+  baseUrl: providerBaseUrlSchema,
   authMode: z.enum(['NONE', 'BEARER', 'API_KEY', 'HEADER']).default('BEARER'),
   authHeaderName: z.string().default('Authorization'),
   authSecret: z.string().optional(),
@@ -177,7 +184,7 @@ const importProviderSchema = z.object({
   slug: z.string().min(2),
   name: z.string().min(2),
   kind: providerSchema.shape.kind,
-  baseUrl: z.url(),
+  baseUrl: providerBaseUrlSchema,
   authMode: z.enum(['NONE', 'BEARER', 'API_KEY', 'HEADER']).optional(),
   authHeaderName: z.string().optional(),
   encryptedAuthSecret: z.string().nullable().optional(),

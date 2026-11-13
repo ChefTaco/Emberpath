@@ -1,9 +1,17 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 import { loadEnv } from '../config/env.js';
 
+// scrypt is deliberately slow and synchronous. Provider secrets are decrypted on
+// every inference request, so the derived key is kept for the current secret
+// instead of blocking the event loop once per provider per request.
+let derivedKey: { secret: string; key: Buffer } | undefined;
+
 function getEncryptionKey(): Buffer {
-  const env = loadEnv();
-  return scryptSync(env.HIVE_ROUTER_SECRET, 'hive-router-envelope', 32);
+  const secret = loadEnv().HIVE_ROUTER_SECRET;
+  if (derivedKey?.secret !== secret) {
+    derivedKey = { secret, key: scryptSync(secret, 'hive-router-envelope', 32) };
+  }
+  return derivedKey.key;
 }
 
 export function hashValue(value: string): string {
@@ -24,6 +32,20 @@ export function verifyHash(value: string, stored: string): boolean {
   }
 
   const derived = scryptSync(value, salt, 64);
+  const expected = Buffer.from(hash, 'hex');
+  return derived.length === expected.length && timingSafeEqual(derived, expected);
+}
+
+/** `verifyHash` with the derivation on the thread pool, for request paths. */
+export async function verifyHashAsync(value: string, stored: string): Promise<boolean> {
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) {
+    return false;
+  }
+
+  const derived = await new Promise<Buffer>((resolve, reject) => {
+    scrypt(value, salt, 64, (error, key) => (error ? reject(error) : resolve(key)));
+  });
   const expected = Buffer.from(hash, 'hex');
   return derived.length === expected.length && timingSafeEqual(derived, expected);
 }

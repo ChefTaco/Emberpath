@@ -8,6 +8,29 @@ function baseUrl(provider: ProviderRuntime): string {
   return provider.baseUrl.replace(/\/$/, '');
 }
 
+/**
+ * The provider's configured default headers and credential. Ollama itself needs
+ * neither, but a hosted Ollama endpoint or one behind an authenticating reverse
+ * proxy does, and a secret the operator stored must reach it on every call.
+ */
+function applyProviderHeaders(headers: Headers, provider: ProviderRuntime): Headers {
+  for (const [key, value] of Object.entries(provider.defaultHeaders)) {
+    headers.set(key, value);
+  }
+
+  if (provider.authSecret) {
+    if (provider.authMode === 'BEARER') {
+      headers.set(provider.authHeaderName, `Bearer ${provider.authSecret}`);
+    } else if (provider.authMode === 'API_KEY') {
+      headers.set('x-api-key', provider.authSecret);
+    } else if (provider.authMode === 'HEADER') {
+      headers.set(provider.authHeaderName, provider.authSecret);
+    }
+  }
+
+  return headers;
+}
+
 function buildNativeHeaders(route: RouteRequest, provider: ProviderRuntime): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(route.headers)) {
@@ -16,11 +39,12 @@ function buildNativeHeaders(route: RouteRequest, provider: ProviderRuntime): Hea
     }
   }
 
-  for (const [key, value] of Object.entries(provider.defaultHeaders)) {
-    headers.set(key, value);
-  }
+  return applyProviderHeaders(headers, provider);
+}
 
-  return headers;
+/** Headers for calls this adapter builds itself (translated OpenAI routes, probes). */
+function buildTranslatedHeaders(provider: ProviderRuntime, json = true): Headers {
+  return applyProviderHeaders(new Headers(json ? { 'content-type': 'application/json' } : {}), provider);
 }
 
 function normalizeMessages(messages: unknown): Array<Record<string, unknown>> {
@@ -105,6 +129,7 @@ export class OllamaAdapter implements ProviderAdapter {
     if (route.endpointKind === 'v1.models') {
       const response = await fetch(`${baseUrl(provider)}/api/tags`, {
         method: 'GET',
+        headers: buildTranslatedHeaders(provider, false),
         signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
       });
       return { response };
@@ -119,7 +144,7 @@ export class OllamaAdapter implements ProviderAdapter {
       };
       const upstream = await fetch(`${baseUrl(provider)}/api/embed`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: buildTranslatedHeaders(provider),
         body: JSON.stringify(payload),
         signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
       });
@@ -152,7 +177,7 @@ export class OllamaAdapter implements ProviderAdapter {
       const stream = requestBody.stream === true;
       const upstream = await fetch(`${baseUrl(provider)}/api/generate`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: buildTranslatedHeaders(provider),
         body: JSON.stringify({ model: route.model, prompt, stream }),
         signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
       });
@@ -164,7 +189,7 @@ export class OllamaAdapter implements ProviderAdapter {
 
     const upstream = await fetch(`${baseUrl(provider)}/api/chat`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: buildTranslatedHeaders(provider),
       body: JSON.stringify({
         model: route.model,
         messages,
@@ -175,10 +200,13 @@ export class OllamaAdapter implements ProviderAdapter {
       signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
     });
 
+    // An upstream error is never a stream: hand it back as is so the status
+    // drives failover instead of becoming an empty 200 event stream.
+    if (!upstream.ok) {
+      return { response: upstream };
+    }
+
     if (!stream || !upstream.body) {
-      if (!upstream.ok) {
-        return { response: upstream };
-      }
 
       const json = (await upstream.json()) as {
         model?: string;
@@ -248,83 +276,129 @@ export class OllamaAdapter implements ProviderAdapter {
     }
 
     const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
+    const reader = upstream.body.getReader();
     let buffer = '';
     let responseText = '';
     let reasoningText = '';
     let firstByteMs: number | undefined;
     const startedAt = Date.now();
 
+    // The trace is written when the stream ends, not when it starts, so it holds
+    // the text that was actually relayed and how the stream finished.
+    type StreamTrace = Awaited<NonNullable<ProviderExecution['tracePromise']>>;
+    let finishTrace!: (trace: StreamTrace) => void;
+    const tracePromise = new Promise<StreamTrace>((resolve) => { finishTrace = resolve; });
+    let finished = false;
+    const finish = (errored: boolean): void => {
+      if (finished) return;
+      finished = true;
+      finishTrace({
+        responseBody: responseText,
+        reasoningText,
+        ...(firstByteMs === undefined ? {} : { firstByteMs }),
+        ...(errored ? { errored: true } : {}),
+      });
+    };
+
+    /** Translate one NDJSON line. Returns 'error' when Ollama reported a failure. */
+    const relayLine = (controller: ReadableStreamDefaultController<Uint8Array>, line: string): 'sent' | 'none' | 'error' => {
+      if (!line.trim()) {
+        return 'none';
+      }
+
+      const json = JSON.parse(line) as {
+        message?: { content?: string; thinking?: string };
+        done?: boolean;
+        error?: unknown;
+      };
+
+      if (json.error) {
+        const message = typeof json.error === 'string' ? json.error : 'Ollama reported a stream error';
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: { message, type: 'upstream_error' } })}\n\n`));
+        return 'error';
+      }
+
+      let sent = false;
+      if (json.message?.thinking) {
+        reasoningText += json.message.thinking;
+      }
+
+      if (json.message?.content) {
+        responseText += json.message.content;
+        const payload = route.endpointKind === 'v1.responses'
+          ? `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: json.message.content })}\n\n`
+          : `data: ${JSON.stringify({
+              id: `chatcmpl_${Date.now()}`,
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: route.model,
+              choices: [{ index: 0, delta: { content: json.message.content }, finish_reason: null }],
+            })}\n\n`;
+        controller.enqueue(encoder.encode(payload));
+        sent = true;
+      }
+
+      if (json.done) {
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        sent = true;
+      }
+
+      return sent ? 'sent' : 'none';
+    };
+
+    // Pull-driven so a slow client slows the upstream read instead of buffering
+    // the whole answer, and a client that goes away cancels the upstream request.
     const transformStream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = upstream.body?.getReader();
-        if (!reader) {
-          controller.close();
-          return;
+      async pull(controller) {
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (firstByteMs === undefined && !done) {
+              firstByteMs = Date.now() - startedAt;
+            }
+
+            buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = done ? '' : lines.pop() ?? '';
+
+            let sent = false;
+            for (const line of lines) {
+              const outcome = relayLine(controller, line);
+              if (outcome === 'error') {
+                finish(true);
+                void reader.cancel().catch(() => undefined);
+                controller.close();
+                return;
+              }
+              sent ||= outcome === 'sent';
+            }
+
+            if (done) {
+              finish(false);
+              controller.close();
+              return;
+            }
+            if (sent) {
+              return;
+            }
+          }
+        } catch (error) {
+          finish(true);
+          void reader.cancel(error).catch(() => undefined);
+          controller.error(error);
         }
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          if (firstByteMs === undefined) {
-            firstByteMs = Date.now() - startedAt;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            if (!line.trim()) {
-              continue;
-            }
-
-            const json = JSON.parse(line) as {
-              message?: { content?: string; thinking?: string };
-              done?: boolean;
-            };
-
-            if (json.message?.thinking) {
-              reasoningText += json.message.thinking;
-            }
-
-            if (json.message?.content) {
-              responseText += json.message.content;
-              const payload = route.endpointKind === 'v1.responses'
-                ? `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: json.message.content })}\n\n`
-                : `data: ${JSON.stringify({
-                    id: `chatcmpl_${Date.now()}`,
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now() / 1000),
-                    model: route.model,
-                    choices: [{ index: 0, delta: { content: json.message.content }, finish_reason: null }],
-                  })}\n\n`;
-              controller.enqueue(new TextEncoder().encode(payload));
-            }
-
-            if (json.done) {
-              const finalPayload = route.endpointKind === 'v1.responses'
-                ? 'data: [DONE]\n\n'
-                : 'data: [DONE]\n\n';
-              controller.enqueue(new TextEncoder().encode(finalPayload));
-            }
-          }
-        }
-
-        controller.close();
+      },
+      async cancel(reason) {
+        finish(true);
+        await reader.cancel(reason);
       },
     });
 
     return {
       response: createSseResponse(transformStream),
       providerModel: route.model,
-      tracePromise: Promise.resolve(
-        firstByteMs === undefined
-          ? { responseBody: responseText, reasoningText }
-          : { responseBody: responseText, reasoningText, firstByteMs },
-      ),
+      tracePromise,
     };
   }
 
@@ -332,6 +406,7 @@ export class OllamaAdapter implements ProviderAdapter {
     try {
       const response = await fetch(`${baseUrl(provider)}/api/tags`, {
         method: 'GET',
+        headers: buildTranslatedHeaders(provider, false),
         signal: AbortSignal.timeout(Math.min(provider.timeoutMs, 8000)),
       });
       return response.ok
@@ -345,6 +420,7 @@ export class OllamaAdapter implements ProviderAdapter {
   async discoverModels(provider: ProviderRuntime): Promise<DiscoveredModel[]> {
     const response = await fetch(`${baseUrl(provider)}/api/tags`, {
       method: 'GET',
+      headers: buildTranslatedHeaders(provider, false),
       signal: AbortSignal.timeout(Math.min(provider.timeoutMs, 15000)),
     });
     if (!response.ok) {

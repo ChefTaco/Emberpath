@@ -28,6 +28,33 @@ export interface RouterDependencyReport {
   };
 }
 
+const PROVIDER_SWEEP_REUSE_MS = 5_000;
+let recentSweep: { startedAt: number; result: ReturnType<typeof runProviderHealthSweep> } | undefined;
+
+/**
+ * One provider sweep serves every dependency report asked for within a few
+ * seconds. The reports back unauthenticated health endpoints on both planes, and
+ * each sweep calls every enabled provider and writes its health row, so a caller
+ * polling `/health/ready` must not be able to multiply upstream traffic.
+ */
+function sharedProviderHealthSweep(): ReturnType<typeof runProviderHealthSweep> {
+  const now = Date.now();
+  if (recentSweep && now - recentSweep.startedAt < PROVIDER_SWEEP_REUSE_MS && now >= recentSweep.startedAt) {
+    return recentSweep.result;
+  }
+  const result = runProviderHealthSweep();
+  const sweep = { startedAt: now, result };
+  recentSweep = sweep;
+  result.catch(() => {
+    if (recentSweep === sweep) recentSweep = undefined;
+  });
+  return result;
+}
+
+export function resetProviderHealthSweepReuse(): void {
+  recentSweep = undefined;
+}
+
 async function timedCheck(name: string, operation: () => Promise<string>): Promise<RouterDependencyCheck> {
   const startedAt = performance.now();
   try {
@@ -55,7 +82,7 @@ export async function buildRouterDependencyReport(): Promise<RouterDependencyRep
     return 'connected';
   });
 
-  const providerHealth = await runProviderHealthSweep();
+  const providerHealth = await sharedProviderHealthSweep();
   const configured = await prisma.provider.count({ where: { enabled: true } });
   const healthy = providerHealth.filter((entry) => entry.healthy).length;
   const providerCheck: RouterDependencyCheck = configured === 0

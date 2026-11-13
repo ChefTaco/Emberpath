@@ -107,6 +107,8 @@ export interface ProviderExecution {
     reasoningText?: string | undefined;
     usage?: UsageSnapshot | undefined;
     firstByteMs?: number | undefined;
+    /** The stream ended early: upstream failure or the client went away. */
+    errored?: boolean | undefined;
   }>;
 }
 
