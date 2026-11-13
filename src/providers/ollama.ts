@@ -3,6 +3,7 @@ import type { DiscoveredModel, ProviderAdapter, ProviderExecution, ProviderRunti
 import type { UsageSnapshot } from '../telemetry/tracing.js';
 import { parseOllamaTags } from './model-parsers.js';
 import { shouldForwardClientHeader } from '../security/headers.js';
+import { providerFetch } from './upstream-fetch.js';
 
 function baseUrl(provider: ProviderRuntime): string {
   return provider.baseUrl.replace(/\/$/, '');
@@ -117,7 +118,7 @@ export class OllamaAdapter implements ProviderAdapter {
         : route.bodyBuffer
           ? Buffer.from(route.bodyBuffer)
           : undefined;
-      const response = await fetch(`${baseUrl(provider)}${route.path}${route.queryString}`, {
+      const response = await providerFetch(`${baseUrl(provider)}${route.path}${route.queryString}`, {
         method: route.method,
         headers: buildNativeHeaders(route, provider),
         ...(body ? { body } : {}),
@@ -127,7 +128,7 @@ export class OllamaAdapter implements ProviderAdapter {
     }
 
     if (route.endpointKind === 'v1.models') {
-      const response = await fetch(`${baseUrl(provider)}/api/tags`, {
+      const response = await providerFetch(`${baseUrl(provider)}/api/tags`, {
         method: 'GET',
         headers: buildTranslatedHeaders(provider, false),
         signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
@@ -142,7 +143,7 @@ export class OllamaAdapter implements ProviderAdapter {
         model: route.model,
         input: requestBody.input,
       };
-      const upstream = await fetch(`${baseUrl(provider)}/api/embed`, {
+      const upstream = await providerFetch(`${baseUrl(provider)}/api/embed`, {
         method: 'POST',
         headers: buildTranslatedHeaders(provider),
         body: JSON.stringify(payload),
@@ -175,7 +176,7 @@ export class OllamaAdapter implements ProviderAdapter {
           ? requestBody.prompt.join('\n')
           : '';
       const stream = requestBody.stream === true;
-      const upstream = await fetch(`${baseUrl(provider)}/api/generate`, {
+      const upstream = await providerFetch(`${baseUrl(provider)}/api/generate`, {
         method: 'POST',
         headers: buildTranslatedHeaders(provider),
         body: JSON.stringify({ model: route.model, prompt, stream }),
@@ -187,7 +188,7 @@ export class OllamaAdapter implements ProviderAdapter {
     const messages = normalizeMessages(requestBody.messages ?? requestBody.input);
     const stream = route.stream;
 
-    const upstream = await fetch(`${baseUrl(provider)}/api/chat`, {
+    const upstream = await providerFetch(`${baseUrl(provider)}/api/chat`, {
       method: 'POST',
       headers: buildTranslatedHeaders(provider),
       body: JSON.stringify({
@@ -404,7 +405,7 @@ export class OllamaAdapter implements ProviderAdapter {
 
   async healthCheck(provider: ProviderRuntime): Promise<{ healthy: boolean; error?: string }> {
     try {
-      const response = await fetch(`${baseUrl(provider)}/api/tags`, {
+      const response = await providerFetch(`${baseUrl(provider)}/api/tags`, {
         method: 'GET',
         headers: buildTranslatedHeaders(provider, false),
         signal: AbortSignal.timeout(Math.min(provider.timeoutMs, 8000)),
@@ -418,7 +419,7 @@ export class OllamaAdapter implements ProviderAdapter {
   }
 
   async discoverModels(provider: ProviderRuntime): Promise<DiscoveredModel[]> {
-    const response = await fetch(`${baseUrl(provider)}/api/tags`, {
+    const response = await providerFetch(`${baseUrl(provider)}/api/tags`, {
       method: 'GET',
       headers: buildTranslatedHeaders(provider, false),
       signal: AbortSignal.timeout(Math.min(provider.timeoutMs, 15000)),

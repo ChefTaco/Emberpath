@@ -2,6 +2,7 @@ import { ProviderKind } from '../generated/prisma/client.js';
 import { OpenAiCompatibleAdapter } from './openai-compatible.js';
 import { shouldForwardClientHeader } from '../security/headers.js';
 import type { DiscoveredModel, ProviderAdapter, ProviderExecution, ProviderRuntime, RouteRequest } from './types.js';
+import { providerFetch } from './upstream-fetch.js';
 
 export class VllmAdapter implements ProviderAdapter {
   readonly kind = ProviderKind.VLLM;
@@ -32,7 +33,7 @@ export class VllmAdapter implements ProviderAdapter {
       headers.set(provider.authHeaderName, provider.authMode === 'BEARER' ? `Bearer ${provider.authSecret}` : provider.authSecret);
     }
 
-    const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}${route.path}${route.queryString}`, {
+    const response = await providerFetch(`${provider.baseUrl.replace(/\/$/, '')}${route.path}${route.queryString}`, {
       method: route.method,
       headers,
       ...(body ? { body } : {}),

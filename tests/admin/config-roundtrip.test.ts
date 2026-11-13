@@ -38,7 +38,7 @@ it('round-trips exact version-1 exports into the same and fresh SQLite installat
   const encrypted = source.encryptText('obviously-fake-source-credential');
   const provider = await source.prisma.provider.create({data: {slug: 'fixture-provider', name: 'Fixture provider', kind: 'OPENAI_GENERIC',
     baseUrl: 'https://provider.example.com/v1', encryptedAuthSecret: encrypted, authMode: 'HEADER', authHeaderName: 'x-provider-auth',
-    defaultHeadersJson: '{ "x-fixture": "synthetic" }', capabilityJson: '{"streaming":true,"tools":false}', passthroughJson: '["/fixture"]',
+    defaultHeadersJson: '{ "x-title": "synthetic" }', capabilityJson: '{"streaming":true,"tools":false}', passthroughJson: '["/fixture"]',
     timeoutMs: 9000, maxRetries: 0, concurrency: 2, priority: 0, weight: 3, failoverGroup: 'fixture-group', enabled: false,
     lastHealthStatus: 'ok', lastHealthError: 'Synthetic historical status', lastHealthAt: new Date(),
     models: {create: [{model: 'fixture-model', displayName: null, enabled: false, maxContextWindow: null, capabilityJson: null},

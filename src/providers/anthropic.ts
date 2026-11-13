@@ -2,6 +2,7 @@ import { ProviderKind } from '../generated/prisma/client.js';
 import { prettyJson } from '../utils/json.js';
 import { parseAnthropicModels } from './model-parsers.js';
 import type { DiscoveredModel, ProviderAdapter, ProviderExecution, ProviderRuntime, RouteRequest } from './types.js';
+import { providerFetch } from './upstream-fetch.js';
 
 interface AnthropicMessage {
   role: 'user' | 'assistant';
@@ -214,7 +215,7 @@ export class AnthropicAdapter implements ProviderAdapter {
       tools: normalized.tools,
     };
 
-    const upstream = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/v1/messages`, {
+    const upstream = await providerFetch(`${provider.baseUrl.replace(/\/$/, '')}/v1/messages`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
@@ -246,6 +247,7 @@ export class AnthropicAdapter implements ProviderAdapter {
 
   async healthCheck(provider: ProviderRuntime): Promise<{ healthy: boolean; error?: string }> {
     try {
+      // No credential or body is sent, so this probe may follow a redirect.
       const response = await fetch(provider.baseUrl, {
         method: 'GET',
         signal: AbortSignal.timeout(Math.min(provider.timeoutMs, 8000)),
@@ -266,7 +268,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     for (const [key, value] of Object.entries(provider.defaultHeaders)) {
       headers.set(key, value);
     }
-    const response = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/v1/models`, {
+    const response = await providerFetch(`${provider.baseUrl.replace(/\/$/, '')}/v1/models`, {
       method: 'GET',
       headers,
       signal: AbortSignal.timeout(Math.min(provider.timeoutMs, 15000)),
