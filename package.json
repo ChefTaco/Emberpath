@@ -85,7 +85,7 @@
   },
   "dependencies": {
     "@hivemagnus/hive-common": "^0.1.0",
-    "@hono/node-server": "2.1.5",
+    "@hono/node-server": "^2.1.8",
     "@photostructure/sqlite": "3.3.1",
     "@prisma/client": "^7.8.0",
     "@prisma/driver-adapter-utils": "7.8.0",
@@ -105,7 +105,7 @@
     "vitest": "^5.0.5"
   },
   "overrides": {
-    "@hono/node-server": "2.1.5",
+    "@hono/node-server": "^2.1.8",
     "deepmerge-ts": "8.0.0",
     "fast-uri": "3.1.9",
     "hono": "4.13.18",
