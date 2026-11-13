@@ -11,10 +11,10 @@ vi.mock('../../src/providers/index.js',()=>({listProviderRuntimes:mocks.provider
 vi.mock('../../src/telemetry/metrics.js',()=>({providerHealthGauge:{set:mocks.gauge}}));
 vi.mock('../../src/release/runtime.js',()=>({metadata:()=>({version:'synthetic',release:'synthetic',protocol:1})}));
 vi.mock('../../src/security/security-exporter-jwks-status.js',()=>({getSecurityExporterJwksStatus:()=>({state:'uninitialized',remainingMs:0})}));
-import {buildRouterDependencyReport} from '../../src/status/router-health.js';
+import {buildRouterDependencyReport,resetProviderHealthSweepReuse} from '../../src/status/router-health.js';
 import {runProviderHealthSweep} from '../../src/providers/health.js';
 import {pruneExpiredTraces,startTraceRetention} from '../../src/telemetry/retention.js';
-beforeEach(()=>vi.clearAllMocks());
+beforeEach(()=>{vi.clearAllMocks();resetProviderHealthSweepReuse();});
 afterEach(()=>vi.unstubAllEnvs());
 it('restored provider configuration is never probed or changed in isolation and is not reported healthy',async()=>{
   vi.stubEnv('HIVE_REHEARSAL','true');
@@ -36,4 +36,16 @@ it('normal readiness still requires an available configured provider',async()=>{
   const report=await buildRouterDependencyReport();
   expect(report.status).toBe('degraded');expect(report.providers.checked).toBe(true);
   expect(mocks.health).toHaveBeenCalledTimes(1);expect(mocks.update).toHaveBeenCalledTimes(1);
+});
+it('reports requested in quick succession share one provider sweep',async()=>{
+  vi.stubEnv('HIVE_REHEARSAL','false');
+  const reports=await Promise.all([buildRouterDependencyReport(),buildRouterDependencyReport()]);
+  reports.push(await buildRouterDependencyReport());
+  expect(reports.map(report=>report.status)).toEqual(['degraded','degraded','degraded']);
+  expect(mocks.health).toHaveBeenCalledTimes(1);expect(mocks.update).toHaveBeenCalledTimes(1);
+  // Each report still checks the database itself.
+  expect(mocks.database).toHaveBeenCalledTimes(3);
+  vi.useFakeTimers({toFake:['Date'],now:Date.now()+6_000});
+  try{await buildRouterDependencyReport();}finally{vi.useRealTimers();}
+  expect(mocks.health).toHaveBeenCalledTimes(2);
 });
