@@ -31,10 +31,9 @@
 
 ### Changed
 
-- Client API key verification and provider secret decryption no longer run scrypt on every
-  request. The envelope key is derived once per process, and a key that has verified is
-  recognised by a digest held in memory. Key rows are still read on every request, so
-  disabling, expiry, rotation and scope changes apply immediately.
+- Inference requests no longer run scrypt on the event loop, where it stalled every stream
+  being relayed. Client API keys are verified on the thread pool, and the envelope key for
+  provider secrets is derived once per process instead of once per provider per request.
 - Dependency reports requested within five seconds share one provider health sweep, so polling
   the unauthenticated `/health/ready`, `/health/dependencies` or `/ready` endpoints cannot
   multiply calls to the providers.

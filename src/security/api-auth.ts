@@ -2,39 +2,8 @@ import type { Context, Next } from 'hono';
 import type { AppVariables } from '../types/app.js';
 import { prisma } from '../storage/client.js';
 import { safeJsonParse } from '../utils/json.js';
-import { createHash, timingSafeEqual } from 'node:crypto';
-import { verifyHash } from './crypto.js';
+import { verifyHashAsync } from './crypto.js';
 import { log } from '../telemetry/logger.js';
-
-const VERIFIED_KEY_CACHE_SIZE = 1024;
-/**
- * Stored key hash -> SHA-256 of the raw key that verified against it. The stored
- * hash is scrypt, which is synchronous and slow by design; without this every
- * inference request would stall the event loop (and every stream being relayed)
- * for the full derivation. Only the verification result is remembered: the key
- * row is still read on every request, so disabling, expiry, rotation and scope
- * changes apply immediately. Client keys are random 288-bit values, so a fast
- * digest held in memory does not make them guessable.
- */
-const verifiedKeys = new Map<string, Buffer>();
-
-export function clearVerifiedClientKeys(): void {
-  verifiedKeys.clear();
-}
-
-function verifyClientKey(rawKey: string, storedHash: string): boolean {
-  const digest = createHash('sha256').update(rawKey).digest();
-  const known = verifiedKeys.get(storedHash);
-  // A stored hash has one raw key, so any other value is wrong without rederiving.
-  if (known) return timingSafeEqual(known, digest);
-  if (!verifyHash(rawKey, storedHash)) return false;
-  if (verifiedKeys.size >= VERIFIED_KEY_CACHE_SIZE) {
-    const oldest = verifiedKeys.keys().next();
-    if (!oldest.done) verifiedKeys.delete(oldest.value);
-  }
-  verifiedKeys.set(storedHash, digest);
-  return true;
-}
 
 export async function requireApiKey(
   context: Context<{ Variables: AppVariables }>,
@@ -54,7 +23,15 @@ export async function requireApiKey(
     orderBy: { createdAt: 'desc' },
   });
 
-  const match = candidates.find((candidate) => verifyClientKey(rawKey, candidate.keyHash));
+  // Off the event loop: the stored hash is scrypt, and deriving it synchronously
+  // here would stall every stream being relayed for each incoming request.
+  let match: (typeof candidates)[number] | undefined;
+  for (const candidate of candidates) {
+    if (await verifyHashAsync(rawKey, candidate.keyHash)) {
+      match = candidate;
+      break;
+    }
+  }
   if (!match) {
     return context.json({ error: 'Invalid API key' }, 401);
   }

@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 import { loadEnv } from '../config/env.js';
 
 // scrypt is deliberately slow and synchronous. Provider secrets are decrypted on
@@ -32,6 +32,20 @@ export function verifyHash(value: string, stored: string): boolean {
   }
 
   const derived = scryptSync(value, salt, 64);
+  const expected = Buffer.from(hash, 'hex');
+  return derived.length === expected.length && timingSafeEqual(derived, expected);
+}
+
+/** `verifyHash` with the derivation on the thread pool, for request paths. */
+export async function verifyHashAsync(value: string, stored: string): Promise<boolean> {
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) {
+    return false;
+  }
+
+  const derived = await new Promise<Buffer>((resolve, reject) => {
+    scrypt(value, salt, 64, (error, key) => (error ? reject(error) : resolve(key)));
+  });
   const expected = Buffer.from(hash, 'hex');
   return derived.length === expected.length && timingSafeEqual(derived, expected);
 }
