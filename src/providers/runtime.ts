@@ -31,6 +31,7 @@ function defaultCapabilities(kind: ProviderKind): ProviderCapability {
           'v1.audio.translations',
           'v1.images.generations',
           'v1.moderations',
+          'v1.decisions',
         ],
         tags: ['safe-tools', 'long-context'],
         maxContextWindow: 128000,

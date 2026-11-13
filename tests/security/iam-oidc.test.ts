@@ -73,6 +73,7 @@ function testEnv(): Env {
     HIVE_ROUTER_DECISION_MODEL: "~typesafe/jev-latest",
     HIVE_ROUTER_DECISION_MODE: "off",
     HIVE_ROUTER_DECISION_TIMEOUT_MS: 10_000,
+    EMBERPATH_DECISIONS_JEV_ENABLED: false,
     OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
     PROMETHEUS_PREFIX: 'hive_router_test_',
     DEFAULT_TRACE_RETENTION_DAYS: 7,

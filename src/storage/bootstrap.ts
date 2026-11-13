@@ -1,4 +1,5 @@
-import { defaultHeuristicRules, defaultRouteRules, ROUTING_PROFILE_ALIASES, ROUTING_PROFILE_RULES } from '../routing/defaults.js';
+import { DECISIONS_API_ALIASES, DECISIONS_API_RULES, defaultHeuristicRules, defaultRouteRules, ROUTING_PROFILE_ALIASES, ROUTING_PROFILE_RULES } from '../routing/defaults.js';
+import { JEV_DECISIONS_TAG, OPENROUTER_JEV_MODEL, OPENROUTER_JEV_PROVIDER_SLUG, TYPESAFE_JEV_MODEL, TYPESAFE_JEV_PROVIDER_SLUG } from '../decisions-api/backends.js';
 import { AuthMode, ProviderKind } from '../generated/prisma/client.js';
 import { loadEnv } from '../config/env.js';
 import { encryptText, hashValue } from '../security/crypto.js';
@@ -63,6 +64,56 @@ async function bootstrapOpenRouterProvider(apiKey: string | undefined): Promise<
   });
 
   return provider.id;
+}
+
+/**
+ * Public /v1/decisions over Jev, seeded only when the operator opts in with
+ * EMBERPATH_DECISIONS_JEV_ENABLED=true. The records reuse the shadow decision
+ * model's keys (HIVE_TYPESAFE_AI_KEY, HIVE_ROUTER_OPENROUTER_KEY) but are
+ * ordinary provider records from then on: they serve only v1.decisions, follow
+ * routing rules and priority, and are never replaced once they exist. Shadow
+ * mode keeps reading its env keys directly and is unaffected.
+ */
+async function bootstrapJevDecisionsProviders(env: ReturnType<typeof loadEnv>): Promise<void> {
+  if (!env.EMBERPATH_DECISIONS_JEV_ENABLED) return;
+  const seeds = [
+    env.HIVE_TYPESAFE_AI_KEY ? { slug: TYPESAFE_JEV_PROVIDER_SLUG, name: 'TypeSafe Jev (Decisions API)', kind: ProviderKind.OPENAI_GENERIC, baseUrl: 'https://api.typesafe.ai/v1', key: env.HIVE_TYPESAFE_AI_KEY, model: TYPESAFE_JEV_MODEL, priority: 90 } : undefined,
+    env.HIVE_ROUTER_OPENROUTER_KEY ? { slug: OPENROUTER_JEV_PROVIDER_SLUG, name: 'OpenRouter Jev (Decisions API)', kind: ProviderKind.OPENROUTER, baseUrl: OPENROUTER_BASE_URL, key: env.HIVE_ROUTER_OPENROUTER_KEY, model: OPENROUTER_JEV_MODEL, priority: 95 } : undefined,
+  ].filter((seed) => seed !== undefined);
+  for (const seed of seeds) {
+    if (await prisma.provider.findUnique({ where: { slug: seed.slug } })) continue;
+    const provider = await prisma.provider.create({
+      data: buildProviderCreateData({
+        slug: seed.slug,
+        name: seed.name,
+        kind: seed.kind,
+        baseUrl: seed.baseUrl,
+        authMode: AuthMode.BEARER,
+        authHeaderName: 'Authorization',
+        encryptedAuthSecret: encryptText(seed.key),
+        capabilities: { supportedRoutes: ['v1.decisions'], tags: [JEV_DECISIONS_TAG], streaming: false, tools: false, jsonSchema: false, embeddings: false, vision: false, reasoning: false },
+        timeoutMs: 30_000,
+        // Direct TypeSafe ahead of OpenRouter, as in shadow mode.
+        priority: seed.priority,
+      }),
+    });
+    await prisma.providerModel.create({ data: { providerId: provider.id, model: seed.model, displayName: 'Jev', enabled: true } });
+  }
+}
+
+/**
+ * Fresh installs only. Existing installations manage aliases and rules as
+ * routing revisions, so the `decision` alias is added there by an admin (see
+ * the README's Decisions section) and is never re-created after removal.
+ */
+async function bootstrapDecisionsAlias(): Promise<void> {
+  for (const alias of DECISIONS_API_ALIASES) {
+    if (await prisma.modelAlias.findUnique({ where: { alias: alias.alias } })) continue;
+    await prisma.modelAlias.create({ data: { alias: alias.alias, upstreamModel: alias.upstreamModel, description: alias.description, enabled: true } });
+  }
+  for (const rule of DECISIONS_API_RULES) {
+    await prisma.routeRule.upsert({ where: { name: rule.name }, update: {}, create: { ...rule, enabled: true } });
+  }
 }
 
 async function bootstrapRoutingProfiles(): Promise<void> {
@@ -136,6 +187,9 @@ async function bootstrapRoutingProfiles(): Promise<void> {
 
 export async function bootstrapStorage(): Promise<void> {
   const env = loadEnv();
+  // Decided before anything is seeded: a database without any alias or route
+  // rule has never been bootstrapped.
+  const freshInstall = (await prisma.modelAlias.count()) === 0 && (await prisma.routeRule.count()) === 0;
 
   const usernames = env.HIVE_ROUTER_ADMIN_USERS.split(',').map((user) => user.trim()).filter(Boolean);
   const initial = initialAdminIdentities(env.EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON ?? '[]', usernames);
@@ -203,5 +257,7 @@ export async function bootstrapStorage(): Promise<void> {
   }
 
   await bootstrapOpenRouterProvider(env.OPENROUTER_API_KEY);
+  await bootstrapJevDecisionsProviders(env);
   await bootstrapRoutingProfiles();
+  if (freshInstall) await bootstrapDecisionsAlias();
 }

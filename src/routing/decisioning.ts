@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { postJevDecision } from './jev-transport.js';
 import type { RouteObservation, RouteRequest } from '../providers/types.js';
 
 export const DECISION_MODEL = '~typesafe/jev-latest';
@@ -47,27 +48,11 @@ export interface DecisionConfig { apiKey: string; model?: string; timeoutMs?: nu
 export async function classifyDecision(state: unknown, config: DecisionConfig, signal?: AbortSignal): Promise<DecisionResponse> {
   const serialized = JSON.stringify(state);
   if (!serialized || Buffer.byteLength(serialized) > MAX_DECISION_INPUT_BYTES) throw new Error('decision_input_limit');
-  const timeout = AbortSignal.timeout(config.timeoutMs ?? 10_000);
-  const response = await fetch(DECISION_ENDPOINT, {
-    method: 'POST', redirect: 'error',
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  const { text } = await postJevDecision(DECISION_ENDPOINT, { model: config.model ?? DECISION_MODEL, state, questions: decisionQuestions }, {
     headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json', 'X-OpenRouter-Title': 'HiveRouter Decisions' },
-    body: JSON.stringify({ model: config.model ?? DECISION_MODEL, state, questions: decisionQuestions }),
+    timeoutMs: config.timeoutMs ?? 10_000, maxResponseBytes: 64_000, signal,
   });
-  if (!response.ok) { await response.body?.cancel(); throw new Error(`decision_http_${response.status}`); }
-  // Bound upstream output; never log raw provider errors or untrusted response text.
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('decision_empty_response');
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    size += chunk.value.byteLength;
-    if (size > 64_000) { await reader.cancel(); throw new Error('decision_response_limit'); }
-    chunks.push(chunk.value);
-  }
-  const parsed = decisionResponseSchema.safeParse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+  const parsed = decisionResponseSchema.safeParse(JSON.parse(text));
   if (!parsed.success) throw new Error('decision_invalid_response');
   return parsed.data;
 }
