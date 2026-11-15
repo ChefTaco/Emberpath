@@ -22,20 +22,20 @@ Emberpath is managed through the admin API ([OpenAPI document](docs/openapi.json
 
 Emberpath 2.x ships only as a container image, `ghcr.io/cheftaco/emberpath`, for
 `linux/amd64` and `linux/arm64`. Each release is tagged with its exact version (for example
-`2.0.1`; there is no `latest` tag), and its
+`2.5.0`; there is no `latest` tag), and its
 [GitHub release](https://github.com/ChefTaco/Emberpath/releases) records the image digest.
 
 **With the Hive suite.** Emberpath is normally installed by `hive.sh`, the
 [Hive suite controller](https://github.com/ChefTaco/hive#install-the-suite), in both the
 `core` and `full` profiles. The controller pins the image by digest from a signed release
-manifest and writes its configuration, secrets and Oathweave sign-in. Hive 2.0.1 pins
-Emberpath 2.0.1.
+manifest and writes its configuration, secrets and Oathweave sign-in. Hive 3.9.1 pins
+Emberpath 2.5.0.
 
 **Legacy npm packages.** `@hivemagnus/emberpath`, this source's package name, is not
 published on npm. The npm package `@hivemagnus/hive-router` and the image
 `ghcr.io/cheftaco/hive-router` are the legacy Hive Router 1.x line, which predates this
 repository: `npm install` and `npx` resolve `@hivemagnus/hive-router` to 1.2.2, not to
-Emberpath 2.x, and it still bundles the old console on the admin listener. The
+Emberpath 2.x, and it still bundles the old UI on the admin listener. The
 [Hive README](https://github.com/ChefTaco/hive#the-retired-npm-packages) describes that line.
 
 ### Run the image on its own
@@ -772,7 +772,10 @@ The evaluation reads credentials from the repository-root `.env` (override with
 
 ## Managed upgrades
 
-Use `hive upgrade --dry-run`, then `hive upgrade` for the enrolled release bundle. This server's
+A Hive suite installation upgrades Emberpath with the suite controller (`./hive.sh upgrade`; see
+the [Hive README](https://github.com/ChefTaco/hive#upgrading)). The rest of this paragraph is for
+installations enrolled with the retired npm `hive` launcher: use `hive upgrade --dry-run`, then
+`hive upgrade` for the enrolled release bundle. This server's
 `upgrade` and `rollback` commands delegate to the same owner-run launcher. `migrate --plan --json`
 is read-only; migration requires a verified backup. Set `HIVE_AUTO_MIGRATE=true` explicitly for
 startup migrations outside a managed install. Slow or one-way automatic migrations are refused.
@@ -844,7 +847,7 @@ requests, and check its provenance without reading sibling backend source.
 
 ## Fresh suite initialization
 
-New suite deployments may preallocate console account IDs with
+New suite deployments may preallocate administrator account IDs with
 `EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON`, for example
 `[{"username":"admin","localId":"synthetic-new-model-admin"}]`.
 Each username must be in the configured administrator allowlist. Startup creates
