@@ -22,7 +22,7 @@ Emberpath is managed through the admin API ([OpenAPI document](docs/openapi.json
 
 Emberpath 2.x ships only as a container image, `ghcr.io/cheftaco/emberpath`, for
 `linux/amd64` and `linux/arm64`. Each release is tagged with its exact version (for example
-`2.5.0`; there is no `latest` tag), and its
+`2.5.1`; there is no `latest` tag), and its
 [GitHub release](https://github.com/ChefTaco/Emberpath/releases) records the image digest.
 
 **With the Hive suite.** Emberpath is normally installed by `hive.sh`, the
@@ -68,10 +68,10 @@ NODE_EXTRA_CA_CERTS=/config/tls/server.crt
 EOF
 
 docker run --rm --network oathweave -v emberpath-data:/data -v "$PWD/tls:/config/tls:ro" \
-  --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.5.0 check
+  --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.5.1 check
 docker run -d --name emberpath --network oathweave \
   -p 127.0.0.1:4020:4020 -p 127.0.0.1:9443:9443 -v emberpath-data:/data \
-  -v "$PWD/tls:/config/tls:ro" --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.5.0
+  -v "$PWD/tls:/config/tls:ro" --env-file emberpath.env ghcr.io/cheftaco/emberpath:2.5.1
 
 # Once it reports healthy
 curl --cacert tls/server.crt https://localhost:4020/health
