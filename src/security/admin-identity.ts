@@ -7,7 +7,6 @@
  */
 import {
   createOathweaveVerifier as createSharedOathweaveVerifier,
-  OathweaveError,
   parseIdentityLinks,
   requireIdentityLink,
   type OathweaveIdentityLink,
@@ -47,13 +46,14 @@ export function createOathweaveVerifier(
     clockToleranceSec: 0,
     // Confirm the identity session online on every request, so sign-out is immediate.
     sessionCacheTtlMs: 0,
+    // Emberpath requires the Oathweave `clientId` and `roles` claims to be present. The shared
+    // verifier refuses either one missing as `invalid_claims` before the session check.
+    requireRoles: true,
+    clientIdClaim: 'clientId',
     ...overrides,
   });
   return async (token) => {
     const principal = await verifier.verifyUser(token);
-    // Emberpath requires the Oathweave `clientId` and `roles` claims to be present.
-    if (typeof principal.claims['clientId'] !== 'string' || !Array.isArray(principal.claims['roles']))
-      throw new OathweaveError('invalid_claims');
     return {
       subject: principal.subject,
       issuer: principal.issuer,
