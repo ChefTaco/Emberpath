@@ -1,4 +1,5 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
+import { sha256Hex, timingSafeEqualString } from '@hivemagnus/hive-common/secrets';
 import { loadEnv } from '../config/env.js';
 
 // scrypt is deliberately slow and synchronous. Provider secrets are decrypted on
@@ -50,10 +51,9 @@ export async function verifyHashAsync(value: string, stored: string): Promise<bo
   return derived.length === expected.length && timingSafeEqual(derived, expected);
 }
 
+/** Constant-time string equality (the suite's shared helper); different lengths are unequal. */
 export function safeEqualText(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+  return timingSafeEqualString(left, right);
 }
 
 export function encryptText(plainText: string): string {
@@ -88,6 +88,7 @@ export function maskSecret(value: string | null | undefined): string | null {
   return `${value.slice(0, 4)}${'*'.repeat(Math.max(4, value.length - 8))}${value.slice(-4)}`;
 }
 
+/** SHA-256 of the UTF-8 text as lowercase hex (the suite's shared helper). */
 export function digestText(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
+  return sha256Hex(value);
 }

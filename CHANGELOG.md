@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `@hivemagnus/hive-common` 0.5.0 (from 0.1.0). It brings the shared kit's fixes since 0.1.0:
+  stricter validation of verifier options at startup, the conformance vectors for native-issuer
+  service tokens, and the error-envelope, request-ID and health fixes. Emberpath's own behaviour
+  is unchanged.
+- The admin verifier asks the shared verifier for the `roles` and `clientId` claims
+  (`requireRoles`, `clientIdClaim: 'clientId'`) instead of checking them afterwards. A token
+  without them is still refused as `invalid_claims`, now before the online session check, so
+  it no longer costs a userinfo request.
+- The metrics bearer comparison and the SHA-256 digests (request hashes, operation IDs and
+  routing revisions) use the shared `/secrets` helpers. Results are byte for byte the same.
+
 ## [2.5.0] - 2026-11-13
 
 ### Security

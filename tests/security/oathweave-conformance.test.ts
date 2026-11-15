@@ -92,6 +92,20 @@ describe('Oathweave admin verifier', () => {
       });
     });
 
+    it('refuses a token without roles or with only client_id before the online session check', async () => {
+      const { verify, sign, calls } = await setup();
+      await expect(verify(await sign({ roles: undefined }))).rejects.toMatchObject({ reason: 'invalid_claims', status: 401 });
+      await expect(verify(await sign({ clientId: undefined, client_id: 'hivexui-emberpath' }))).rejects.toMatchObject({
+        reason: 'invalid_claims',
+        status: 401,
+      });
+      await expect(verify(await sign({ roles: 'VIEWER' }))).rejects.toMatchObject({ reason: 'invalid_claims' });
+      expect(calls()).toBe(0);
+      // An empty roles array is still a valid claim, as before.
+      await expect(verify(await sign({ roles: [] }))).resolves.toMatchObject({ roles: [] });
+      expect(calls()).toBe(1);
+    });
+
     it('tolerates no clock skew', async () => {
       const { verify, sign } = await setup();
       await expect(verify(await sign({}, Math.floor(Date.now() / 1000) + 20))).rejects.toMatchObject({ reason: 'not_yet_valid' });
