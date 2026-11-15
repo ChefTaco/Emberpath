@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are released for the latest `1.x` version.
+Security fixes are released for the latest `2.x` version.
 
 ## Reporting a vulnerability
 
@@ -12,7 +12,7 @@ Report them privately through
 [GitHub private vulnerability reporting](https://github.com/ChefTaco/Emberpath/security/advisories/new).
 Please include:
 
-- the affected component (Router, IAM, HiveMem, Skills, or an SDK) and version or commit
+- the affected component (gateway, admin API or CLI) and version or commit
 - steps to reproduce, or a proof of concept
 - the impact you expect
 
@@ -23,4 +23,6 @@ advisory will credit you unless you ask not to be named.
 
 - Run every service over TLS in production, and keep admin listeners on a private network.
 - Keep `.env` files, IAM signing keys, and TLS keys readable only by root or the service user.
-- Rotate secrets with `npm run rotate:secrets` (see [docs/SECRET_ROTATION.md](docs/SECRET_ROTATION.md)).
+- Keep `HIVE_ROUTER_SECRET` stable: it signs admin sessions and encrypts stored provider secrets,
+  so rotating it invalidates both. Stored provider secrets are bound to the origin of their
+  `baseUrl`; see [README.md](README.md).
