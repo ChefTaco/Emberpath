@@ -25,11 +25,13 @@ Do not put live links or credentials in Git. Prepare and review links independen
 for each installation before applying configuration. No API request creates a
 replacement identity to impersonate a legacy account.
 
-The integration is under development. A passing unit suite does not authorize
-production adoption. Restore rehearsal, permissions, native clients, and browser
-workflow parity must pass before switching an existing installation.
+The Hive suite controller configures this integration, and the links, for suite
+installations. Before switching an existing standalone installation, rehearse a
+restore and check permissions, native clients and browser workflows; a passing unit
+suite alone is not enough.
 
 Direct model-resource credentials cannot invoke the retained IAM, Memory or Hive
 proxy/coordinator paths, even if an operator mistakenly grants broad permissions.
 Use each owning product API. Suite lifecycle operations belong to Hive/Magnus.
-Native compatibility paths remain available while migration and parity are pending.
+Native compatibility paths remain available. HiveXUI is the only UI; Emberpath serves
+no UI of its own.

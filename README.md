@@ -28,8 +28,8 @@ Emberpath 2.x ships only as a container image, `ghcr.io/cheftaco/emberpath`, for
 **With the Hive suite.** Emberpath is normally installed by `hive.sh`, the
 [Hive suite controller](https://github.com/ChefTaco/hive#install-the-suite), in both the
 `core` and `full` profiles. The controller pins the image by digest from a signed release
-manifest and writes its configuration, secrets and Oathweave sign-in. Hive 3.9.1 pins
-Emberpath 2.5.0.
+manifest and writes its configuration, secrets and Oathweave sign-in. Hive 3.11.0 pins
+Emberpath 2.5.1.
 
 **Legacy npm packages.** `@hivemagnus/emberpath`, this source's package name, is not
 published on npm. The npm package `@hivemagnus/hive-router` and the image
@@ -80,7 +80,8 @@ curl --cacert tls/server.crt https://localhost:4020/health
 `NODE_EXTRA_CA_CERTS` lets the image's health check, which verifies certificates, trust a
 self-signed certificate; omit it for a certificate from a CA the image already trusts. The
 image entry point is the CLI, so its commands (`check`, `migrate`, `create-key`,
-`env-schema`) follow the image name. See [Configuration](#configuration) for public URLs,
+`env-schema`) follow the image name. See [Container health probes](#container-health-probes)
+for the health check settings. See [Configuration](#configuration) for public URLs,
 HiveMem and everything else, and [Docker](#docker) for building the image yourself.
 
 ## Configure and run from source
@@ -149,6 +150,9 @@ To expose Emberpath beyond this machine, also set `HOST=0.0.0.0` (or
 | `hive-router check [--json]` | Validate configuration: env values, TLS files, writable data directory, `pamtester` or IAM, and reachability of IAM and HiveMem when configured. Starts nothing, writes nothing, exits `1` on problems. |
 | `hive-router env-schema` | Print every install-time setting as JSON (name, required, secret, default, how to generate secrets), plus ports, health path and optional dependencies. |
 | `hive-router create-key --name <name>` | Create a client API key (see [API keys from the command line](#api-keys-from-the-command-line)). |
+| `hive-router migrate --plan [--json]` | Show pending database migrations without writing. |
+| `hive-router migrate [--backup-dir DIR]` | Back up the database, then apply pending migrations. |
+| `hive-router upgrade` / `rollback` | Delegate to the owner-run Hive launcher (see [Managed upgrades](#managed-upgrades)). |
 | `--env-file <path>` | Load a dotenv file first. Variables already in the environment win. Without it, `.env` and `.env.apikeys` in the working directory are read. |
 | `--help`, `--version` | Usage and version. |
 
@@ -213,7 +217,7 @@ clients ──► API plane (API_HOST:API_PORT) ──► providers (OpenAI, Ant
 operators ─► Admin plane (ADMIN_HOST:ADMIN_PORT)
                ├─ other paths       HiveXUI page, or 302 to HIVEXUI_URL (the UI is HiveXUI)
                ├─ /api/*            admin API (session cookie + permission checks)
-               ├─ /api/iam/*        proxied to Hive IAM with a server-side client-credentials token
+               ├─ /api/iam/*        proxied to Oathweave with a server-side client-credentials token
                ├─ /api/memory/*     proxied to HiveMem with a self-renewing Oathweave service token
                └─ /v1/*, /dashboard proxied to HiveMem (compatibility paths)
 ```
@@ -224,8 +228,9 @@ is generated from `prisma/schema.prisma`. Run `npm run db:generate-bootstrap`
 after you edit the schema; `npm test` fails if the generated file is stale.
 
 The IAM request types in `src/contracts/ui-api.generated.ts` are generated from the
-Hive IAM OpenAPI spec. Run `npm run contracts:generate` after you change IAM request
-schemas; `npm run typecheck` fails if the generated file is stale.
+Oathweave OpenAPI snapshot in `contracts/oathweave.openapi.json`. Run
+`npm run contracts:generate` after you update that snapshot; `npm run typecheck` fails if
+the generated file is stale.
 
 ## Requirements (source checkout)
 
@@ -251,8 +256,9 @@ npm run start
 
 For development, run `npm run dev` (API and admin with reload).
 
-`.env.example` binds the API to `https://localhost:4020` and the admin API
-to `https://127.0.0.1:9443`. TLS is turned on when both `TLS_CERT_PATH` and
+`.env.example` binds the API plane to all interfaces on port `4020`
+(`API_HOST=0.0.0.0`) and the admin API to `127.0.0.1:9443`, with public URLs
+`https://localhost:4020` and `https://127.0.0.1:9443`. TLS is turned on when both `TLS_CERT_PATH` and
 `TLS_KEY_PATH` point at existing files. In development, with no certificate,
 the listeners use plain HTTP. Health endpoints on both listeners:
 `/health`, `/health/live`, `/health/ready` and `/health/dependencies`.
@@ -322,12 +328,15 @@ directory. Variables with no default are optional unless marked **required**.
 |---|---|---|
 | `HIVE_ROUTER_SECRET` | | **Required.** At least 32 characters. Signs admin sessions and encrypts stored provider secrets. Keep it stable: if you rotate it, sessions and stored provider credentials stop working. |
 | `HIVE_ROUTER_ADMIN_USERS` | `admin` | Comma-separated allowlist of account names that may sign in. Set it explicitly. |
-| `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Hive IAM. |
+| `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave. |
 | `HIVE_ROUTER_OS_AUTH_COMMAND` | | Replaces `pamtester` with another command. Intended for tests and development. |
 | `HIVE_ROUTER_CLI_TOKEN` | | Shared token required by `hive-router create-key` when set. |
 | `SEED_CLIENT_API_KEY` | | Optional client key inserted on first start. |
 
-### Hive IAM integration (optional)
+### Oathweave (IAM) integration (optional)
+
+These settings keep their Hive IAM names. For HiveXUI single sign-on see
+[Oathweave browser sign-in](#oathweave-browser-sign-in).
 
 | Variable | Default | Description |
 |---|---|---|
@@ -358,6 +367,18 @@ directory. Variables with no default are optional unless marked **required**.
 | `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry reported by the admin API. |
 | `HIVE_STATUS_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
+### Oathweave browser sign-in
+
+HiveXUI signs administrators in through Oathweave and calls the admin API with
+browser-issuer tokens. The suite controller sets these; see
+[direct browser authorization](docs/OATHWEAVE.md) for the rules.
+
+| Variable | Default | Description |
+|---|---|---|
+| `OATHWEAVE_ISSUER` / `OATHWEAVE_JWKS_URL` / `OATHWEAVE_USERINFO_URL` | | Oathweave browser issuer and its HTTPS JWKS and userinfo endpoints. Set all three or none. |
+| `EMBERPATH_OATHWEAVE_IDENTITIES_JSON` | | Explicit issuer/subject links to existing admin accounts. Unlinked subjects are denied. |
+| `EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON` | | Fresh suite installs only: preallocated admin account IDs (see [Fresh suite initialization](#fresh-suite-initialization)). |
+
 ### Metrics, export and decision model
 
 | Variable | Default | Description |
@@ -365,8 +386,8 @@ directory. Variables with no default are optional unless marked **required**.
 | `HIVE_ROUTER_METRICS_TOKEN` | | Bearer token for scraping `/metrics`. If unset, `/metrics` requires an admin session. |
 | `PROMETHEUS_PREFIX` | `hive_router_` | Prefix for metric names. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | | OTLP endpoint for OpenTelemetry traces. |
-| `HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH` | | Legacy static credential for the security-event export. Used only while the fallback flag below is on. |
-| `HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED` | `false` | Temporary migration switch for the static export credential. Emberpath refuses to start with it on after `2026-09-30`. |
+| `HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH` | | Retired static credential for the security-event export. It was usable only with the fallback flag below. |
+| `HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED` | `false` | Expired migration switch: since `2026-09-30` Emberpath refuses to start with it on. Use the `security-exporter` Oathweave client instead. |
 | `OPENROUTER_API_KEY` | | Seeds an `OPENROUTER` provider on first start. |
 | `HIVE_TYPESAFE_AI_KEY` / `HIVE_TYPESAFE_AI_MODEL` | / `jev-latest` | Direct TypeSafe credential and model for the shadow decision model. |
 | `HIVE_ROUTER_OPENROUTER_KEY` | | OpenRouter credential for the decision model fallback. |
@@ -381,7 +402,7 @@ directory. Variables with no default are optional unless marked **required**.
   their OS password, which is checked through PAM. Every OS-mode operator has
   full admin rights.
 - **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`): Emberpath signs the user
-  in against Hive IAM with authorization code + PKCE, then checks the username
+  in against Oathweave with authorization code + PKCE, then checks the username
   against `HIVE_ROUTER_ADMIN_USERS`. IAM `admin` and `super_admin` roles grant
   full access. Other users need a permission for each request, reads included:
   for example `router:providers:read` or `router:providers:write`,
@@ -525,6 +546,13 @@ it is missing. If IAM or HiveMem is installed on the same host, the script
 recovers `HIVE_ROUTER_IAM_CLIENT_SECRET` from `/opt/hive-iam/.env` and
 `HIVE_ROUTER_MEMORY_PROXY_TOKEN` from `/opt/hivemem/.env`.
 
+### Native deployment runtime checks
+
+Source deployment checks the Node.js used by npm and `/usr/bin/node`, which the
+installed systemd service uses, against the current package `engines.node` policy.
+An unsupported runtime stops deployment before remote writes or service restarts.
+Update the system interpreter as well as any shell-specific Node.js installation.
+
 ### Docker
 
 Build the image from the repository root:
@@ -543,6 +571,23 @@ migrations require verified backups.
 `docker-compose.example.yml` is the Compose example from the legacy 1.x line: it builds or
 pulls `ghcr.io/cheftaco/hive-router` and does not run Emberpath 2.x. Its `HIVEXUI_URL` line
 shows where the setting goes; only Emberpath reads it.
+
+### Container health probes
+
+Container probes use a loopback `HIVE_HEALTH_URL`. Override its port/protocol for
+the selected deployment. When the service certificate uses a DNS name, set
+`HIVE_HEALTH_TLS_NAME` to that name and `NODE_EXTRA_CA_CERTS` to the approved CA
+bundle when needed. Probes retain certificate verification. Runtime state belongs
+in `/data`; mount only product-owned protected configuration in `/config`.
+
+### Restore rehearsal
+
+For isolated restore rehearsal, set `HIVE_REHEARSAL=true` on the candidate only.
+This disables provider health probes, update checks and trace/credential-receipt
+retention. Readiness checks the local database and reports external providers as
+unchecked (`providers.checked=false`); it does not certify inference connectivity.
+Normal operation defaults to `false` and retains provider readiness requirements.
+Hive verifies external discovery, generation and streaming separately before enrollment.
 
 ### Production checklist
 
@@ -766,9 +811,16 @@ The evaluation reads credentials from the repository-root `.env` (override with
 | `src/security` | Admin sessions, PAM/OIDC auth, API keys, quotas, crypto |
 | `src/storage` | Prisma client, SQLite bootstrap, trace bodies, audit |
 | `src/telemetry` | Logging, metrics, tracing, retention |
+| `src/decisions-api` | Public `POST /v1/decisions` translation and backends |
+| `src/contracts` | Browser-safe Zod contracts and the generated IAM request types |
+| `src/config` | Environment schema (`env.ts`), defaults and env-file loading |
+| `src/main.ts` | CLI entry point and usage text |
 | `prisma` | Prisma schema |
-| `scripts` | Deploy, smoke, evaluation and code-generation scripts |
-| `tests` | Vitest suites, Playwright HiveXUI page/redirect checks and fixtures |
+| `contracts` | Oathweave OpenAPI snapshot used for code generation |
+| `docs` | [Oathweave sign-in](docs/OATHWEAVE.md), [routing contract](docs/ROUTING_CONTRACT.md), [TypeSafe notes](docs/TYPESAFE_DIRECT_API.md), `openapi.json` |
+| `scripts` | Deploy, smoke, evaluation, code-generation and privacy scripts |
+| `tests` | Vitest suites, Playwright HiveXUI page/redirect checks (`tests/e2e`) and fixtures |
+| `tooling/release` | Vendored release and migration runtime |
 
 ## Managed upgrades
 
@@ -783,25 +835,22 @@ startup migrations outside a managed install. Slow or one-way automatic migratio
 or reseeds existing accounts. See [UPGRADING.md](https://github.com/ChefTaco/hive/blob/v1.2.2/UPGRADING.md)
 for adoption, compatibility, recovery, update notices and container controls.
 
-Container probes use a loopback `HIVE_HEALTH_URL`. Override its port/protocol for
-the selected deployment. When the service certificate uses a DNS name, set
-`HIVE_HEALTH_TLS_NAME` to that name and `NODE_EXTRA_CA_CERTS` to the approved CA
-bundle when needed. Probes retain certificate verification. Runtime state belongs
-in `/data`; mount only product-owned protected configuration in `/config`.
-Images are local candidates until registry publication and release acceptance.
+## Browser administration contracts
 
-For isolated restore rehearsal, set `HIVE_REHEARSAL=true` on the candidate only.
-This disables provider health probes, update checks and trace/credential-receipt
-retention. Readiness checks the local database and reports external providers as
-unchecked (`providers.checked=false`); it does not certify inference connectivity.
-Normal operation defaults to `false` and retains provider readiness requirements.
-Hive verifies external discovery, generation and streaming separately before enrollment.
+`src/contracts/model-admin.ts` is the browser-safe Zod contract for provider and
+alias administration, route rules and heuristics, objective configuration,
+selection previews and revision recovery, inference tests, client keys and quota
+usage, telemetry and traces, audit, runtime settings, API documentation and Codex
+device authorization. Native request handlers reuse these exact schemas; owned
+OpenAPI response schemas distinguish newly created keys from full rotation
+records. Creation and rotation reveal an API key once and prohibit caching; list
+and trace relations never expose key hashes or stored provider credentials.
+Opaque stored JSON fields remain strings, preserving historical data semantics.
 
 The provider and model-alias administration operations are described in the owned
 OpenAPI document, including strict write schemas, distinct sanitized read records,
 permissions, discovery and conflict responses. Detailed discovery result coverage
-is explicitly pending. `src/contracts/model-admin.ts` contains only public Zod
-contracts and is also used directly by the native request validators.
+is explicitly pending.
 
 After reviewing and committing a contract release, run
 `npm run contracts:browser -- --output NEW_DIRECTORY`. The export reads the exact
@@ -811,6 +860,10 @@ manifest with the product version, source revision and SHA-256. It never exports
 working-tree edits, private configuration or backend imports, and refuses to
 replace an existing directory. Browser applications vendor a reviewed release
 export and verify its checksum; they do not import sibling backend source.
+
+`npm run check:openapi` checks the generated operation and schema snapshot.
+
+## Configuration export and import
 
 Configuration downloads retain the published version-1 envelope, source IDs and
 read timestamps. Import accepts that exact archive and the legacy `{data: ...}`
@@ -827,24 +880,6 @@ stable; historical revision records retain their original source references and
 require review before applying them in another installation. This configuration
 workflow does not replace a verified database/key backup or installation restore.
 
-### Browser administration contracts
-
-`src/contracts/model-admin.ts` is the browser-safe Zod contract for provider and
-alias administration, route rules and heuristics, objective configuration,
-selection previews and revision recovery, inference tests, client keys and quota
-usage, telemetry and traces, audit, runtime settings, API documentation and Codex
-device authorization. Native request handlers reuse these exact schemas; owned
-OpenAPI response schemas distinguish newly created keys from full rotation
-records. Creation and rotation reveal an API key once and prohibit caching; list
-and trace relations never expose key hashes or stored provider credentials.
-Opaque stored JSON fields remain strings, preserving historical data semantics.
-
-Run `npm run contracts:browser -- --output NEW_DIRECTORY` to export committed
-contract bytes, exact source revision and checksum, product version and Apache
-attribution. Browser clients vendor that reviewed export, validate responses and
-requests, and check its provenance without reading sibling backend source.
-`npm run check:openapi` checks the generated operation and schema snapshot.
-
 ## Fresh suite initialization
 
 New suite deployments may preallocate administrator account IDs with
@@ -854,10 +889,3 @@ Each username must be in the configured administrator allowlist. Startup creates
 only missing accounts and preserves all existing IDs, display names and
 credentials. Conflicting bindings fail instead of merging accounts. Existing
 installations use explicit reviewed Oathweave issuer/subject account links.
-
-## Native deployment runtime checks
-
-Source deployment checks the Node.js used by npm and `/usr/bin/node`, which the
-installed systemd service uses, against the current package `engines.node` policy.
-An unsupported runtime stops deployment before remote writes or service restarts.
-Update the system interpreter as well as any shell-specific Node.js installation.
