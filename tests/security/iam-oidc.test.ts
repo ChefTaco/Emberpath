@@ -64,8 +64,6 @@ function testEnv(): Env {
     HIVE_ROUTER_ADMIN_USERS: 'admin',
     HIVE_ROUTER_OS_AUTH_COMMAND: undefined,
     HIVE_ROUTER_METRICS_TOKEN: undefined,
-    HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH: undefined,
-    HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED: false,
     HIVE_ROUTER_CLI_TOKEN: undefined,
     SEED_CLIENT_API_KEY: undefined,
     OPENROUTER_API_KEY: undefined,

@@ -30,7 +30,7 @@ import { authenticateAdmin, createAdminSession, destroyAdminSession, requireAdmi
 import { requestHiveMemServiceToken, requestIamClientCredentialsToken } from '../security/iam-oidc.js';
 import { createHiveMemCredential, type HiveMemCredential } from '../security/hivemem-credential.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
-import { decryptText, digestText, encryptText, generateOpenAiStyleApiKey, hashValue, maskSecret, safeEqualText, verifyHash } from '../security/crypto.js';
+import { decryptText, digestText, encryptText, generateOpenAiStyleApiKey, hashValue, maskSecret, safeEqualText } from '../security/crypto.js';
 import { applyAdminSecurityHeaders } from '../security/headers.js';
 import { prisma } from '../storage/client.js';
 import { getProviderAdapter, listProviderRuntimes } from '../providers/index.js';
@@ -1585,7 +1585,6 @@ async function listHiveIncidents(requestId: string): Promise<Response> {
 
 interface AdminAppDependencies {
   authorizeSecurityExporterToken?: (token: string) => Promise<SecurityExporterAuthResult>;
-  authorizeStaticSecurityExporterToken?: (token: string) => boolean;
 }
 
 export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ Variables: AppVariables }> {
@@ -1593,13 +1592,6 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   const app = new Hono<{ Variables: AppVariables }>();
   app.use('*', async (c,next)=>{if(maintenanceActive(new URL(c.req.url).pathname))return c.json({error:'Hive is undergoing maintenance'},503);await next();});
   const authorizeExporter = dependencies.authorizeSecurityExporterToken ?? authorizeSecurityExporterToken;
-  const authorizeStaticExporter = dependencies.authorizeStaticSecurityExporterToken
-    ?? ((token: string) => Boolean(
-      env.HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED
-      && env.HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH
-      && token
-      && verifyHash(token, env.HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH),
-    ));
 
   app.use('*', requestIdMiddleware({ trustInbound: true }));
   app.use('*', async (context, next) => {
@@ -1628,24 +1620,17 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.get('/api/security/events', async (context) => {
     const bearer = context.req.header('authorization')?.replace(/^Bearer\s+/iu, '') ?? '';
-    const hashAuthorized = Boolean(bearer && authorizeStaticExporter(bearer));
-    if (hashAuthorized) {
-      securityExporterAuthCounter.inc({ method: 'static', outcome: 'authorized' });
-      context.header('Warning', '299 Hive "Static security exporter credential is deprecated"');
+    const iamAuth = bearer
+      ? await authorizeExporter(bearer)
+      : { status: 'invalid' as const };
+    securityExporterAuthCounter.inc({ method: 'iam', outcome: iamAuth.status });
+    if (iamAuth.status === 'unavailable') {
+      context.header('Retry-After', String(SECURITY_EXPORTER_RETRY_AFTER_SECONDS));
+      context.header('Cache-Control', 'no-store');
+      return context.json({ error: 'IAM authorization temporarily unavailable' }, 503);
     }
-    if (!hashAuthorized) {
-      const iamAuth = bearer
-        ? await authorizeExporter(bearer)
-        : { status: 'invalid' as const };
-      securityExporterAuthCounter.inc({ method: 'iam', outcome: iamAuth.status });
-      if (iamAuth.status === 'unavailable') {
-        context.header('Retry-After', String(SECURITY_EXPORTER_RETRY_AFTER_SECONDS));
-        context.header('Cache-Control', 'no-store');
-        return context.json({ error: 'IAM authorization temporarily unavailable' }, 503);
-      }
-      if (iamAuth.status !== 'authorized') {
-        return context.json({ error: 'Unauthorized' }, 401);
-      }
+    if (iamAuth.status !== 'authorized') {
+      return context.json({ error: 'Unauthorized' }, 401);
     }
     const limit = Math.min(Math.max(Number(context.req.query('limit') ?? 200), 1), 500);
     const cursor = context.req.query('cursor');

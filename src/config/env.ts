@@ -2,7 +2,6 @@ import { config as loadDotEnv } from 'dotenv';
 import { join, resolve } from 'node:path';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { z } from 'zod';
-import { assertStaticExporterFallbackAllowed } from '../security/static-exporter-fallback.js';
 import { explicitEnvFileLoaded } from './env-file.js';
 import { DEFAULT_ADMIN_PORT, DEFAULT_API_PORT } from './defaults.js';
 import { defaultDataDir } from './paths.js';
@@ -158,8 +157,6 @@ export const envSchema = z.object({
   EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON: z.string().optional(),
   HIVE_ROUTER_OS_AUTH_COMMAND: z.string().optional(),
   HIVE_ROUTER_METRICS_TOKEN: optionalSecretSchema,
-  HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH: z.string().optional(),
-  HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED: booleanStringSchema.prefault('false'),
   HIVE_ROUTER_CLI_TOKEN: z.string().optional(),
   SEED_CLIENT_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
@@ -231,6 +228,13 @@ export class ConfigError extends Error {
 }
 
 const FIX_HINT = 'in the environment or the --env-file';
+/**
+ * Retired switch for the static security-export credential, removed after its
+ * 2026-09-30 expiry. `true` is refused so an operator never believes the old
+ * credential still works; any other value, and the old
+ * HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH, are ignored.
+ */
+export const RETIRED_STATIC_EXPORTER_FALLBACK = 'HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED';
 const SELF_SIGNED_HINT = 'openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj /CN=localhost -keyout key.pem -out cert.pem';
 
 function describeIssue(variable: string, issue: z.core.$ZodIssue, source: NodeJS.ProcessEnv): string {
@@ -304,10 +308,8 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
   if (env.HIVE_STATUS_ALLOW_INSECURE_TLS && env.NODE_ENV === 'production') {
     add('HIVE_STATUS_ALLOW_INSECURE_TLS', 'HIVE_STATUS_ALLOW_INSECURE_TLS is forbidden in production. Set it to false and trust the HiveMem certificate with HIVEMEM_CA_CERT_PATH.');
   }
-  try {
-    assertStaticExporterFallbackAllowed(env.HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED);
-  } catch (error) {
-    add('HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED', `${error instanceof Error ? error.message : String(error)}. Set HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED=false and use the IAM security exporter client.`);
+  if (source[RETIRED_STATIC_EXPORTER_FALLBACK] === 'true') {
+    add(RETIRED_STATIC_EXPORTER_FALLBACK, `${RETIRED_STATIC_EXPORTER_FALLBACK} is retired: the static security-export credential was removed after its 2026-09-30 expiry. Remove the setting (or set it to false) and use the security-exporter Oathweave client.`);
   }
   if ((env.NODE_ENV === 'production' || env.REQUIRE_TLS) && (!env.TLS_CERT_PATH || !env.TLS_KEY_PATH)) {
     const reason = env.NODE_ENV === 'production' ? 'NODE_ENV=production' : 'REQUIRE_TLS=true';

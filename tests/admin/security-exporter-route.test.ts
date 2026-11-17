@@ -34,19 +34,17 @@ describe('Security exporter exporter route authentication failures', () => {
     });
   });
 
-  it('reports explicitly enabled static migration fallback use', async () => {
-    vi.spyOn(prisma.auditEvent, 'findMany').mockResolvedValue([]);
+  it('sends every bearer to Oathweave authorization; there is no static credential path', async () => {
+    const findMany = vi.spyOn(prisma.auditEvent, 'findMany').mockResolvedValue([]);
     const authorizeIam = vi.fn(async () => ({ status: 'invalid' as const }));
-    const app = createAdminApp({
-      authorizeSecurityExporterToken: authorizeIam,
-      authorizeStaticSecurityExporterToken: () => true,
-    });
+    const app = createAdminApp({ authorizeSecurityExporterToken: authorizeIam });
     const response = await app.request('/api/security/events', {
       headers: { authorization: 'Bearer migration-token' },
     });
-    expect(response.status).toBe(200);
-    expect(response.headers.get('warning')).toContain('deprecated');
-    expect(authorizeIam).not.toHaveBeenCalled();
+    expect(response.status).toBe(401);
+    expect(response.headers.get('warning')).toBeNull();
+    expect(authorizeIam).toHaveBeenCalledWith('migration-token');
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it('queries eligible actions before pagination and returns a dense page', async () => {

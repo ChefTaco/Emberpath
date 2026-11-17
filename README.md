@@ -386,8 +386,6 @@ browser-issuer tokens. The suite controller sets these; see
 | `HIVE_ROUTER_METRICS_TOKEN` | | Bearer token for scraping `/metrics`. If unset, `/metrics` requires an admin session. |
 | `PROMETHEUS_PREFIX` | `hive_router_` | Prefix for metric names. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | | OTLP endpoint for OpenTelemetry traces. |
-| `HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH` | | Retired static credential for the security-event export. It was usable only with the fallback flag below. |
-| `HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED` | `false` | Expired migration switch: since `2026-09-30` Emberpath refuses to start with it on. Use the `security-exporter` Oathweave client instead. |
 | `OPENROUTER_API_KEY` | | Seeds an `OPENROUTER` provider on first start. |
 | `HIVE_TYPESAFE_AI_KEY` / `HIVE_TYPESAFE_AI_MODEL` | / `jev-latest` | Direct TypeSafe credential and model for the shadow decision model. |
 | `HIVE_ROUTER_OPENROUTER_KEY` | | OpenRouter credential for the decision model fallback. |
