@@ -77,6 +77,27 @@ describe('configuration errors', () => {
     expect(problems.map((problem) => problem.variable)).toEqual(['TLS_KEY_PATH', 'TLS_CERT_PATH']);
   });
 
+  it('refuses the retired static security-export fallback switch when it is on', () => {
+    const { env, problems } = inspectEnv({
+      HIVE_ROUTER_SECRET: secret,
+      HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED: 'true',
+    });
+    expect(env).toBeNull();
+    expect(problems.map((problem) => problem.variable)).toEqual(['HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED']);
+    expect(problems[0]?.message).toMatch(/is retired.*security-exporter Oathweave client/u);
+  });
+
+  it('ignores the retired static security-export settings otherwise and never parses them', () => {
+    const env = parseEnv({
+      HIVE_ROUTER_SECRET: secret,
+      HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED: 'false',
+      HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH: 'salt:hash',
+    });
+    expect(env).not.toHaveProperty('HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED');
+    expect(env).not.toHaveProperty('HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH');
+    expect(Object.keys(envSchema.in.shape).filter((name) => name.startsWith('HIVE_ROUTER_SECURITY_EXPORT_'))).toEqual([]);
+  });
+
   it('reports invalid ports by name', () => {
     const { problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, ADMIN_PORT: '70000' });
     expect(problems[0]?.message).toMatch(/^ADMIN_PORT must be a TCP port between 1 and 65535 \(got "70000"\)/u);

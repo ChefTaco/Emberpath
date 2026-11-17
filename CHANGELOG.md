@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- The static security-export credential, which expired on 2026-09-30.
+  `GET /api/security/events` accepts only the `security-exporter` Oathweave client token: the
+  `HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH` check, its `Warning: 299` response header and the
+  `method="static"` label of the exporter authorization metric are gone.
+  `HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED=true` is still refused at startup, now
+  as a retired setting; any other value of it, and `HIVE_ROUTER_SECURITY_EXPORT_TOKEN_HASH`,
+  are ignored, so existing env files keep working. Both entries are dropped from
+  `.env.example`, the README and the legacy deploy script, which now deletes them from the env
+  file it manages.
+
 ## [2.5.1] - 2026-11-15
 
 ### Changed
