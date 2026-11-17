@@ -138,7 +138,7 @@ describe('env-schema document', () => {
       expect.objectContaining({
         name: 'HIVE_ROUTER_MEMORY_PROXY_TOKEN',
         command: 'hivemem-server issue-token',
-        args: ['--subject', 'hive-router', '--role', 'admin'],
+        args: ['--subject', 'emberpath', '--role', 'admin'],
         signedWith: 'HIVEMEM_JWT_SECRET',
       }),
     ]);

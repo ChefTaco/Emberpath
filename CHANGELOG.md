@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.5.3] - 2026-11-17
+
+### Changed
+
+- `env-schema` (the env catalog) names `--subject emberpath` in the command it lists for minting
+  `HIVE_ROUTER_MEMORY_PROXY_TOKEN`, matching the README. Emberpath's HiveMem principal is
+  `emberpath`; the setting keeps its Hive Router name. Data a `hive-router` principal owns in
+  HiveMem moves with HiveMem 1.9.0's `rename-agent` before the token is re-issued.
+
 ## [2.5.2] - 2026-11-17
 
 ### Removed
