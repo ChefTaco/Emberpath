@@ -169,7 +169,7 @@ The self-renewing one is an Oathweave machine client: set `EMBERPATH_HIVEMEM_CLI
 `HIVEMEM_OATHWEAVE_SERVICES_JSON`. Emberpath then fetches a short-lived token when it needs one
 and fetches the next before it expires, so nothing has to be re-issued or restarted. Without it,
 set `HIVE_ROUTER_MEMORY_PROXY_TOKEN` to a HiveMem admin token minted with
-`hivemem-server issue-token --env-file hivemem.env --subject hive-router --role admin`
+`hivemem-server issue-token --env-file hivemem.env --subject emberpath --role admin`
 (valid for at most 30 days, so re-issue it and restart Emberpath before it
 expires); with it, that token is only a fallback until its own expiry. See
 [Configuration](#configuration) for everything else.
@@ -363,7 +363,7 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 | `EMBERPATH_HIVEMEM_CLIENT_ID` / `EMBERPATH_HIVEMEM_CLIENT_SECRET` | | Oathweave machine client for HiveMem. Emberpath fetches short-lived client credentials tokens (audience `hivemem`) and renews them in-process before they expire. Set both or neither. |
 | `EMBERPATH_HIVEMEM_SCOPE` | `hivemem:admin:all` | Permissions requested for HiveMem service tokens. |
 | `EMBERPATH_HIVEMEM_TOKEN_URL` | `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token` | Oathweave token endpoint for the service credential; HTTPS in production. |
-| `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject hive-router --role admin`. It is never sent to the browser. With the Oathweave client set, it is only a fallback and is never sent after its own expiry. |
+| `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject emberpath --role admin`. It is never sent to the browser. With the Oathweave client set, it is only a fallback and is never sent after its own expiry. |
 | `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry reported by the admin API. |
 | `HIVE_STATUS_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
