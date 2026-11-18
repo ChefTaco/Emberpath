@@ -28,7 +28,7 @@ Emberpath 2.x ships only as a container image, `ghcr.io/cheftaco/emberpath`, for
 **With the Hive suite.** Emberpath is normally installed by `hive.sh`, the
 [Hive suite controller](https://github.com/ChefTaco/hive#install-the-suite), in both the
 `core` and `full` profiles. The controller pins the image by digest from a signed release
-manifest and writes its configuration, secrets and Oathweave sign-in. Hive 3.12.2 pins
+manifest and writes its configuration, secrets and Oathweave sign-in. Hive 3.12.3 pins
 Emberpath 2.5.3.
 
 **Legacy npm packages.** `@hivemagnus/emberpath`, this source's package name, is not
