@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { assertNodeVersion, packageNodeRange } from './check-node-runtime.mjs';
@@ -21,7 +21,12 @@ test('streamed SSH preflight fails closed before a following deployment mutation
   const helper = readFileSync(new URL('./check-node-runtime.mjs', import.meta.url), 'utf8');
   for (const [version, accepted] of [['24.22.2', false], ['26.13.0', false], ['22.23.5', false], ['24.22.3', true], ['26.13.1', true]]) {
     const source = `Object.defineProperty(process.versions, 'node', { value: ${JSON.stringify(version)} });\n` + helper;
-    const child = spawnSync('bash', ['-e', '-c', '"$1" --input-type=module - --engines "$2"; printf DEPLOYMENT_ALLOWED', 'preflight-test', process.execPath, range], { input: source, encoding: 'utf8' });
+    // The shell script is a constant (as the streamed SSH command is); the Node binary is found via PATH and the
+    // engines range is passed through the environment, so no path or environment value is spliced into the command.
+    const child = spawnSync('bash', ['-e', '-c', 'node --input-type=module - --engines "$PREFLIGHT_ENGINES"; printf DEPLOYMENT_ALLOWED'], {
+      input: source, encoding: 'utf8',
+      env: { ...process.env, PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}`, PREFLIGHT_ENGINES: range },
+    });
     assert.equal(child.status, accepted ? 0 : 1, child.stderr);
     assert.equal(child.stdout, accepted ? 'DEPLOYMENT_ALLOWED' : '');
   }
