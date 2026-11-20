@@ -1,6 +1,6 @@
 {
   "name": "@hivemagnus/emberpath",
-  "version": "2.5.3",
+  "version": "2.5.4",
   "description": "Emberpath: OpenAI-compatible model routing, providers, quotas and telemetry.",
   "keywords": [
     "hive",
@@ -110,7 +110,8 @@
     "fast-uri": "3.1.9",
     "hono": "4.13.18",
     "valibot": "1.4.2",
-    "mysql2": "3.24.3"
+    "mysql2": "3.24.3",
+    "effect": "3.22.1"
   },
   "hiveRelease": {
     "schema": 1,

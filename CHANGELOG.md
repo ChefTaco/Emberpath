@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.5.4] - 2026-11-20
+
+### Security
+
+- The container image carries `effect` 3.22.1 instead of 3.20.0, removing CVE-2026-121707
+  (a ReDoS in `Schema.TemplateLiteral`, fixed in 3.22.1). Prisma 7 pins `effect` exactly 3.20.0
+  through `@prisma/config`, so an npm `overrides` entry forces 3.22.1. Its only consumer is the
+  Prisma CLI's config loader, which runs for migrations, not request handling. No migration and
+  no setting changes.
+
 ## [2.5.3] - 2026-11-17
 
 ### Changed
