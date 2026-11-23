@@ -1,3 +1,4 @@
+import { HIVE_HEADERS } from '@hivemagnus/hive-common/contracts';
 import type { ProviderRuntime, RouteRequest } from '../providers/types.js';
 
 // Per-provider concurrency limits and circuit breakers shared by every API route.
@@ -62,8 +63,13 @@ export function resetProviderCircuit(providerId: string): void {
   circuitBreakers.delete(providerId);
 }
 
+/**
+ * Whether the same provider may be asked again: safe methods, or a request that carries an
+ * idempotency key (the standard `Idempotency-Key`, or the legacy `X-Idempotency-Key`).
+ */
 export function shouldRetry(route: RouteRequest): boolean {
-  return ['GET', 'HEAD', 'OPTIONS'].includes(route.method) || Boolean(route.headers['x-idempotency-key']);
+  return ['GET', 'HEAD', 'OPTIONS'].includes(route.method)
+    || [HIVE_HEADERS.idempotencyKey, ...HIVE_HEADERS.idempotencyKeyAliases].some((name) => Boolean(route.headers[name]?.trim()));
 }
 
 export function shouldFailoverStatus(status: number): boolean {

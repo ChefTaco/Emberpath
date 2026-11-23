@@ -179,6 +179,14 @@ model Trace {
   providerModel       String?
   clientApiKeyId      String?
   actorId             String?
+  // Execution attribution (inference plane, from x-hive-execution, x-request-id and
+  // traceparent). Attribution only: never used for routing, quotas or authorization.
+  executionRootRef    String?
+  executionSelfRef    String?
+  executionParentRef  String?
+  clientRequestId     String?
+  inboundTraceparent  String?
+  executionJson       String?
   decisionJson        String
   requestHeadersJson  String?
   responseHeadersJson String?
@@ -199,6 +207,8 @@ model Trace {
 
   @@index([actorId, createdAt])
   @@index([clientApiKeyId, createdAt])
+  @@index([executionRootRef, createdAt])
+  @@index([executionSelfRef])
 }
 
 model TraceEvent {

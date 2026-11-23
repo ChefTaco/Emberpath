@@ -169,6 +169,9 @@ export const envSchema = z.object({
   // Public POST /v1/decisions only (unrelated to the shadow decision model above):
   // when true, startup seeds Jev provider records from the shadow keys.
   EMBERPATH_DECISIONS_JEV_ENABLED: booleanStringSchema.prefault('false'),
+  // Inference plane: no provider retry, backoff wait or failover starts later than this many
+  // milliseconds after the request arrived (an earlier x-hive-execution deadline_ms wins).
+  EMBERPATH_REQUEST_DEADLINE_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(300_000),
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrlSchema,
   PROMETHEUS_PREFIX: z.string().default('hive_router_'),
   DEFAULT_TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).default(7),

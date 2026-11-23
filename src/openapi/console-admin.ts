@@ -69,9 +69,15 @@ export function consoleAdminOpenApi() {
     since: 'Only traces created at or after this ISO 8601 timestamp',
     cursor: 'Opaque nextCursor from the previous page',
     limit: 'Page size; default ' + contracts.traceListDefaultLimit + ', maximum ' + contracts.traceListMaxLimit,
+    executionRoot: 'Only traces whose x-hive-execution root is this qualified reference (hx1:<product>:<instance>:<kind>:<id>)',
+    executionTask: 'Only traces whose execution self reference starts with this prefix; a task reference also matches its attempts '
+      + '(hx1:<product>:<instance>:attempt:<task>/...)',
+    executionParent: 'Only traces whose execution parent is this qualified reference',
   };
   traces.description = 'Without any of these query parameters, returns the latest 100 traces as {data}. With at least one, returns '
-    + 'a newest-first page as {data, nextCursor}; nextCursor is null on the last page. Invalid parameters return 400.';
+    + 'a newest-first page as {data, nextCursor}; nextCursor is null on the last page. Invalid parameters return 400. '
+    + 'With an execution filter (executionRoot, executionTask or executionParent) each trace also carries execution (client-asserted '
+    + 'attribution, never authorization) and attempts (every upstream provider attempt, including retries and failover).';
   traces.parameters = contracts.traceListQueryKeys.map((name) => ({name, in: 'query', required: false,
     description: traceParameterDescriptions[name], schema: name === 'limit'
       ? {type: 'integer', minimum: 1, maximum: contracts.traceListMaxLimit, default: contracts.traceListDefaultLimit}

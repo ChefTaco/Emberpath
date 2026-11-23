@@ -5187,6 +5187,69 @@
                       "null"
                     ]
                   },
+                  "attempts": {
+                    "items": {
+                      "properties": {
+                        "attempt": {
+                          "anyOf": [
+                            {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "delayMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "failover": {
+                          "type": "boolean"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "http_error",
+                            "stream_error",
+                            "network_error",
+                            "client_aborted",
+                            "succeeded",
+                            "failed",
+                            "stream_failed",
+                            "in_progress"
+                          ],
+                          "type": "string"
+                        },
+                        "providerId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "retryAfterMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "status": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "providerId",
+                        "attempt",
+                        "failover",
+                        "outcome"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "clientApiKey": {
                     "anyOf": [
                       {
@@ -5322,6 +5385,95 @@
                       "type": "object"
                     },
                     "type": "array"
+                  },
+                  "execution": {
+                    "properties": {
+                      "assertedBy": {
+                        "anyOf": [
+                          {
+                            "const": "client",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "attempt": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "clientRequestId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "context": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": {},
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "deadlineMs": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "inboundTraceparent": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "parent": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "root": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "self": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "root",
+                      "self",
+                      "parent",
+                      "clientRequestId",
+                      "inboundTraceparent",
+                      "attempt",
+                      "deadlineMs",
+                      "assertedBy",
+                      "context"
+                    ],
+                    "type": "object"
                   },
                   "id": {
                     "type": "string"
@@ -5534,6 +5686,69 @@
               "null"
             ]
           },
+          "attempts": {
+            "items": {
+              "properties": {
+                "attempt": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "delayMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "failover": {
+                  "type": "boolean"
+                },
+                "outcome": {
+                  "enum": [
+                    "http_error",
+                    "stream_error",
+                    "network_error",
+                    "client_aborted",
+                    "succeeded",
+                    "failed",
+                    "stream_failed",
+                    "in_progress"
+                  ],
+                  "type": "string"
+                },
+                "providerId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "retryAfterMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "status": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "providerId",
+                "attempt",
+                "failover",
+                "outcome"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "clientApiKey": {
             "anyOf": [
               {
@@ -5669,6 +5884,95 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "execution": {
+            "properties": {
+              "assertedBy": {
+                "anyOf": [
+                  {
+                    "const": "client",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "attempt": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "clientRequestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {},
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deadlineMs": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "inboundTraceparent": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "parent": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "root": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "self": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "root",
+              "self",
+              "parent",
+              "clientRequestId",
+              "inboundTraceparent",
+              "attempt",
+              "deadlineMs",
+              "assertedBy",
+              "context"
+            ],
+            "type": "object"
           },
           "id": {
             "type": "string"
@@ -5853,6 +6157,69 @@
                     "null"
                   ]
                 },
+                "attempts": {
+                  "items": {
+                    "properties": {
+                      "attempt": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "delayMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "failover": {
+                        "type": "boolean"
+                      },
+                      "outcome": {
+                        "enum": [
+                          "http_error",
+                          "stream_error",
+                          "network_error",
+                          "client_aborted",
+                          "succeeded",
+                          "failed",
+                          "stream_failed",
+                          "in_progress"
+                        ],
+                        "type": "string"
+                      },
+                      "providerId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "retryAfterMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "status": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "providerId",
+                      "attempt",
+                      "failover",
+                      "outcome"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
                 "clientApiKey": {
                   "anyOf": [
                     {
@@ -5988,6 +6355,95 @@
                     "type": "object"
                   },
                   "type": "array"
+                },
+                "execution": {
+                  "properties": {
+                    "assertedBy": {
+                      "anyOf": [
+                        {
+                          "const": "client",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attempt": {
+                      "anyOf": [
+                        {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clientRequestId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "context": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineMs": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "inboundTraceparent": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "parent": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "root": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "self": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "root",
+                    "self",
+                    "parent",
+                    "clientRequestId",
+                    "inboundTraceparent",
+                    "attempt",
+                    "deadlineMs",
+                    "assertedBy",
+                    "context"
+                  ],
+                  "type": "object"
                 },
                 "id": {
                   "type": "string"
@@ -9250,7 +9706,7 @@
     },
     "/api/traces": {
       "get": {
-        "description": "Without any of these query parameters, returns the latest 100 traces as {data}. With at least one, returns a newest-first page as {data, nextCursor}; nextCursor is null on the last page. Invalid parameters return 400.",
+        "description": "Without any of these query parameters, returns the latest 100 traces as {data}. With at least one, returns a newest-first page as {data, nextCursor}; nextCursor is null on the last page. Invalid parameters return 400. With an execution filter (executionRoot, executionTask or executionParent) each trace also carries execution (client-asserted attribution, never authorization) and attempts (every upstream provider attempt, including retries and failover).",
         "operationId": "readTraces",
         "parameters": [
           {
@@ -9307,6 +9763,40 @@
               "maximum": 200,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only traces whose x-hive-execution root is this qualified reference (hx1:<product>:<instance>:<kind>:<id>)",
+            "in": "query",
+            "name": "executionRoot",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "pattern": "^hx1:[a-z][a-z0-9-]{1,31}:[A-Za-z0-9._-]{1,96}:[a-z]+:[A-Za-z0-9._:/-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only traces whose execution self reference starts with this prefix; a task reference also matches its attempts (hx1:<product>:<instance>:attempt:<task>/...)",
+            "in": "query",
+            "name": "executionTask",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^hx1:[A-Za-z0-9._:/-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only traces whose execution parent is this qualified reference",
+            "in": "query",
+            "name": "executionParent",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "pattern": "^hx1:[a-z][a-z0-9-]{1,31}:[A-Za-z0-9._-]{1,96}:[a-z]+:[A-Za-z0-9._:/-]{1,128}$",
+              "type": "string"
             }
           }
         ],
@@ -9414,9 +9904,62 @@
     "/v1/audio/transcriptions": {
       "post": {
         "operationId": "post__v1_audio_transcriptions",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible audio transcription proxy endpoint"
@@ -9425,9 +9968,62 @@
     "/v1/audio/translations": {
       "post": {
         "operationId": "post__v1_audio_translations",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible audio translation proxy endpoint"
@@ -9436,9 +10032,62 @@
     "/v1/chat/completions": {
       "post": {
         "operationId": "post__v1_chat_completions",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible chat proxy endpoint"
@@ -9447,9 +10096,62 @@
     "/v1/completions": {
       "post": {
         "operationId": "post__v1_completions",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible completions proxy endpoint"
@@ -9458,6 +10160,47 @@
     "/v1/decisions": {
       "post": {
         "operationId": "post__v1_decisions",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -9634,7 +10377,19 @@
         },
         "responses": {
           "200": {
-            "description": "Decision: `{model, answers[], usage}` with one answer per question, in question order"
+            "description": "Decision: `{model, answers[], usage}` with one answer per question, in question order",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "description": "Invalid request, or no configured backend supports a feature the request uses (the error names it)"
@@ -9655,9 +10410,62 @@
     "/v1/embeddings": {
       "post": {
         "operationId": "post__v1_embeddings",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible embeddings proxy endpoint"
@@ -9666,9 +10474,62 @@
     "/v1/images/generations": {
       "post": {
         "operationId": "post__v1_images_generations",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible image generation proxy endpoint"
@@ -9688,9 +10549,62 @@
     "/v1/moderations": {
       "post": {
         "operationId": "post__v1_moderations",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible moderation proxy endpoint"
@@ -9699,9 +10613,62 @@
     "/v1/responses": {
       "post": {
         "operationId": "post__v1_responses",
+        "parameters": [
+          {
+            "description": "HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.",
+            "in": "header",
+            "name": "x-hive-execution",
+            "required": false,
+            "schema": {
+              "maxLength": 2048,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The caller's request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.",
+            "in": "header",
+            "name": "x-request-id",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "W3C trace context, recorded on the trace as inboundTraceparent.",
+            "in": "header",
+            "name": "traceparent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Success",
+            "headers": {
+              "x-hive-retry": {
+                "description": "exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.",
+                "schema": {
+                  "enum": [
+                    "exhausted",
+                    "none"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "summary": "OpenAI-compatible responses proxy endpoint"

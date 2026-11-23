@@ -1,3 +1,4 @@
+import { SERVICE_CAPABILITIES } from '../status/capabilities.js';
 import { maintenanceActive } from '../release/runtime.js';
 import { metadata } from '../release/runtime.js';
 import { packageRoot as releasePackageRoot } from '../config/paths.js';
@@ -28,6 +29,8 @@ import { loadEnv } from '../config/env.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { registerHealthProbes } from '../status/health-probes.js';
 import { getSemaphore, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
+import { deadlineReached, retrySignalFor, retryTiming, RETRY_HEADER, sameProviderRetryDelay, upstreamExhausted, upstreamRetryAfterMs } from './retry-budget.js';
+import { attemptDeadline, readInboundAttribution, type InboundAttribution } from '../telemetry/execution-attribution.js';
 import { decisionsError, decisionsRequestSchema, summarizeDecisionsRequest, type DecisionsErrorBody } from '../decisions-api/schema.js';
 import { planDecisions, type DecisionsRejection } from '../decisions-api/backends.js';
 import { executeDecisionsPlan } from '../decisions-api/execute.js';
@@ -266,12 +269,33 @@ function discardResponse(response: Response): void {
   if (response.body && !response.bodyUsed) void response.body.cancel().catch(() => undefined);
 }
 
+interface FailoverResult {
+  provider?: ProviderRuntime;
+  execution?: ProviderExecution;
+  failureResponse?: Response | undefined;
+  failureError?: string | undefined;
+  /** Upstream calls made, across retries and providers. More than one means a retry or failover happened. */
+  upstreamAttempts: number;
+  /** The upstream that produced the final answer said it had already exhausted its own retries. */
+  upstreamExhausted: boolean;
+}
+
+/**
+ * Try the decision's candidate providers in order. A provider that fails with a retryable
+ * status, a stream error before the first token, or a network error is retried (only for
+ * safe or idempotency-keyed requests) after a jittered backoff that honours the upstream
+ * `Retry-After`; when no retry may start before `deadlineMs`, or the upstream asks for a wait
+ * longer than the cap, the next candidate is tried immediately. A client disconnect stops
+ * every further attempt and does not count against a provider. Nothing here retries a
+ * response whose bytes have reached the client.
+ */
 async function runExecutionWithFailover(
   route: RouteRequest,
   decision: RouteDecision,
   providers: ProviderRuntime[],
   traceId: string,
-): Promise<{ provider?: ProviderRuntime; execution?: ProviderExecution; failureResponse?: Response | undefined; failureError?: string | undefined }> {
+  deadlineMs: number,
+): Promise<FailoverResult> {
   const candidateProviders = decision.candidateProviderIds
     .map((providerId) => providers.find((provider) => provider.id === providerId))
     .filter((provider): provider is ProviderRuntime => Boolean(provider));
@@ -279,6 +303,11 @@ async function runExecutionWithFailover(
 
   let lastFailureResponse: Response | undefined;
   let lastFailureError: string | undefined;
+  let upstreamAttempts = 0;
+  let lastUpstreamExhausted = false;
+  const finish = (result: Omit<FailoverResult, 'upstreamAttempts' | 'upstreamExhausted'>): FailoverResult => ({
+    ...result, upstreamAttempts, upstreamExhausted: lastUpstreamExhausted,
+  });
   // Only the last failed response is ever read (to answer the client), so every
   // superseded one is cancelled to hand its upstream connection back.
   const keepFailureResponse = (response: Response | undefined): void => {
@@ -288,6 +317,16 @@ async function runExecutionWithFailover(
   const nextCandidateAfter = (provider: ProviderRuntime): ProviderRuntime | undefined => {
     const currentIndex = candidateProviders.indexOf(provider);
     return candidateProviders.find((candidate, index) => index > currentIndex && !isCircuitOpen(candidate.id));
+  };
+  const clientDisconnected = async (provider: ProviderRuntime, attempt: number, duringBackoff: boolean): Promise<FailoverResult> => {
+    // The caller went away. That says nothing about the provider, so it must
+    // not count towards its circuit breaker, and no other provider is tried.
+    keepFailureResponse(undefined);
+    lastFailureError = CLIENT_DISCONNECTED;
+    await addTraceEvent(traceId, duringBackoff
+      ? { type: 'request.aborted', phase: 'execution', message: lastFailureError, data: { during: 'backoff', providerId: provider.id, attempt } }
+      : { type: 'provider.error', phase: 'execution', message: lastFailureError, data: { providerId: provider.id, attempt, outcome: 'client_aborted', failover: false } });
+    return finish({ failureError: lastFailureError });
   };
 
   for (const provider of candidateProviders) {
@@ -300,118 +339,119 @@ async function runExecutionWithFailover(
       });
       continue;
     }
+    // Failover to a later candidate stops once the request's deadline has passed.
+    if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
 
     const adapter = getProviderAdapter(provider.kind);
     const semaphore = getSemaphore(provider);
     const attempts = shouldRetry(route) ? Math.max(1, provider.maxRetries + 1) : 1;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      let failure: { type: 'provider.failover' | 'provider.stream_failover' | 'provider.error'; outcome: 'http_error' | 'stream_error' | 'network_error'; message: string; status?: number; retryAfterMs?: number | undefined; noRetry?: boolean } | undefined;
       await semaphore.acquire();
       try {
+        upstreamAttempts += 1;
         const execution = await adapter.execute(upstreamRoute, provider);
+        lastUpstreamExhausted = upstreamExhausted(execution.response.headers);
 
         if (shouldFailoverStatus(execution.response.status)) {
           markProviderFailure(provider.id);
           keepFailureResponse(execution.response);
           lastFailureError = `Upstream returned ${execution.response.status}`;
-          await addTraceEvent(traceId, {
+          failure = {
             type: 'provider.failover',
-            phase: 'execution',
+            outcome: 'http_error',
             message: `Provider ${provider.slug} returned ${execution.response.status}`,
-          });
-
-          const nextProvider = nextCandidateAfter(provider);
-          if (nextProvider) {
-            failoverCounter.inc({
-              route: route.routeKey,
-              from_provider: provider.slug,
-              to_provider: nextProvider.slug,
-            });
-          }
-          continue;
-        }
-
-        // Streaming-aware, retry-before-first-token failover: for SSE responses
-        // with a downstream candidate still available, peek the first chunk to
-        // catch upstreams that return 200 then immediately emit an error event.
-        const hasNextCandidate = nextCandidateAfter(provider) !== undefined;
-        const responseContentType = execution.response.headers.get('content-type') ?? '';
-        if (
-          route.stream &&
-          execution.response.ok &&
-          execution.response.body &&
-          !execution.tracePromise &&
-          responseContentType.includes('text/event-stream') &&
-          hasNextCandidate
-        ) {
-          const peeked = await peekStreamStart(execution.response.body);
-          if (looksLikeStreamError(peeked.firstChunkText)) {
-            // The failed stream is abandoned here; release its upstream connection.
-            void peeked.stream.cancel().catch(() => undefined);
-            markProviderFailure(provider.id);
-            lastFailureError = `Provider ${provider.slug} emitted a stream error before the first token`;
-            await addTraceEvent(traceId, {
-              type: 'provider.stream_failover',
-              phase: 'execution',
-              message: lastFailureError,
-              data: { phase: 'pre-first-byte' },
-            });
-            streamFailureCounter.inc({ route: route.routeKey, provider: provider.slug, phase: 'pre-first-byte' });
-            const nextProvider = nextCandidateAfter(provider);
-            if (nextProvider) {
-              failoverCounter.inc({
-                route: route.routeKey,
-                from_provider: provider.slug,
-                to_provider: nextProvider.slug,
-              });
-            }
-            continue;
-          }
-
-          resetProviderCircuit(provider.id);
-          keepFailureResponse(undefined);
-          const rebuiltResponse = new Response(peeked.stream, {
             status: execution.response.status,
-            headers: execution.response.headers,
-          });
-          return { provider, execution: { ...execution, response: rebuiltResponse } };
+            retryAfterMs: upstreamRetryAfterMs(execution.response.headers),
+            noRetry: lastUpstreamExhausted,
+          };
+        } else {
+          // Streaming-aware, retry-before-first-token failover: for SSE responses
+          // with a downstream candidate still available, peek the first chunk to
+          // catch upstreams that return 200 then immediately emit an error event.
+          // Nothing has reached the client yet, so trying again is safe.
+          const hasNextCandidate = nextCandidateAfter(provider) !== undefined;
+          const responseContentType = execution.response.headers.get('content-type') ?? '';
+          if (
+            route.stream &&
+            execution.response.ok &&
+            execution.response.body &&
+            !execution.tracePromise &&
+            responseContentType.includes('text/event-stream') &&
+            hasNextCandidate
+          ) {
+            const peeked = await peekStreamStart(execution.response.body);
+            if (looksLikeStreamError(peeked.firstChunkText)) {
+              // The failed stream is abandoned here; release its upstream connection.
+              void peeked.stream.cancel().catch(() => undefined);
+              markProviderFailure(provider.id);
+              lastFailureError = `Provider ${provider.slug} emitted a stream error before the first token`;
+              streamFailureCounter.inc({ route: route.routeKey, provider: provider.slug, phase: 'pre-first-byte' });
+              failure = { type: 'provider.stream_failover', outcome: 'stream_error', message: lastFailureError, status: execution.response.status };
+            } else {
+              resetProviderCircuit(provider.id);
+              keepFailureResponse(undefined);
+              const rebuiltResponse = new Response(peeked.stream, {
+                status: execution.response.status,
+                headers: execution.response.headers,
+              });
+              return finish({ provider, execution: { ...execution, response: rebuiltResponse } });
+            }
+          } else {
+            resetProviderCircuit(provider.id);
+            keepFailureResponse(undefined);
+            return finish({ provider, execution });
+          }
         }
-
-        resetProviderCircuit(provider.id);
-        keepFailureResponse(undefined);
-        return { provider, execution };
       } catch (error) {
-        if (route.signal?.aborted) {
-          // The caller went away. That says nothing about the provider, so it must
-          // not count towards its circuit breaker, and no other provider is tried.
-          keepFailureResponse(undefined);
-          lastFailureError = CLIENT_DISCONNECTED;
-          await addTraceEvent(traceId, {
-            type: 'provider.error',
-            phase: 'execution',
-            message: lastFailureError,
-            data: { providerId: provider.id, attempt },
-          });
-          return { failureError: lastFailureError };
-        }
+        if (route.signal?.aborted) return clientDisconnected(provider, attempt, false);
         markProviderFailure(provider.id);
+        lastUpstreamExhausted = false;
         lastFailureError = error instanceof Error ? error.message : 'Unknown provider execution error';
-        await addTraceEvent(traceId, {
-          type: 'provider.error',
-          phase: 'execution',
-          message: lastFailureError,
-          data: { providerId: provider.id, attempt },
-        });
+        failure = { type: 'provider.error', outcome: 'network_error', message: lastFailureError };
       } finally {
         semaphore.release();
+      }
+      if (!failure) break;
+
+      const delayMs = attempt < attempts && !failure.noRetry
+        ? sameProviderRetryDelay(attempt, attempts, { retryAfterMs: failure.retryAfterMs, deadlineMs })
+        : null;
+      const nextProvider = delayMs === null ? nextCandidateAfter(provider) : undefined;
+      const data = {
+        providerId: provider.id,
+        attempt,
+        outcome: failure.outcome,
+        failover: nextProvider !== undefined,
+        ...(failure.status !== undefined ? { status: failure.status } : {}),
+        ...(delayMs !== null ? { delayMs } : {}),
+        ...(failure.retryAfterMs !== undefined ? { retryAfterMs: failure.retryAfterMs } : {}),
+      };
+      await addTraceEvent(traceId, failure.type === 'provider.stream_failover'
+        ? { type: failure.type, phase: 'execution', message: failure.message, data: { ...data, phase: 'pre-first-byte' } }
+        : { type: failure.type, phase: 'execution', message: failure.message, data });
+      if (nextProvider && failure.type !== 'provider.error') {
+        failoverCounter.inc({
+          route: route.routeKey,
+          from_provider: provider.slug,
+          to_provider: nextProvider.slug,
+        });
+      }
+      if (delayMs === null) break;
+      try {
+        await retryTiming.sleep(delayMs, route.signal);
+      } catch (error) {
+        if (route.signal?.aborted) return clientDisconnected(provider, attempt, true);
+        throw error;
       }
     }
   }
 
-  return {
+  return finish({
     ...(lastFailureResponse ? { failureResponse: lastFailureResponse } : {}),
     ...(lastFailureError ? { failureError: lastFailureError } : {}),
-  };
+  });
 }
 
 function copyResponseHeaders(headers: Headers): Headers {
@@ -458,6 +498,15 @@ async function reserveClientQuota(
   return { reservationId: quota.reservationId, warnings: quota.warnings };
 }
 
+/** Client-asserted execution attribution for the trace; malformed values are ignored, never rejected. */
+function inboundAttribution(route: RouteRequest): InboundAttribution {
+  const attribution = readInboundAttribution(route.headers);
+  if (attribution.executionIgnored) {
+    log('warn', 'Ignored an invalid or oversized x-hive-execution header', { requestId: route.requestId });
+  }
+  return attribution;
+}
+
 async function handleRouteExecution(
   context: Context<{ Variables: AppVariables }>,
   endpointKind: EndpointKind,
@@ -487,6 +536,7 @@ async function handleRouteExecution(
 
   const providers = await listProviderRuntimes();
   const decision = await resolveRoute(route, providers);
+  const attribution = inboundAttribution(route);
 
   const trace = await startTrace({
     requestId: route.requestId,
@@ -505,6 +555,7 @@ async function handleRouteExecution(
     decision,
     requestBody: route.requestBodyText,
     clientApiKeyId: context.get('clientApiKey')?.id,
+    attribution,
   });
   if (quotaReservationId) await sqliteWrite(() => quotaLedger().attach(quotaReservationId, trace.traceId));
   context.set('traceContext', { traceId: trace.traceId, requestId: route.requestId });
@@ -532,9 +583,15 @@ async function handleRouteExecution(
     return context.json({ error: decision.denialReason, route_decision: decision }, 403);
   }
 
-  const executionResult = await runExecutionWithFailover(route, decision, providers, trace.traceId);
+  const deadlineMs = attemptDeadline(startedAt, loadEnv().EMBERPATH_REQUEST_DEADLINE_MS, attribution.execution);
+  const executionResult = await runExecutionWithFailover(route, decision, providers, trace.traceId, deadlineMs);
   const provider = executionResult.provider;
   const execution = executionResult.execution;
+  const retrySignal = (status: number) => retrySignalFor({
+    status,
+    upstreamAttempts: executionResult.upstreamAttempts,
+    upstreamExhausted: executionResult.upstreamExhausted,
+  });
 
   if (!provider || !execution) {
     const fallbackResponse = executionResult.failureResponse;
@@ -561,7 +618,7 @@ async function handleRouteExecution(
       JSON.stringify({ error: executionResult.failureError ?? 'All candidate providers failed' }),
       {
         status,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', [RETRY_HEADER]: retrySignal(status) },
       },
     );
   }
@@ -570,6 +627,7 @@ async function handleRouteExecution(
   if (quotaWarnings.length > 0) {
     responseHeaders.set('x-hive-quota-warning', quotaWarnings.join(','));
   }
+  responseHeaders.set(RETRY_HEADER, retrySignal(execution.response.status));
   const contentType = execution.response.headers.get('content-type') ?? '';
   if (execution.tracePromise) {
     const response = new Response(execution.response.body, {
@@ -779,6 +837,7 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
   // Images are judged per backend by the planner, which names the feature when
   // a backend cannot take them, so they do not filter candidates here.
   const decision = await resolveRoute({ ...route, modalities: [] }, providers);
+  const attribution = inboundAttribution(route);
   const trace = await startTrace({
     requestId: route.requestId,
     method: route.method,
@@ -797,9 +856,11 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
     decision,
     requestBody: route.requestBodyText,
     clientApiKeyId: context.get('clientApiKey')?.id,
+    attribution,
   });
   if (quotaReservationId) await sqliteWrite(() => quotaLedger().attach(quotaReservationId, trace.traceId));
   context.set('traceContext', { traceId: trace.traceId, requestId: route.requestId });
+  let upstreamAttempts = 0;
 
   const fail = async (status: number, responseBody: DecisionsErrorBody | string, meta: Parameters<typeof finalizeTrace>[0]['responseMeta'], outcome: TraceOutcome = TraceOutcome.FAILED, counterOutcome = 'failed'): Promise<Response> => {
     const text = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
@@ -812,7 +873,7 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
       responseMeta: meta,
     });
     requestCounter.inc({ plane: 'api', route: route.routeKey, method: route.method, status: `${status}`, provider: outcome === TraceOutcome.DENIED ? 'denied' : 'none', outcome: counterOutcome });
-    return new Response(text, { status, headers: { 'content-type': 'application/json' } });
+    return new Response(text, { status, headers: { 'content-type': 'application/json', [RETRY_HEADER]: retrySignalFor({ status, upstreamAttempts }) } });
   };
 
   if (decision.denialReason) {
@@ -833,7 +894,9 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
     return fail(unavailable.status, unavailable.body, { error: unavailable.body.error.message, decisionsApi: { rejections: plan.rejections.map(({ provider, backend, reason }) => ({ provider, backend, reason })) } });
   }
 
-  const executed = await executeDecisionsPlan(route, plan.entries, trace.traceId);
+  const deadlineMs = attemptDeadline(startedAt, loadEnv().EMBERPATH_REQUEST_DEADLINE_MS, attribution.execution);
+  const executed = await executeDecisionsPlan(route, plan.entries, trace.traceId, deadlineMs);
+  upstreamAttempts = executed.upstreamAttempts;
   if (!executed.result) {
     if (executed.failureResponse) {
       // Upstream error shapes are not documented; pass the last one through.
@@ -848,6 +911,7 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
   const status = execution.response.status;
   const responseHeaders = copyResponseHeaders(execution.response.headers);
   if (quotaWarnings.length > 0) responseHeaders.set('x-hive-quota-warning', quotaWarnings.join(','));
+  responseHeaders.set(RETRY_HEADER, retrySignalFor({ status, upstreamAttempts }));
   const contentType = execution.response.headers.get('content-type') ?? 'application/json';
   await finalizeTrace({
     traceId: trace.traceId,
@@ -933,6 +997,20 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
   app.use('*', async (c,next)=>{if(maintenanceActive(new URL(c.req.url).pathname))return c.json({error:'Hive is undergoing maintenance'},503);await next();});
 
   app.use('*', requestIdMiddleware({ trustInbound: false }));
+  // Every inference-plane answer says whether the gateway already retried it (D8 cross-layer
+  // retry budget). Handlers that retried set `exhausted`; everything else answers `none`.
+  app.use('*', async (context, next) => {
+    await next();
+    if (context.res.headers.has(RETRY_HEADER)) return;
+    try {
+      context.res.headers.set(RETRY_HEADER, 'none');
+    } catch {
+      // Immutable headers (a response passed through as-is): copy it once.
+      const response = new Response(context.res.body, context.res);
+      response.headers.set(RETRY_HEADER, 'none');
+      context.res = response;
+    }
+  });
   app.use('*', bodyLimit({
     maxSize: env.MAX_REQUEST_BODY_BYTES,
     onError: (context) => context.json({ error: 'Request body too large' }, 413),
@@ -944,7 +1022,7 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
   app.use('/version', requireApiKey);
 
   app.get('/', (context) => context.json({ service: 'hive-router-api', status: 'ok' }));
-  app.get('/health', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'api' }));
+  app.get('/health', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'api', capabilities: SERVICE_CAPABILITIES }));
   app.get('/health/dependencies', async (context) => {
     const report = await buildRouterDependencyReport();
     return context.json(report, report.status === 'ready' ? 200 : 503);

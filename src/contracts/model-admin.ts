@@ -410,6 +410,35 @@ export const clientKeyUsageSchema = z.object({clientApiKeyId: z.string(), name: 
 });
 export const traceEventSchema = z.object({id: z.string(), traceId: z.string(), type: z.string(), phase: nullableText,
   message: nullableText, dataJson: nullableText, occurredAt: timestamp});
+/** A qualified execution reference, `hx1:<product>:<instance>:<kind>:<id>` (HiveCommon execution context v1). */
+const executionRefPattern = /^hx1:[a-z][a-z0-9-]{1,31}:[A-Za-z0-9._-]{1,96}:[a-z]+:[A-Za-z0-9._:/-]{1,128}$/u;
+export const executionRefSchema = z.string().max(256).regex(executionRefPattern);
+/**
+ * Execution attribution stored with a trace (execution-filtered `GET /api/traces` only).
+ * Client-asserted, attribution only: it never selects a route, provider, quota or key.
+ * `context` is the stored v1 context; `assertedBy` is `client` when its Ardent instance
+ * disagrees with the actor of the authenticating client key.
+ */
+export const traceExecutionSchema = z.object({
+  root: nullableText, self: nullableText, parent: nullableText,
+  clientRequestId: nullableText, inboundTraceparent: nullableText,
+  attempt: z.number().int().nullable(), deadlineMs: z.number().nullable(),
+  assertedBy: z.literal('client').nullable(),
+  context: z.record(z.string(), z.unknown()).nullable(),
+});
+/** How one provider attempt ended. The last attempt of a finished trace uses the trace outcome. */
+export const traceAttemptOutcomeSchema = z.enum(['http_error', 'stream_error', 'network_error', 'client_aborted', 'succeeded', 'failed', 'stream_failed', 'in_progress']);
+/**
+ * One upstream provider attempt, derived from the trace's provider events plus, when a provider
+ * answered, the final attempt. `delayMs` is the backoff waited before the next attempt on the
+ * same provider; `failover` is true when the gateway moved to the next candidate provider after it.
+ * Attempts recorded before Emberpath 2.6 have `providerId` and `attempt` null.
+ */
+export const traceAttemptSchema = z.object({
+  providerId: nullableText, attempt: z.number().int().nullable(), status: z.number().int().optional(),
+  delayMs: z.number().int().optional(), retryAfterMs: z.number().int().optional(), failover: z.boolean(),
+  outcome: traceAttemptOutcomeSchema,
+});
 export const traceReadSchema = z.object({id: z.string(), requestId: z.string(), method: z.string(), path: z.string(),
   endpointKind: z.string(), routeKey: z.string(), statusCode: z.number().nullable(), outcome: z.string(), estimatedUsage: z.boolean(),
   providerId: nullableText, providerKind: nullableText, providerModel: nullableText, clientApiKeyId: nullableText,
@@ -420,6 +449,7 @@ export const traceReadSchema = z.object({id: z.string(), requestId: z.string(), 
   durationMs: z.number().nullable(), createdAt: timestamp,
   provider: providerSummarySchema.nullable().optional(), clientApiKey: clientKeyReadSchema.nullable().optional(),
   events: z.array(traceEventSchema).optional(),
+  execution: traceExecutionSchema.optional(), attempts: z.array(traceAttemptSchema).optional(),
 });
 export const traceListDefaultLimit = 50;
 export const traceListMaxLimit = 200;
@@ -427,6 +457,8 @@ export const traceListMaxLimit = 200;
  * Optional `GET /api/traces` filters. Passing any of them selects the paginated
  * `{data, nextCursor}` response; passing none keeps the original latest-100 list.
  * `cursor` is opaque: send back the previous page's `nextCursor` unchanged.
+ * Any execution filter (`executionRoot`, `executionTask`, `executionParent`) also adds
+ * `execution` and `attempts` to each row.
  */
 export const traceListQuerySchema = z.object({
   actorId: z.string().regex(/^[a-z0-9_-]{2,32}$/u).optional(),
@@ -434,8 +466,13 @@ export const traceListQuerySchema = z.object({
   since: z.iso.datetime({offset: true}).optional(),
   cursor: z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/u).optional(),
   limit: z.coerce.number().int().min(1).max(traceListMaxLimit).optional(),
+  executionRoot: executionRefSchema.optional(),
+  /** A prefix of the stored self reference, such as `hx1:ardent:<instance>:attempt:<task>/`, or a `task` reference. */
+  executionTask: z.string().min(1).max(256).regex(/^hx1:[A-Za-z0-9._:/-]+$/u).optional(),
+  executionParent: executionRefSchema.optional(),
 });
-export const traceListQueryKeys = ['actorId', 'clientKeyId', 'since', 'cursor', 'limit'] as const;
+export const traceListExecutionQueryKeys = ['executionRoot', 'executionTask', 'executionParent'] as const;
+export const traceListQueryKeys = ['actorId', 'clientKeyId', 'since', 'cursor', 'limit', ...traceListExecutionQueryKeys] as const;
 export const tracePageSchema = z.object({data: z.array(traceReadSchema), nextCursor: z.string().nullable()});
 export const telemetrySchema = z.object({totals: z.object({traces: z.number(), failures: z.number(), failovers: z.number()}), latestTrace: traceReadSchema.nullable()});
 export const adminUserReadSchema = z.object({id: z.string(), username: z.string(), displayName: nullableText, ...timestamps});
@@ -496,6 +533,8 @@ export type Telemetry = z.infer<typeof telemetrySchema>;
 export type Trace = z.infer<typeof traceReadSchema>;
 export type TraceListQuery = z.input<typeof traceListQuerySchema>;
 export type TracePage = z.infer<typeof tracePageSchema>;
+export type TraceExecution = z.infer<typeof traceExecutionSchema>;
+export type TraceAttempt = z.infer<typeof traceAttemptSchema>;
 export type AuditEvent = z.infer<typeof auditReadSchema>;
 export type RuntimeSetting = z.infer<typeof runtimeSettingReadSchema>;
 export type RoutingObjectiveConfig = z.input<typeof routingObjectiveSchema>;

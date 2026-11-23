@@ -195,11 +195,15 @@ suite does this during the upgrade) and then re-issues the token and updates the
   be rolled back.
 - **Safe failover**: streaming failures are classified as `pre-first-byte` or
   `mid-stream`. Emberpath fails over only before the first token and never
-  splices two upstream streams together.
+  splices two upstream streams together. Idempotent requests retry a provider
+  after a jittered backoff that honours `Retry-After` and the caller's deadline,
+  and every answer says whether Emberpath already retried it
+  ([retries and execution traces](#retries-and-execution-traces)).
 - **Client API keys and quotas**: OpenAI-style `sk-...` keys, stored only as
   hashes, with daily and monthly request and token caps (soft warnings, then
   hard `429`s).
-- **Observability**: per-request traces (body capture is configurable),
+- **Observability**: per-request traces (body capture is configurable) that
+  link to the agent execution that made the call and list every provider attempt,
   Prometheus metrics, optional OpenTelemetry export, estimated usage when the
   provider does not report it, and an audit log of admin actions.
 - **Model discovery**: `POST /api/providers/:id/discover` pulls live model
@@ -397,6 +401,7 @@ browser-issuer tokens. The suite controller sets these; see
 | `HIVE_ROUTER_DECISION_MODE` | `shadow` | `shadow` records decisions on traces; `off` disables them. |
 | `HIVE_ROUTER_DECISION_TIMEOUT_MS` | `10000` | Timeout for each decision provider call. |
 | `EMBERPATH_DECISIONS_JEV_ENABLED` | `false` | Public Decisions API only: `true` seeds the `typesafe-jev` and `openrouter-jev` provider records from the two shadow keys above on startup. See [Decisions API](#decisions-api). |
+| `EMBERPATH_REQUEST_DEADLINE_MS` | `300000` | Inference plane: no provider retry, backoff wait or failover starts later than this after a request arrives. An earlier `deadline_ms` in the caller's `x-hive-execution` wins. See [retries and execution traces](#retries-and-execution-traces). |
 
 ## Admin access model
 
@@ -601,6 +606,50 @@ Hive verifies external discovery, generation and streaming separately before enr
 - Expose only the listeners you need. Bind the admin plane to a private
   interface, or put it behind a VPN or an authenticating proxy.
 - Set `HIVE_ROUTER_METRICS_TOKEN` if Prometheus scrapes `/metrics`.
+
+## Retries and execution traces
+
+**Retries.** A failed upstream attempt (a `5xx`, `408` or `429`, a network error, or a
+stream error before the first token) is retried on the same provider only when the request
+is safe to repeat: a `GET`/`HEAD`/`OPTIONS`, or a request with an `Idempotency-Key` (or the
+legacy `X-Idempotency-Key`) header. A provider gets `maxRetries + 1` attempts. Between them
+Emberpath waits a full-jitter exponential backoff (250 ms doubling to at most 2 s), or the
+upstream's `Retry-After` when that is longer. When the upstream asks for more than 10 s, or
+the wait would pass the request deadline, Emberpath moves to the next candidate provider
+immediately instead. Requests without an idempotency key still fail over to the next
+provider, as before. The deadline is the earlier of `EMBERPATH_REQUEST_DEADLINE_MS` after
+arrival and the caller's execution `deadline_ms`; no retry or failover starts after it. A
+client that disconnects, including during a backoff wait, stops every further attempt
+without counting against the provider's circuit breaker. A stream whose bytes have reached
+the client is never retried or spliced: it ends as `STREAM_FAILED` with `retrySafe: false`.
+
+**Retry signal.** Every inference-plane answer carries `x-hive-retry`. It is `exhausted`
+when Emberpath already retried or failed over (or the upstream itself answered `exhausted`)
+and the answer is still a `5xx`, `429` or `408`; callers should not retry such an answer.
+Otherwise it is `none`. Provider failure events on the trace record `attempt`, `status`,
+`delayMs` (the backoff before the next try), `retryAfterMs` and whether Emberpath failed
+over.
+
+**Execution attribution.** Clients may send the suite execution context in
+`x-hive-execution` (HiveCommon execution context v1), their own `x-request-id` and a W3C
+`traceparent`. Emberpath records them on the trace (`executionRootRef`, `executionSelfRef`,
+`executionParentRef`, `executionJson`, `clientRequestId`, `inboundTraceparent`). They are
+attribution only: Emberpath still generates its own request ID, the trace's `actorId` still
+comes from the client key, and nothing here affects routing, quotas or access. Invalid or
+oversized values are ignored, never rejected. When the context names an Ardent instance
+whose profile is not the key's actor, the stored context gets `asserted_by: "client"`.
+
+**Finding traces by execution.** `GET /api/traces` accepts `executionRoot` (exact root
+reference), `executionTask` (a self-reference prefix; a `task` reference such as
+`hx1:ardent:<instance>:task:<id>` also matches its attempts
+`hx1:ardent:<instance>:attempt:<id>/...`) and `executionParent` (exact parent reference),
+combinable with the other filters and paged as `{data, nextCursor}`. With any of them, each
+trace also carries `execution` (the stored attribution) and `attempts[]`: every upstream
+provider attempt in order, `{providerId, attempt, status?, delayMs?, retryAfterMs?,
+failover, outcome}`. Responses without an execution filter keep their previous shape.
+
+Both planes' `GET /health` list the service capabilities `emberpath.execution-trace.v1`
+and `retry-signal.v1`.
 
 ## Decisions API
 

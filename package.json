@@ -84,7 +84,7 @@
     "check:openapi": "tsx scripts/openapi.ts"
   },
   "dependencies": {
-    "@hivemagnus/hive-common": "^0.5.0",
+    "@hivemagnus/hive-common": "^0.6.0",
     "@hono/node-server": "^2.1.8",
     "@photostructure/sqlite": "3.3.1",
     "@prisma/client": "^7.8.0",
@@ -264,6 +264,14 @@
         "impact": "fast",
         "readableBy": "^1.0.3",
         "note": "Add nullable Trace.actorId with actor and client-key time indexes; additive, existing rows keep null."
+      },
+      {
+        "component": "router",
+        "id": "managed-format-3",
+        "checksum": "9d8fdb8461c2825128033f3a9350524a7341f5be1535b61bc40e56c33f18db85",
+        "impact": "fast",
+        "readableBy": "^1.0.3",
+        "note": "Add nullable Trace execution attribution columns with execution-root time and self-ref indexes; additive, existing rows keep null."
       },
       {
         "component": "memory",
