@@ -636,7 +636,8 @@ over.
 `executionParentRef`, `executionJson`, `clientRequestId`, `inboundTraceparent`). They are
 attribution only: Emberpath still generates its own request ID, the trace's `actorId` still
 comes from the client key, and nothing here affects routing, quotas or access. Invalid or
-oversized values are ignored, never rejected. When the context names an Ardent instance
+oversized values are ignored, never rejected. `x-hive-execution` and `x-hive-retry` are never
+forwarded to upstream providers. When the context names an Ardent instance
 whose profile is not the key's actor, the stored context gets `asserted_by: "client"`.
 
 **Finding traces by execution.** `GET /api/traces` accepts `executionRoot` (exact root

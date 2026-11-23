@@ -39,6 +39,10 @@
 
 ### Changed
 
+- Emberpath no longer forwards the suite-internal `x-hive-execution` and `x-hive-retry` request
+  headers to upstream providers. Upstreams can be third-party model APIs, and the execution
+  context carries internal node, profile and task references. The redacted inbound copy is
+  still stored with the trace's request headers.
 - Same-provider retries also accept the standard `Idempotency-Key` header, not only
   `X-Idempotency-Key`.
 - The failover counter metric counts a move to the next provider once, instead of once per

@@ -360,6 +360,23 @@ describe('execution-linked traces', () => {
     expect(other.data).toEqual([]);
   });
 
+  it('never forwards x-hive-execution or x-hive-retry to an upstream provider, but keeps the inbound copy on the trace', async () => {
+    const received: Headers[] = [];
+    upstreams.set(PRIMARY, (init) => { received.push(new Headers(init.headers)); return completion('ok'); });
+    const header = execution({ root: 'hx1:studio:lab:request:private', self: 'hx1:ardent:node1.agent-a:attempt:task-9/1/1' });
+
+    const response = await chat({ key: actorKey, headers: { 'x-hive-execution': header, 'x-hive-retry': 'exhausted', 'x-request-id': 'caller-9' } });
+
+    expect(response.status).toBe(200);
+    expect(received).toHaveLength(1);
+    expect(received[0]!.has('x-hive-execution')).toBe(false);
+    expect(received[0]!.has('x-hive-retry')).toBe(false);
+    expect(received[0]!.get('content-type')).toBe('application/json');
+    const stored = await latestTrace();
+    expect(JSON.parse(stored.requestHeadersJson ?? '{}')).toMatchObject({ 'x-hive-execution': header });
+    expect(stored.executionRootRef).toBe('hx1:studio:lab:request:private');
+  });
+
   it('records a disagreeing Ardent instance as client-asserted without rejecting the request', async () => {
     upstreams.set(PRIMARY, () => completion('ok'));
     const response = await chat({ key: actorKey, headers: {
