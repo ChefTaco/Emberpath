@@ -1,5 +1,54 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Traces link to agent executions. On the inference plane Emberpath records the caller's
+  `x-hive-execution` context (HiveCommon execution context v1), its `x-request-id` and its
+  `traceparent` in new nullable `Trace` columns: `executionRootRef`, `executionSelfRef`,
+  `executionParentRef`, `executionJson`, `clientRequestId` and `inboundTraceparent`. This is
+  attribution only: Emberpath still generates its own request ID, `actorId` still comes from
+  the client key, and routing, quotas and access never read it. Invalid or oversized values
+  are ignored, never rejected. A context whose Ardent instance disagrees with the key's actor
+  is stored with `asserted_by: "client"`.
+- `GET /api/traces` accepts `executionRoot`, `executionTask` (a self-reference prefix; a task
+  reference also matches its attempts) and `executionParent`, paged as `{data, nextCursor}`.
+  With any of them each trace also carries `execution` and `attempts[]`
+  (`{providerId, attempt, status?, delayMs?, retryAfterMs?, failover, outcome}`, every
+  upstream attempt including retries and failover). Responses without an execution filter keep
+  their shape: the new columns are not added to them, to telemetry or to incidents. The model
+  admin contract adds `traceExecutionSchema`, `traceAttemptSchema` and the three filters.
+- Retries back off. Between attempts on the same provider Emberpath waits a full-jitter
+  exponential backoff (250 ms doubling to 2 s), or the upstream `Retry-After` when longer. A
+  `Retry-After` over 10 s, or a wait that would pass the deadline, moves to the next provider
+  immediately. The deadline is the earlier of the new `EMBERPATH_REQUEST_DEADLINE_MS`
+  (default 300000) after arrival and the execution's `deadline_ms`; no retry or failover
+  starts after it. A client disconnect during a wait stops every further attempt without a
+  circuit-breaker penalty. `/v1/decisions` follows the same rules.
+- Every inference-plane answer carries `x-hive-retry`: `exhausted` when Emberpath already
+  retried or failed over (or the upstream answered `exhausted`) and the answer is still a
+  `5xx`, `429` or `408`, otherwise `none`. An upstream that answers `exhausted` is not retried.
+  Provider failure events record `attempt`, `status`, `delayMs`, `retryAfterMs`, `outcome` and
+  `failover`; a disconnect during a wait records `request.aborted`.
+- `GET /health` on both planes lists `capabilities`: `emberpath.execution-trace.v1` and
+  `retry-signal.v1`.
+- Router data format `managed-format-3` adds the six `Trace` columns and the
+  `(executionRootRef, createdAt)` and `(executionSelfRef)` indexes. It is additive and fast;
+  apply it with `emberpath migrate` (or `HIVE_AUTO_MIGRATE=true`) when upgrading.
+
+### Changed
+
+- Emberpath no longer forwards the suite-internal `x-hive-execution` and `x-hive-retry` request
+  headers to upstream providers. Upstreams can be third-party model APIs, and the execution
+  context carries internal node, profile and task references. The redacted inbound copy is
+  still stored with the trace's request headers.
+- Same-provider retries also accept the standard `Idempotency-Key` header, not only
+  `X-Idempotency-Key`.
+- The failover counter metric counts a move to the next provider once, instead of once per
+  failed attempt while a later provider existed.
+- Depend on `@hivemagnus/hive-common` ^0.6.0 for the execution context and retry helpers.
+
 ## [2.5.4] - 2026-11-20
 
 ### Security

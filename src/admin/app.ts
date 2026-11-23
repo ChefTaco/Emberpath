@@ -1,4 +1,7 @@
-import {providerWriteErrorCodes, routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema, traceListDefaultLimit, traceListQueryKeys, traceListQuerySchema} from '../contracts/model-admin.js';
+import { SERVICE_CAPABILITIES } from '../status/capabilities.js';
+import {providerWriteErrorCodes, routingTestRequestSchema, codexOAuthCheckSchema, routingPreviewRequestSchema, routingApplyRequestSchema, routingRollbackRequestSchema, traceListDefaultLimit, traceListExecutionQueryKeys, traceListQueryKeys, traceListQuerySchema} from '../contracts/model-admin.js';
+import { deriveTraceAttempts, traceExecution } from '../telemetry/trace-attempts.js';
+import { parseExecutionRef, formatExecutionRef } from '@hivemagnus/hive-common/execution';
 import { maintenanceActive } from '../release/runtime.js';
 import { metadata } from '../release/runtime.js';
 import { packageRoot as releasePackageRoot } from '../config/paths.js';
@@ -1158,11 +1161,25 @@ async function listRoutes(): Promise<Response> {
   return Response.json({ routeRules: rules, modelAliases: aliases });
 }
 
+/**
+ * Execution attribution columns. Responses that predate them (the unfiltered and actor trace
+ * lists, telemetry, incidents) leave them out so their shape is unchanged; execution-filtered
+ * trace lists return them as the `execution` object instead.
+ */
+const traceExecutionColumns = {
+  executionRootRef: true,
+  executionSelfRef: true,
+  executionParentRef: true,
+  clientRequestId: true,
+  inboundTraceparent: true,
+  executionJson: true,
+} as const satisfies Prisma.TraceOmit;
+
 async function listTelemetry(): Promise<Response> {
   const [tracesTotal, failures, latestTrace, failovers] = await Promise.all([
     prisma.trace.count(),
     prisma.trace.count({ where: { outcome: { in: ['FAILED', 'STREAM_FAILED'] } } }),
-    prisma.trace.findFirst({ orderBy: { createdAt: 'desc' } }),
+    prisma.trace.findFirst({ orderBy: { createdAt: 'desc' }, omit: traceExecutionColumns }),
     prisma.traceEvent.count({ where: { type: 'provider.failover' } }),
   ]);
 
@@ -1184,11 +1201,42 @@ const traceListInclude = {
   clientApiKey: true,
 } satisfies Prisma.TraceInclude;
 
-function serializeTraces(traces: Prisma.TraceGetPayload<{ include: typeof traceListInclude }>[]) {
+function serializeTraces(traces: Prisma.TraceGetPayload<{ include: typeof traceListInclude; omit: typeof traceExecutionColumns }>[]) {
   return traces.map((trace) => ({
     ...trace,
     clientApiKey: trace.clientApiKey ? sanitizeClientApiKey(trace.clientApiKey) : null,
   }));
+}
+
+/** Execution-filtered rows: the legacy fields plus `execution` and the provider `attempts`. */
+function serializeExecutionTraces(traces: Prisma.TraceGetPayload<{ include: typeof traceListInclude }>[]) {
+  return traces.map(({ executionRootRef, executionSelfRef, executionParentRef, clientRequestId, inboundTraceparent, executionJson, ...trace }) => ({
+    ...trace,
+    clientApiKey: trace.clientApiKey ? sanitizeClientApiKey(trace.clientApiKey) : null,
+    execution: traceExecution({ executionRootRef, executionSelfRef, executionParentRef, clientRequestId, inboundTraceparent, executionJson }),
+    attempts: deriveTraceAttempts(trace, trace.events),
+  }));
+}
+
+/** Rows whose self reference starts with `prefix`; an index range scan, since references never contain `~`. */
+function selfRefPrefix(prefix: string): Prisma.TraceWhereInput {
+  return { executionSelfRef: { gte: prefix, lt: prefix + '~' } };
+}
+
+/**
+ * `executionTask` matches self references by prefix. A `task` reference also matches the task
+ * itself and its attempts (`hx1:<product>:<instance>:attempt:<task>/...`).
+ */
+function executionTaskWhere(value: string): Prisma.TraceWhereInput {
+  const parts = parseExecutionRef(value);
+  if (parts?.kind !== 'task') return selfRefPrefix(value);
+  return {
+    OR: [
+      { executionSelfRef: value },
+      selfRefPrefix(value + '/'),
+      selfRefPrefix(formatExecutionRef({ ...parts, kind: 'attempt' }) + '/'),
+    ],
+  };
 }
 
 /** Opaque, stable page cursor: base64url of the last row's [createdAt ISO, id]. */
@@ -1227,6 +1275,7 @@ async function listTraces(context: AdminContext): Promise<Response> {
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: traceListInclude,
+      omit: traceExecutionColumns,
     });
     return Response.json({ data: serializeTraces(traces) });
   }
@@ -1239,25 +1288,31 @@ async function listTraces(context: AdminContext): Promise<Response> {
     ...(query.actorId ? { actorId: query.actorId } : {}),
     ...(query.clientKeyId ? { clientApiKeyId: query.clientKeyId } : {}),
     ...(query.since ? { createdAt: { gte: new Date(query.since) } } : {}),
-    ...(query.cursor ? {
+    ...(query.executionRoot ? { executionRootRef: query.executionRoot } : {}),
+    ...(query.executionParent ? { executionParentRef: query.executionParent } : {}),
+  };
+  const conditions: Prisma.TraceWhereInput[] = [
+    ...(query.executionTask ? [executionTaskWhere(query.executionTask)] : []),
+    ...(query.cursor ? [{
       OR: [
         { createdAt: { lt: query.cursor.createdAt } },
         { createdAt: query.cursor.createdAt, id: { lt: query.cursor.id } },
       ],
-    } : {}),
+    }] : []),
+  ];
+  if (conditions.length > 0) where.AND = conditions;
+  const page = <T extends { createdAt: Date; id: string }>(rows: T[]) => {
+    const data = rows.slice(0, limit);
+    const last = data.at(-1);
+    return { data, nextCursor: rows.length > limit && last ? encodeTraceCursor(last.createdAt, last.id) : null };
   };
-  const rows = await prisma.trace.findMany({
-    where,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    take: limit + 1,
-    include: traceListInclude,
-  });
-  const page = rows.slice(0, limit);
-  const last = page.at(-1);
-  return Response.json({
-    data: serializeTraces(page),
-    nextCursor: rows.length > limit && last ? encodeTraceCursor(last.createdAt, last.id) : null,
-  });
+  const findPage = { where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1, include: traceListInclude } satisfies Prisma.TraceFindManyArgs;
+  if (traceListExecutionQueryKeys.some((key) => query[key] !== undefined)) {
+    const result = page(await prisma.trace.findMany(findPage));
+    return Response.json({ data: serializeExecutionTraces(result.data), nextCursor: result.nextCursor });
+  }
+  const result = page(await prisma.trace.findMany({ ...findPage, omit: traceExecutionColumns }));
+  return Response.json({ data: serializeTraces(result.data), nextCursor: result.nextCursor });
 }
 
 async function buildMemoryConsoleData(requestId: string): Promise<Response> {
@@ -1302,7 +1357,7 @@ async function loadHiveActors(requestId: string): Promise<HiveActor[]> {
     requestIamJson('system-users', requestId).catch(() => null),
     requestMemoryJson('/v1/agents', requestId).catch(() => null),
     prisma.clientApiKey.findMany({ orderBy: { updatedAt: 'desc' }, take: 200 }),
-    prisma.trace.findMany({ orderBy: { createdAt: 'desc' }, take: 500 }),
+    prisma.trace.findMany({ orderBy: { createdAt: 'desc' }, take: 500, omit: traceExecutionColumns }),
   ]);
 
   return buildHiveActors({
@@ -1559,6 +1614,7 @@ async function listHiveIncidents(requestId: string): Promise<Response> {
       orderBy: { createdAt: 'desc' },
       take: 200,
       include: { events: { orderBy: { occurredAt: 'asc' } }, clientApiKey: true, provider: { select: { id: true, slug: true, name: true, kind: true } } },
+      omit: traceExecutionColumns,
     }),
     prisma.auditEvent.findMany({
       orderBy: { createdAt: 'desc' },
@@ -1649,7 +1705,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.all('/dashboard/*', proxyHiveMemRequest);
   app.all('/api/iam/*', requireAdminAuth, proxyIamRequest);
 
-  app.get('/health', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'admin' }));
+  app.get('/health', (context) => context.json({ ...metadata(releasePackageRoot), status: 'ok', plane: 'admin', capabilities: SERVICE_CAPABILITIES }));
   app.get('/health/dependencies', async (context) => {
     const report = await buildRouterDependencyReport();
     return context.json(report, report.status === 'ready' ? 200 : 503);

@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from './sqlite.js';
 import { loadEnv } from '../config/env.js';
-import { columnMigrations, schemaStatements } from './migrations/managed-format-2.js';
+import { columnMigrations, schemaStatements } from './migrations/managed-format-3.js';
 import { resolveSqlitePath } from './sqlite-path.js';
 import { log } from '../telemetry/logger.js';
 

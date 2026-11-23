@@ -70,6 +70,20 @@ export function buildRouterOpenApiDocument(adminBaseUrl: string): Record<string,
     '429': { description: 'Client key quota exceeded' },
     '503': { description: 'No eligible decisions backend is configured or reachable' },
   };
+  // Inference requests: optional attribution and idempotency headers, and the retry signal on every answer.
+  const inferenceHeaders = [
+    { name: 'x-hive-execution', in: 'header', required: false, description: 'HiveCommon execution context v1 (base64url JSON, at most 2048 characters). Attribution only: recorded on the trace, never used for routing, quotas or authorization; an invalid value is ignored. Its deadline_ms bounds retries and failover.', schema: { type: 'string', maxLength: 2048 } },
+    { name: 'x-request-id', in: 'header', required: false, description: 'The caller\'s request ID, recorded on the trace as clientRequestId. Emberpath still generates and returns its own request ID.', schema: { type: 'string', maxLength: 128 } },
+    { name: 'traceparent', in: 'header', required: false, description: 'W3C trace context, recorded on the trace as inboundTraceparent.', schema: { type: 'string' } },
+    { name: 'idempotency-key', in: 'header', required: false, description: 'Allows retrying the same provider after a transient failure (X-Idempotency-Key is also accepted).', schema: { type: 'string', maxLength: 255 } },
+  ];
+  const retryHeader = { 'x-hive-retry': { description: 'exhausted when Emberpath already retried or failed over and the answer is still a 5xx, 429 or 408 (callers should not retry it); otherwise none.', schema: { type: 'string', enum: ['exhausted', 'none'] } } };
+  for (const entry of builtinApiDocs.filter((doc) => doc.scope === 'router' && doc.route !== '/v1/models')) {
+    const operation = (paths[entry.route] as Record<string, { parameters?: unknown[]; responses: Record<string, Record<string, unknown>> }>)[entry.method.toLowerCase()]!;
+    operation.parameters = inferenceHeaders;
+    operation.responses['200'] = { ...operation.responses['200'], headers: retryHeader };
+  }
+
   for (const [path,method,summary] of [
     ['/api/hive/updates','get','Available same-major Hive release and configuration changes'],
     ['/api/hive/upgrades/status','get','Durable upgrade coordinator outcome'],

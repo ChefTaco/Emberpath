@@ -8,6 +8,7 @@ import { postJevDecision } from '../routing/jev-transport.js';
 import { addTraceEvent, type UsageSnapshot } from '../telemetry/tracing.js';
 import { failoverCounter } from '../telemetry/metrics.js';
 import { getSemaphore, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from '../api/provider-guards.js';
+import { deadlineReached, retryTiming, sameProviderRetryDelay, upstreamRetryAfterMs } from '../api/retry-budget.js';
 import { JevResponseMismatch, translateJevResponse } from './jev-translate.js';
 import type { DecisionsPlanEntry } from './backends.js';
 import { decisionsError } from './schema.js';
@@ -79,6 +80,8 @@ export interface DecisionsExecutionResult {
   result?: DecisionsExecution;
   failureResponse?: { status: number; text: string; contentType: string } | undefined;
   failureError?: string | undefined;
+  /** Upstream calls made, across retries and providers. */
+  upstreamAttempts: number;
 }
 
 function summarizeAnswers(text: string): Record<string, number> {
@@ -118,9 +121,24 @@ async function attemptJev(route: RouteRequest, entry: DecisionsPlanEntry): Promi
   return { status: 200, text: JSON.stringify(translated), headers, usage: decisionsUsageSnapshot(translated.usage) };
 }
 
-export async function executeDecisionsPlan(route: RouteRequest, entries: DecisionsPlanEntry[], traceId: string): Promise<DecisionsExecutionResult> {
+/**
+ * Run the plan's entries in order with the same retry rules as the other inference routes:
+ * idempotent requests retry a provider after a jittered backoff that honours `Retry-After`,
+ * no attempt starts past `deadlineMs`, and a client disconnect stops everything.
+ */
+export async function executeDecisionsPlan(route: RouteRequest, entries: DecisionsPlanEntry[], traceId: string, deadlineMs: number): Promise<DecisionsExecutionResult> {
   let failureResponse: DecisionsExecutionResult['failureResponse'];
   let failureError: string | undefined;
+  let upstreamAttempts = 0;
+  const clientDisconnected = async (providerId: string, attempt: number, duringBackoff: boolean): Promise<DecisionsExecutionResult> => {
+    // A caller that went away is not a provider failure: leave the circuit
+    // breaker alone and stop trying other backends.
+    failureError = 'Client disconnected before a provider responded';
+    await addTraceEvent(traceId, duringBackoff
+      ? { type: 'request.aborted', phase: 'execution', message: failureError, data: { during: 'backoff', providerId, attempt } }
+      : { type: 'provider.error', phase: 'execution', message: failureError, data: { providerId, attempt, outcome: 'client_aborted', failover: false } });
+    return { failureError, upstreamAttempts };
+  };
   for (const [index, entry] of entries.entries()) {
     if (route.signal?.aborted) break;
     const provider = entry.provider;
@@ -128,49 +146,66 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
       await addTraceEvent(traceId, { type: 'provider.skipped', phase: 'routing', message: `Provider ${provider.slug} skipped because its circuit is open` });
       continue;
     }
+    if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
     const semaphore = getSemaphore(provider);
     const attempts = shouldRetry(route) ? Math.max(1, provider.maxRetries + 1) : 1;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      let failure: { type: 'provider.failover' | 'provider.error'; message: string; status?: number; retryAfterMs?: number | undefined } | undefined;
       await semaphore.acquire();
       try {
+        upstreamAttempts += 1;
         const outcome = entry.backend === 'openai' ? await attemptOpenAi(route, entry) : await attemptJev(route, entry);
         if (shouldFailoverStatus(outcome.status)) {
           markProviderFailure(provider.id);
           failureResponse = { status: outcome.status, text: outcome.text, contentType: outcome.headers.get('content-type') ?? 'application/json' };
           failureError = `Upstream returned ${outcome.status}`;
-          await addTraceEvent(traceId, { type: 'provider.failover', phase: 'execution', message: `Provider ${provider.slug} returned ${outcome.status}` });
-          const next = entries.slice(index + 1).find((candidate) => !isCircuitOpen(candidate.provider.id));
-          if (next) failoverCounter.inc({ route: route.routeKey, from_provider: provider.slug, to_provider: next.provider.slug });
-          continue;
+          failure = { type: 'provider.failover', message: `Provider ${provider.slug} returned ${outcome.status}`, status: outcome.status, retryAfterMs: upstreamRetryAfterMs(outcome.headers) };
+        } else {
+          resetProviderCircuit(provider.id);
+          const response = new Response(outcome.text, { status: outcome.status, headers: outcome.headers });
+          return {
+            result: {
+              entry,
+              execution: { response, providerModel: entry.model, usage: outcome.usage },
+              responseText: outcome.text,
+              answerTypes: outcome.status < 400 ? summarizeAnswers(outcome.text) : {},
+            },
+            upstreamAttempts,
+          };
         }
-        resetProviderCircuit(provider.id);
-        const response = new Response(outcome.text, { status: outcome.status, headers: outcome.headers });
-        return {
-          result: {
-            entry,
-            execution: { response, providerModel: entry.model, usage: outcome.usage },
-            responseText: outcome.text,
-            answerTypes: outcome.status < 400 ? summarizeAnswers(outcome.text) : {},
-          },
-        };
       } catch (error) {
-        if (route.signal?.aborted) {
-          // A caller that went away is not a provider failure: leave the circuit
-          // breaker alone and stop trying other backends.
-          failureError = 'Client disconnected before a provider responded';
-          await addTraceEvent(traceId, { type: 'provider.error', phase: 'execution', message: failureError, data: { providerId: provider.id, attempt } });
-          return { failureError };
-        }
+        if (route.signal?.aborted) return clientDisconnected(provider.id, attempt, false);
         markProviderFailure(provider.id);
         failureError = error instanceof JevResponseMismatch ? error.message
           : error instanceof Error && error.name === 'TimeoutError' ? `Provider ${provider.slug} timed out`
           : error instanceof Error && /^decision_[a-z_0-9]+$/u.test(error.message) ? error.message
           : 'Provider request failed';
-        await addTraceEvent(traceId, { type: 'provider.error', phase: 'execution', message: failureError, data: { providerId: provider.id, attempt } });
+        failure = { type: 'provider.error', message: failureError };
       } finally {
         semaphore.release();
       }
+      if (!failure) break;
+
+      const delayMs = attempt < attempts ? sameProviderRetryDelay(attempt, attempts, { retryAfterMs: failure.retryAfterMs, deadlineMs }) : null;
+      const next = delayMs === null ? entries.slice(index + 1).find((candidate) => !isCircuitOpen(candidate.provider.id)) : undefined;
+      await addTraceEvent(traceId, { type: failure.type, phase: 'execution', message: failure.message, data: {
+        providerId: provider.id,
+        attempt,
+        outcome: failure.type === 'provider.failover' ? 'http_error' : 'network_error',
+        failover: next !== undefined,
+        ...(failure.status !== undefined ? { status: failure.status } : {}),
+        ...(delayMs !== null ? { delayMs } : {}),
+        ...(failure.retryAfterMs !== undefined ? { retryAfterMs: failure.retryAfterMs } : {}),
+      } });
+      if (next && failure.type === 'provider.failover') failoverCounter.inc({ route: route.routeKey, from_provider: provider.slug, to_provider: next.provider.slug });
+      if (delayMs === null) break;
+      try {
+        await retryTiming.sleep(delayMs, route.signal);
+      } catch (error) {
+        if (route.signal?.aborted) return clientDisconnected(provider.id, attempt, true);
+        throw error;
+      }
     }
   }
-  return { failureResponse, failureError };
+  return { failureResponse, failureError, upstreamAttempts };
 }

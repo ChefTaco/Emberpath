@@ -34,11 +34,23 @@ const CLIENT_CONTROLLED_PROXY_HEADER_NAMES = new Set([
   'x-real-ip',
 ]);
 
+/**
+ * Suite-internal headers that stay inside the gateway. Upstreams can be third-party model APIs,
+ * and `x-hive-execution` carries internal node, profile and task references; `x-hive-retry`
+ * is a response signal between suite layers. The inbound copy is still recorded (redacted)
+ * on the trace.
+ */
+const SUITE_INTERNAL_HEADER_NAMES = new Set([
+  'x-hive-execution',
+  'x-hive-retry',
+]);
+
 export function shouldForwardClientHeader(name: string): boolean {
   const lower = name.toLowerCase();
   return !isSensitiveHeaderName(lower)
     && !HOP_BY_HOP_HEADER_NAMES.has(lower)
     && !CLIENT_CONTROLLED_PROXY_HEADER_NAMES.has(lower)
+    && !SUITE_INTERNAL_HEADER_NAMES.has(lower)
     && lower !== 'host'
     && lower !== 'x-hive-routing-trait'
     && lower !== 'x-routing-trait';

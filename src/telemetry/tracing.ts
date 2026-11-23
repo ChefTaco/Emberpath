@@ -7,6 +7,7 @@ import { storeBody } from '../storage/bodies.js';
 import { loadEnv } from '../config/env.js';
 import type { RouteDecision } from '../providers/types.js';
 import type { DecisionsRequestSummary } from '../decisions-api/schema.js';
+import { storedExecution, type InboundAttribution } from './execution-attribution.js';
 
 export interface UsageSnapshot {
   inputTokens?: number | undefined;
@@ -46,11 +47,29 @@ export type TraceResponseMeta =
   | { error: string; decisionsApi: { rejections: Array<{ provider: string; backend?: string | undefined; reason: string }> } }
   | Record<string, never>;
 
+/** How one upstream provider attempt ended, as recorded on its trace event. */
+export type ProviderAttemptOutcome = 'http_error' | 'stream_error' | 'network_error' | 'client_aborted';
+
+/**
+ * One failed upstream attempt. `delayMs` is the backoff waited before retrying the same
+ * provider; `failover` is true when the gateway moved on to the next candidate provider.
+ */
+export interface ProviderAttemptData {
+  providerId: string;
+  attempt: number;
+  outcome: ProviderAttemptOutcome;
+  failover: boolean;
+  status?: number;
+  delayMs?: number;
+  retryAfterMs?: number;
+}
+
 export type TraceEventInput =
   | { type: 'provider.skipped'; phase: 'routing'; message: string }
-  | { type: 'provider.failover'; phase: 'execution'; message: string }
-  | { type: 'provider.stream_failover'; phase: 'execution'; message: string; data: { phase: string } }
-  | { type: 'provider.error'; phase: 'execution'; message: string; data: { providerId: string; attempt: number } }
+  | { type: 'provider.failover'; phase: 'execution'; message: string; data: ProviderAttemptData }
+  | { type: 'provider.stream_failover'; phase: 'execution'; message: string; data: ProviderAttemptData & { phase: string } }
+  | { type: 'provider.error'; phase: 'execution'; message: string; data: ProviderAttemptData }
+  | { type: 'request.aborted'; phase: 'execution'; message: string; data: { during: 'backoff'; providerId: string; attempt: number } }
   | { type: 'route.denied'; phase: 'routing'; message: string }
   | { type: 'provider.ineligible'; phase: 'routing'; message: string; data: { provider: string; backend?: string | undefined } };
 
@@ -107,6 +126,8 @@ export async function startTrace(input: {
   decision: RouteDecision;
   requestBody?: string | undefined;
   clientApiKeyId?: string | undefined;
+  /** Client-supplied execution attribution (inference plane only); never authorization. */
+  attribution?: InboundAttribution | undefined;
 }): Promise<{ traceId: string }> {
   const env = loadEnv();
   const key = input.clientApiKeyId ? await prisma.clientApiKey.findUnique({ where: { id: input.clientApiKeyId }, select: { metadataJson: true } }) : null;
@@ -114,6 +135,9 @@ export async function startTrace(input: {
   const requestBodyHandle = captureBodies && env.CAPTURE_REQUEST_BODIES && input.requestBody
     ? await storeBody(input.requestId, 'request', 'text/plain', input.requestBody)
     : undefined;
+
+  const actorId = traceActorIdFromKeyMetadata(key?.metadataJson);
+  const execution = input.attribution?.execution ? storedExecution(input.attribution.execution, actorId) : undefined;
 
   const trace = await prisma.trace.create({
     data: {
@@ -127,7 +151,13 @@ export async function startTrace(input: {
       decisionJson: prettyJson(input.decision),
       requestBodyPath: requestBodyHandle?.path ?? null,
       clientApiKeyId: input.clientApiKeyId ?? null,
-      actorId: traceActorIdFromKeyMetadata(key?.metadataJson),
+      actorId,
+      executionRootRef: execution?.root ?? null,
+      executionSelfRef: execution?.self ?? null,
+      executionParentRef: execution?.parent ?? null,
+      executionJson: execution ? JSON.stringify(execution) : null,
+      clientRequestId: input.attribution?.clientRequestId ?? null,
+      inboundTraceparent: input.attribution?.inboundTraceparent ?? null,
     } satisfies Prisma.TraceUncheckedCreateInput,
   });
 

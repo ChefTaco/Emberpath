@@ -15,17 +15,18 @@ const sha256 = (path: string) => createHash('sha256').update(readFileSync(new UR
 type ReleaseMigration = {component: string; id: string; checksum: string; impact: string};
 const release = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).hiveRelease as {migrations: ReleaseMigration[]};
 
-describe('managed-format-2 router migration', () => {
-  it('pins each router format file by checksum and keeps managed-format-1 immutable', () => {
+describe('router data format migrations', () => {
+  it('pins each router format file by checksum and keeps released formats immutable', () => {
     const router = release.migrations.filter((migration) => migration.component === 'router');
-    expect(router.map((migration) => migration.id)).toEqual(['managed-format-1', 'managed-format-2']);
+    expect(router.map((migration) => migration.id)).toEqual(['managed-format-1', 'managed-format-2', 'managed-format-3']);
     expect(router[0]!.checksum).toBe('9a7c87d16b66aa65a1200c00ba8eca252949bd683d0ae4843fdb2a44c4a4911d');
+    expect(router[1]!.checksum).toBe('52116dfa91f7f4b02dc70538c18354f158fc9a627451bd700befec7db1a1e572');
     for (const migration of router) {
       expect(sha256('../../src/storage/migrations/' + migration.id + '.ts'), migration.id).toBe(migration.checksum);
       expect(migration.impact).toBe('fast');
     }
     // The newest format is exactly the current generated bootstrap.
-    expect(sha256('../../src/storage/migrations/managed-format-2.ts')).toBe(sha256('../../src/storage/generated-sqlite-schema.ts'));
+    expect(sha256('../../src/storage/migrations/managed-format-3.ts')).toBe(sha256('../../src/storage/generated-sqlite-schema.ts'));
   });
 
   it('adds Trace.actorId and its indexes to a populated managed-format-1 database without data loss', async () => {

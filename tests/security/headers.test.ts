@@ -26,6 +26,11 @@ describe('security/headers', () => {
     expect(shouldForwardClientHeader('accept')).toBe(true);
   });
 
+  it('keeps suite-internal execution and retry headers out of providers', () => {
+    for (const name of ['x-hive-execution', 'X-Hive-Execution', 'x-hive-retry']) expect(shouldForwardClientHeader(name), name).toBe(false);
+    expect(shouldForwardClientHeader('x-request-id')).toBe(true);
+  });
+
   it('does not relay upstream cookies to API clients', () => {
     expect(shouldCopyResponseHeader('set-cookie')).toBe(false);
     expect(shouldCopyResponseHeader('transfer-encoding')).toBe(false);
