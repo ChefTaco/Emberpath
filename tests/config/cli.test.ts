@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatReport, runChecks } from '../../src/commands/check.js';
 import { main } from '../../src/main.js';
+import { resolveSqlitePath } from '../../src/storage/sqlite-path.js';
 
 const secret = 'test-secret-0123456789abcdef0123456789';
 
@@ -102,6 +103,15 @@ describe('hive-router check', () => {
     const report = await runChecks({ source: { HIVE_HOME: home } });
     expect(report.ok).toBe(false);
     expect(report.checks[0]?.message).toMatch(/HIVE_ROUTER_SECRET/u);
+  });
+
+  it('rejects unsupported database URLs without printing them', async () => {
+    const databaseUrl = 'postgresql://fixture-user:fixture-password@db.example.com/router';
+    const report = await runChecks({ source: { HIVE_ROUTER_SECRET: secret, HIVE_HOME: home, DATABASE_URL: databaseUrl } });
+    expect(report.ok).toBe(false);
+    expect(formatReport(report)).toContain('DATABASE_URL must be a SQLite file: URL');
+    expect(formatReport(report)).not.toContain('fixture-password');
+    expect(() => resolveSqlitePath(databaseUrl)).toThrow(/^DATABASE_URL must be a SQLite file: URL, for example file:\/var\/lib\/hive\/router\.db$/u);
   });
 
   it.each([200, 503, 'network'])('omits URL credentials from dependency reports for %s', async (outcome) => {

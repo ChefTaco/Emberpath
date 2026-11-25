@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { explicitEnvFileLoaded } from './env-file.js';
 import { DEFAULT_ADMIN_PORT, DEFAULT_API_PORT } from './defaults.js';
 import { defaultDataDir } from './paths.js';
+import { SQLITE_DATABASE_URL_ERROR } from '../storage/sqlite-path.js';
 
 // Without an explicit --env-file, keep the historical lookup of `.env` (and the
 // overriding `.env.apikeys`) in the working directory.
@@ -145,7 +146,7 @@ export const envSchema = z.object({
   HIVE_HOME: optionalStringSchema,
   DATABASE_URL: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.string().startsWith('file:', { error: 'must be a SQLite file: URL, for example file:/var/lib/hive/router.db' }).optional(),
+    z.string().startsWith('file:', { error: SQLITE_DATABASE_URL_ERROR }).optional(),
   ),
   DATA_DIR: optionalStringSchema,
   TRACE_DIR: optionalStringSchema,
@@ -252,6 +253,7 @@ function describeIssue(variable: string, source: NodeJS.ProcessEnv): string {
     // Never echo the value: it may carry credentials.
     return `${HIVEXUI_URL_ERROR} without credentials or a fragment, or unset. Fix it ${FIX_HINT}.`;
   }
+  if (variable === 'DATABASE_URL') return `${SQLITE_DATABASE_URL_ERROR}. Fix it ${FIX_HINT}.`;
   if (variable.endsWith('_PORT')) {
     return `${variable} must be a TCP port between 1 and 65535. Fix it ${FIX_HINT}.`;
   }
