@@ -61,7 +61,7 @@ describe('configuration errors', () => {
 
   it('reports a short secret without echoing it', () => {
     const { problems } = inspectEnv({ HIVE_ROUTER_SECRET: 'short-value' });
-    expect(problems[0]?.message).toMatch(/too short \(11 characters\)/u);
+    expect(problems[0]?.message).toMatch(/too short.*at least 32 random characters/u);
     expect(problems[0]?.message).not.toContain('short-value');
   });
 
@@ -100,7 +100,8 @@ describe('configuration errors', () => {
 
   it('reports invalid ports by name', () => {
     const { problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, ADMIN_PORT: '70000' });
-    expect(problems[0]?.message).toMatch(/^ADMIN_PORT must be a TCP port between 1 and 65535 \(got "70000"\)/u);
+    expect(problems[0]?.message).toMatch(/^ADMIN_PORT must be a TCP port between 1 and 65535\./u);
+    expect(problems[0]?.message).not.toContain('70000');
   });
 });
 

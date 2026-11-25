@@ -86,9 +86,7 @@ async function start(rest: string[]): Promise<number | null> {
     return null;
   } catch (error) {
     if (isNamedError(error, 'ConfigError', 'ListenError')) return fail(error.message);
-    const message = error instanceof Error ? error.message : String(error);
-    if (process.env['LOG_LEVEL'] === 'debug' && error instanceof Error && error.stack) console.error(error.stack);
-    return fail(`failed to start: ${message}`);
+    return fail('failed to start. Run "hive-router check" to diagnose the configuration.');
   }
 }
 

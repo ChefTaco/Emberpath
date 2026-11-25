@@ -240,14 +240,12 @@ const FIX_HINT = 'in the environment or the --env-file';
 export const RETIRED_STATIC_EXPORTER_FALLBACK = 'HIVE_ROUTER_SECURITY_EXPORT_STATIC_FALLBACK_ENABLED';
 const SELF_SIGNED_HINT = 'openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj /CN=localhost -keyout key.pem -out cert.pem';
 
-function describeIssue(variable: string, issue: z.core.$ZodIssue, source: NodeJS.ProcessEnv): string {
-  const raw = source[variable];
+function describeIssue(variable: string, source: NodeJS.ProcessEnv): string {
   if (variable === 'HIVE_ROUTER_SECRET') {
-    return raw === undefined || raw === ''
-      ? `HIVE_ROUTER_SECRET is not set. Set it ${FIX_HINT} to a random value of at least 32 characters (for example: openssl rand -hex 32).`
-      : `HIVE_ROUTER_SECRET is too short (${raw.length} characters). Use at least 32 random characters (for example: openssl rand -hex 32).`;
+    const problem = source[variable] ? 'is too short' : 'is not set';
+    return `HIVE_ROUTER_SECRET ${problem}. Set it ${FIX_HINT} to at least 32 random characters (for example: openssl rand -hex 32).`;
   }
-  if (raw === undefined) {
+  if (source[variable] === undefined) {
     return `${variable} is not set. Set it ${FIX_HINT}.`;
   }
   if (variable === 'HIVEXUI_URL') {
@@ -255,12 +253,9 @@ function describeIssue(variable: string, issue: z.core.$ZodIssue, source: NodeJS
     return `${HIVEXUI_URL_ERROR} without credentials or a fragment, or unset. Fix it ${FIX_HINT}.`;
   }
   if (variable.endsWith('_PORT')) {
-    return `${variable} must be a TCP port between 1 and 65535 (got "${raw}"). Fix it ${FIX_HINT}.`;
+    return `${variable} must be a TCP port between 1 and 65535. Fix it ${FIX_HINT}.`;
   }
-  if (/SECRET|TOKEN|KEY|PASSWORD/u.test(variable)) {
-    return `${variable} is invalid: ${issue.message}. Fix it ${FIX_HINT}.`;
-  }
-  return `${variable} is invalid: ${issue.message} (got "${raw}"). Fix it ${FIX_HINT}.`;
+  return `${variable} is invalid. Run "hive-router env-schema" for accepted values. Fix it ${FIX_HINT}.`;
 }
 
 /**
@@ -277,7 +272,7 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
       const variable = String(issue.path[0] ?? 'environment');
       if (seen.has(variable)) continue;
       seen.add(variable);
-      problems.push({ variable, message: describeIssue(variable, issue, source) });
+      problems.push({ variable, message: describeIssue(variable, source) });
     }
     return { env: null, problems };
   }
@@ -291,16 +286,16 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
     add(missing, `${missing} is not set but ${missing === 'TLS_KEY_PATH' ? 'TLS_CERT_PATH' : 'TLS_KEY_PATH'} is. Set both to enable TLS, or neither for plain HTTP.`);
   }
   if (env.TLS_CERT_PATH && !existsSync(env.TLS_CERT_PATH)) {
-    add('TLS_CERT_PATH', `TLS_CERT_PATH points to ${env.TLS_CERT_PATH}, which does not exist. Set it to a PEM certificate file.`);
+    add('TLS_CERT_PATH', 'TLS_CERT_PATH does not exist. Set it to a PEM certificate file.');
   }
   if (env.TLS_KEY_PATH && !existsSync(env.TLS_KEY_PATH)) {
-    add('TLS_KEY_PATH', `TLS_KEY_PATH points to ${env.TLS_KEY_PATH}, which does not exist. Set it to the PEM private key for TLS_CERT_PATH.`);
+    add('TLS_KEY_PATH', 'TLS_KEY_PATH does not exist. Set it to the PEM private key for TLS_CERT_PATH.');
   }
   if (env.HIVE_ROUTER_IAM_CA_CERT_PATH && !existsSync(env.HIVE_ROUTER_IAM_CA_CERT_PATH)) {
-    add('HIVE_ROUTER_IAM_CA_CERT_PATH', `HIVE_ROUTER_IAM_CA_CERT_PATH points to ${env.HIVE_ROUTER_IAM_CA_CERT_PATH}, which does not exist. Set it to the CA certificate that signed the IAM certificate, or unset it.`);
+    add('HIVE_ROUTER_IAM_CA_CERT_PATH', 'HIVE_ROUTER_IAM_CA_CERT_PATH does not exist. Set it to the CA certificate that signed the IAM certificate, or unset it.');
   }
   if (env.HIVEMEM_CA_CERT_PATH && !existsSync(env.HIVEMEM_CA_CERT_PATH)) {
-    add('HIVEMEM_CA_CERT_PATH', `HIVEMEM_CA_CERT_PATH points to ${env.HIVEMEM_CA_CERT_PATH}, which does not exist. Set it to the CA certificate that signed the HiveMem certificate, or unset it.`);
+    add('HIVEMEM_CA_CERT_PATH', 'HIVEMEM_CA_CERT_PATH does not exist. Set it to the CA certificate that signed the HiveMem certificate, or unset it.');
   }
   if (env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS > env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS) {
     add('HIVE_ROUTER_IAM_JWKS_REFRESH_MS', 'HIVE_ROUTER_IAM_JWKS_REFRESH_MS must not exceed HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS. Lower the refresh interval or raise the maximum age.');
@@ -343,11 +338,10 @@ function ensurePrivateDir(variable: string, path: string): void {
   try {
     mkdirSync(path, { recursive: true, mode: 0o700 });
     chmodSync(path, 0o700);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code ?? (error instanceof Error ? error.message : String(error));
+  } catch {
     throw new ConfigError([{
       variable,
-      message: `${variable} (${path}) cannot be created or secured (${code}). Point ${variable} at a directory this user can write, or set HIVE_HOME.`,
+      message: `${variable} cannot be created or secured. Point ${variable} at a directory this user can write, or set HIVE_HOME.`,
     }]);
   }
 }

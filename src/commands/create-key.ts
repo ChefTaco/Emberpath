@@ -2,7 +2,9 @@ import { routerMigration } from '../upgrade.js';
 import { bootstrapStorage } from '../storage/bootstrap.js';
 import { prisma } from '../storage/client.js';
 import { generateOpenAiStyleApiKey, hashValue } from '../security/crypto.js';
-import { loadEnv } from '../config/env.js';
+import { ConfigError, loadEnv } from '../config/env.js';
+
+class KeyInputError extends Error {}
 
 interface ParsedArgs {
   help: boolean;
@@ -96,9 +98,14 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function parseMetadata(raw?: string): Record<string, unknown> {
   if (!raw || !raw.trim()) return {};
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new KeyInputError('Metadata must be valid JSON');
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Metadata must be a JSON object');
+    throw new KeyInputError('Metadata must be a JSON object');
   }
   return parsed as Record<string, unknown>;
 }
@@ -110,11 +117,11 @@ function ensureAuthorized(tokenFromCli?: string): void {
   }
 
   if (!tokenFromCli) {
-    throw new Error('Missing --token (required when HIVE_ROUTER_CLI_TOKEN is configured)');
+    throw new KeyInputError('Missing --token (required when HIVE_ROUTER_CLI_TOKEN is configured)');
   }
 
   if (tokenFromCli !== configuredToken) {
-    throw new Error('Invalid --token for CLI key generation');
+    throw new KeyInputError('Invalid --token for CLI key generation');
   }
 }
 
@@ -123,7 +130,7 @@ async function createClientKey(args: ParsedArgs): Promise<GeneratedKey> {
 
   const name = args.name?.trim();
   if (!name) {
-    throw new Error('--name is required');
+    throw new KeyInputError('--name is required');
   }
 
   const metadata = parseMetadata(args.metadata);
@@ -208,13 +215,15 @@ export async function runApiKeyCli(argv: string[]): Promise<number> {
   }
 
   try {
-    await bootstrapRouter();
-    const created = await createClientKey(args);
-    printGeneratedKey(created, args.json);
+    try {
+      await bootstrapRouter();
+      printGeneratedKey(await createClientKey(args), args.json);
+    } finally {
+      await prisma.$disconnect();
+    }
     return 0;
   } catch (error) {
-    return createFailurePrompt(error instanceof Error ? error.message : 'Failed to create key');
-  } finally {
-    await prisma.$disconnect();
+    if (error instanceof KeyInputError || error instanceof ConfigError) return createFailurePrompt(error.message);
+    return createFailurePrompt('Failed to create key. Check the router configuration and database.');
   }
 }
