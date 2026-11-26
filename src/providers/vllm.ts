@@ -37,7 +37,8 @@ export class VllmAdapter implements ProviderAdapter {
       method: route.method,
       headers,
       ...(body ? { body } : {}),
-      signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+      signal: route.signal,
+      timeoutMs: provider.timeoutMs,
     });
     return { response };
   }

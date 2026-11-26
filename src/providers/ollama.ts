@@ -122,7 +122,8 @@ export class OllamaAdapter implements ProviderAdapter {
         method: route.method,
         headers: buildNativeHeaders(route, provider),
         ...(body ? { body } : {}),
-        signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+        signal: route.signal,
+        timeoutMs: provider.timeoutMs,
       });
       return { response };
     }
@@ -131,7 +132,8 @@ export class OllamaAdapter implements ProviderAdapter {
       const response = await providerFetch(`${baseUrl(provider)}/api/tags`, {
         method: 'GET',
         headers: buildTranslatedHeaders(provider, false),
-        signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+        signal: route.signal,
+        timeoutMs: provider.timeoutMs,
       });
       return { response };
     }
@@ -147,7 +149,8 @@ export class OllamaAdapter implements ProviderAdapter {
         method: 'POST',
         headers: buildTranslatedHeaders(provider),
         body: JSON.stringify(payload),
-        signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+        signal: route.signal,
+        timeoutMs: provider.timeoutMs,
       });
       if (!upstream.ok) {
         return { response: upstream };
@@ -180,7 +183,8 @@ export class OllamaAdapter implements ProviderAdapter {
         method: 'POST',
         headers: buildTranslatedHeaders(provider),
         body: JSON.stringify({ model: route.model, prompt, stream }),
-        signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+        signal: route.signal,
+        timeoutMs: provider.timeoutMs,
       });
       return { response: upstream };
     }
@@ -198,7 +202,8 @@ export class OllamaAdapter implements ProviderAdapter {
         tools: requestBody.tools,
         format: route.jsonSchemaRequested ? (requestBody.response_format ?? requestBody.format ?? undefined) : undefined,
       }),
-      signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+      signal: route.signal,
+      timeoutMs: provider.timeoutMs,
     });
 
     // An upstream error is never a stream: hand it back as is so the status

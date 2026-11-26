@@ -814,7 +814,8 @@ async function runCodexRequest(route: RouteRequest, provider: ProviderRuntime, b
     method: 'POST',
     headers: copyRequestHeaders(route, provider, bundle),
     body,
-    signal: route.signal ? AbortSignal.any([route.signal, AbortSignal.timeout(provider.timeoutMs)]) : AbortSignal.timeout(provider.timeoutMs),
+    signal: route.signal,
+    timeoutMs: provider.timeoutMs,
   });
 
   if (!response.ok || route.endpointKind === 'v1.responses') {
