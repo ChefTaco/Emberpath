@@ -208,6 +208,9 @@ suite does this during the upgrade) and then re-issues the token and updates the
   headers and then each wait for the next piece of the body, so long streams run
   to the end while a stalled one is cut. Its `concurrency` limits running
   requests: a slot is held until the response body, stream included, has ended.
+  The wait for a slot can be bounded in length and time, and a request turned
+  away tries the next provider
+  ([settings](#provider-queues-circuit-breaker-and-upstream-headers)).
 - **Observability**: per-request traces (body capture is configurable) that
   link to the agent execution that made the call and list every provider attempt,
   Prometheus metrics, optional OpenTelemetry export, estimated usage when the
@@ -410,6 +413,18 @@ browser-issuer tokens. The suite controller sets these; see
 | `EMBERPATH_DECISIONS_JEV_ENABLED` | `false` | Public Decisions API only: `true` seeds the `typesafe-jev` and `openrouter-jev` provider records from the two shadow keys above on startup. See [Decisions API](#decisions-api). |
 | `EMBERPATH_REQUEST_DEADLINE_MS` | `300000` | Inference plane: no provider retry, backoff wait or failover starts later than this after a request arrives. An earlier `deadline_ms` in the caller's `x-hive-execution` wins. See [retries and execution traces](#retries-and-execution-traces). |
 
+### Provider queues, circuit breaker and upstream headers
+
+| Variable | Default | Description |
+|---|---|---|
+| `EMBERPATH_PROVIDER_QUEUE_MAX` | `0` | Most requests that may wait for one provider's `concurrency` slot; `0` means no limit. A request turned away tries the next candidate provider (or gets `503`) and does not count against the provider's circuit. |
+| `EMBERPATH_PROVIDER_QUEUE_TIMEOUT_MS` | `0` | Longest wait for a provider slot; `0` means no limit. A request whose client disconnects always leaves the queue. |
+| `EMBERPATH_CIRCUIT_FAILURE_THRESHOLD` | `3` | Failures within the window that open a provider's circuit. |
+| `EMBERPATH_CIRCUIT_WINDOW_MS` | `60000` | Rolling window in which failures count; older ones are forgotten. |
+| `EMBERPATH_CIRCUIT_OPEN_MS` | `30000` | How long an open circuit skips the provider. Then one trial request goes through: a success closes the circuit, a failure opens it again. |
+| `EMBERPATH_UPSTREAM_RESPONSE_HEADERS` | `allowlist` | `allowlist` relays `content-type`, `content-disposition`, `content-language`, `cache-control`, `retry-after` and `retry-after-ms`, and renames the upstream `x-request-id` and `x-ratelimit-*` headers to `x-emberpath-upstream-request-id` and `x-emberpath-upstream-ratelimit-*`. `passthrough` relays every upstream header except hop-by-hop headers and cookies (the behaviour before this setting). Traces keep every upstream header, redacted. |
+| `EMBERPATH_UPSTREAM_RESPONSE_HEADER_ALLOW` | | Comma-separated extra header names relayed as they are in `allowlist` mode. |
+
 ## Admin access model
 
 - **OS mode** (`HIVE_ROUTER_AUTH_MODE=os`): an allowlisted user signs in with
@@ -433,7 +448,11 @@ browser-issuer tokens. The suite controller sets these; see
   full access. Other users need a permission for each request, reads included:
   for example `router:providers:read` or `router:providers:write`,
   `iam:users:read`, `memory:read`. Any `:write` grant also covers the matching
-  `:read`. Exporting the configuration requires `router:settings:write`.
+  `:read`. Exporting the configuration requires `router:settings:write`. Requests
+  through the IAM proxy (`/api/iam/*`) need IAM permissions only: for example
+  `iam:groups:read` and `iam:groups:write` for groups, `iam:sa:read` and
+  `iam:sa:write` for enrollments, and `iam:admin:read` or `iam:admin:write` for IAM
+  routes without a permission of their own.
 - Credential and policy changes need a sign-in from the last 15 minutes. Confirm
   the password again with `POST /api/auth/reauthenticate` when needed.
 - Repeated failed logins lock out that username from that client address, and

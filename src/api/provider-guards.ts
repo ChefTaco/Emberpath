@@ -1,34 +1,71 @@
 import { HIVE_HEADERS } from '@hivemagnus/hive-common/contracts';
 import type { ProviderRuntime, RouteRequest } from '../providers/types.js';
+import { loadEnv } from '../config/env.js';
 
 // Per-provider concurrency limits and circuit breakers shared by every API route.
+
+/** A provider slot could not be had in time: the wait queue is full, or the wait timed out. */
+export class ProviderSlotUnavailable extends Error {
+  constructor(readonly reason: 'queue_full' | 'queue_timeout') {
+    super(reason === 'queue_full' ? 'Provider wait queue is full' : 'Timed out waiting for a provider slot');
+    this.name = 'ProviderSlotUnavailable';
+  }
+}
+
+export interface SemaphoreLimits {
+  /** Most callers that may wait for a slot; 0 means no limit. */
+  maxWaiting?: number;
+  /** Longest wait for a slot in milliseconds; 0 means no limit. */
+  waitTimeoutMs?: number;
+}
+
 class Semaphore {
   private current = 0;
   private readonly queue: Array<() => void> = [];
 
-  constructor(private readonly capacity: number) {}
+  constructor(private readonly capacity: number, private readonly limits: SemaphoreLimits = {}) {}
 
-  /** Wait for a slot. A caller that aborts while queued leaves the queue and never takes one. */
+  /**
+   * Wait for a slot. A caller that aborts while queued leaves the queue and never takes one.
+   * When the queue is full, or the wait outlasts the timeout, the caller gets
+   * `ProviderSlotUnavailable` and never takes a slot either.
+   */
   async acquire(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     if (this.current < this.capacity) {
       this.current += 1;
       return;
     }
+    const maxWaiting = this.limits.maxWaiting ?? 0;
+    if (maxWaiting > 0 && this.queue.length >= maxWaiting) throw new ProviderSlotUnavailable('queue_full');
+    const waitMs = this.limits.waitTimeoutMs ? this.limits.waitTimeoutMs : undefined;
 
     await new Promise<void>((resolve, reject) => {
-      const grant = () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const leave = (): void => {
+        const index = this.queue.indexOf(grant);
+        if (index >= 0) this.queue.splice(index, 1);
         signal?.removeEventListener('abort', onAbort);
+        if (timer) clearTimeout(timer);
+      };
+      const grant = () => {
+        leave();
         this.current += 1;
         resolve();
       };
       const onAbort = () => {
-        const index = this.queue.indexOf(grant);
-        if (index >= 0) this.queue.splice(index, 1);
+        leave();
         reject(signal?.reason instanceof Error ? signal.reason : new Error('Request aborted while waiting for a provider slot'));
       };
       signal?.addEventListener('abort', onAbort, { once: true });
       this.queue.push(grant);
+      if (waitMs !== undefined) {
+        timer = setTimeout(() => {
+          leave();
+          reject(new ProviderSlotUnavailable('queue_timeout'));
+        }, waitMs);
+        timer.unref?.();
+      }
     });
   }
 
@@ -80,30 +117,83 @@ export function holdUntilBodyDone(response: Response, release: () => void): Resp
   return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
-const semaphores = new Map<string, Semaphore>();
-const circuitBreakers = new Map<string, { failures: number; openUntil?: number }>();
+const semaphores = new Map<string, { semaphore: Semaphore; key: string }>();
 
+/** The provider's slot pool. A changed `concurrency` or queue setting gets a fresh pool. */
 export function getSemaphore(provider: ProviderRuntime): Semaphore {
+  const env = loadEnv();
+  const capacity = Math.max(1, provider.concurrency);
+  const limits = { maxWaiting: env.EMBERPATH_PROVIDER_QUEUE_MAX, waitTimeoutMs: env.EMBERPATH_PROVIDER_QUEUE_TIMEOUT_MS };
+  const key = `${capacity}:${limits.maxWaiting}:${limits.waitTimeoutMs}`;
   const existing = semaphores.get(provider.id);
-  if (existing) {
-    return existing;
+  if (existing?.key === key) {
+    return existing.semaphore;
   }
-
-  const semaphore = new Semaphore(Math.max(1, provider.concurrency));
-  semaphores.set(provider.id, semaphore);
+  // Callers holding the old pool release into it; only new callers use the new one.
+  const semaphore = new Semaphore(capacity, limits);
+  semaphores.set(provider.id, { semaphore, key });
   return semaphore;
 }
 
-export function isCircuitOpen(providerId: string): boolean {
-  const state = circuitBreakers.get(providerId);
-  return state?.openUntil !== undefined && state.openUntil > Date.now();
+/**
+ * Circuit breaker per provider. Failures count within a rolling window; reaching the
+ * threshold opens the circuit for the open period. After that the circuit is half-open:
+ * one trial request may go through (others skip the provider), a success closes it and a
+ * failure opens it again.
+ */
+interface CircuitState {
+  failures: number[];
+  openUntil?: number;
+  /** When the half-open trial request started; another trial may start after the open period. */
+  trialStartedAt?: number;
+}
+const circuitBreakers = new Map<string, CircuitState>();
+
+function circuitSettings(): { threshold: number; windowMs: number; openMs: number } {
+  const env = loadEnv();
+  return { threshold: env.EMBERPATH_CIRCUIT_FAILURE_THRESHOLD, windowMs: env.EMBERPATH_CIRCUIT_WINDOW_MS, openMs: env.EMBERPATH_CIRCUIT_OPEN_MS };
 }
 
-export function markProviderFailure(providerId: string): void {
-  const state = circuitBreakers.get(providerId) ?? { failures: 0 };
-  state.failures += 1;
-  if (state.failures >= 3) {
-    state.openUntil = Date.now() + 30_000;
+/** Whether requests skip the provider: the circuit is open, or half-open with a trial running. */
+export function isCircuitOpen(providerId: string, now = Date.now()): boolean {
+  const state = circuitBreakers.get(providerId);
+  if (state?.openUntil === undefined) return false;
+  if (state.openUntil > now) return true;
+  return state.trialStartedAt !== undefined && now - state.trialStartedAt < circuitSettings().openMs;
+}
+
+/**
+ * Claim the provider for an attempt. Returns false when its circuit is open (or another
+ * half-open trial is running); when the circuit is half-open, this request becomes the trial.
+ */
+export function enterProviderCircuit(providerId: string, now = Date.now()): boolean {
+  if (isCircuitOpen(providerId, now)) return false;
+  const state = circuitBreakers.get(providerId);
+  if (state?.openUntil !== undefined) state.trialStartedAt = now;
+  return true;
+}
+
+/** Give back a half-open trial that never reached the provider, so another request may try. */
+export function abandonProviderTrial(providerId: string): void {
+  const state = circuitBreakers.get(providerId);
+  if (state) delete state.trialStartedAt;
+}
+
+export function markProviderFailure(providerId: string, now = Date.now()): void {
+  const { threshold, windowMs, openMs } = circuitSettings();
+  const state = circuitBreakers.get(providerId) ?? { failures: [] };
+  // A request that was already running when the circuit opened changes nothing.
+  if (state.openUntil !== undefined && state.openUntil > now) return;
+  if (state.openUntil !== undefined) {
+    // The half-open trial failed: open again for a full period.
+    circuitBreakers.set(providerId, { failures: [], openUntil: now + openMs });
+    return;
+  }
+  state.failures = [...state.failures.filter((at) => now - at < windowMs), now];
+  if (state.failures.length >= threshold) {
+    state.openUntil = now + openMs;
+    state.failures = [];
+    delete state.trialStartedAt;
   }
   circuitBreakers.set(providerId, state);
 }

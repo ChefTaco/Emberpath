@@ -61,6 +61,48 @@ export function shouldCopyResponseHeader(name: string): boolean {
   return !HOP_BY_HOP_HEADER_NAMES.has(lower) && lower !== 'set-cookie';
 }
 
+/** Upstream response headers a client sees as they are. */
+const UPSTREAM_RESPONSE_HEADER_ALLOWLIST = new Set([
+  'cache-control',
+  'content-disposition',
+  'content-language',
+  'content-type',
+  'retry-after',
+  'retry-after-ms',
+]);
+
+/** Prefix for upstream headers that are relayed under a name of their own. */
+export const UPSTREAM_HEADER_PREFIX = 'x-emberpath-upstream-';
+
+export interface UpstreamHeaderPolicy {
+  /** `allowlist` relays only known-safe headers; `passthrough` relays all but hop-by-hop and cookies. */
+  mode: 'allowlist' | 'passthrough';
+  /** Extra header names (lowercase) relayed as they are in `allowlist` mode. */
+  extra?: ReadonlySet<string>;
+}
+
+/**
+ * The name a client sees for an upstream response header, or undefined to drop it. Hop-by-hop
+ * headers and cookies are always dropped. In `allowlist` mode the upstream's request ID and
+ * rate-limit headers (which describe the provider account, not the caller) are renamed under
+ * `x-emberpath-upstream-`, and everything else that is not allowed (`server`, `cf-ray`,
+ * `openai-organization`, ...) stays behind.
+ */
+export function clientResponseHeaderName(name: string, policy: UpstreamHeaderPolicy): string | undefined {
+  const lower = name.toLowerCase();
+  if (!shouldCopyResponseHeader(lower)) return undefined;
+  if (policy.mode === 'passthrough') return lower;
+  if (UPSTREAM_RESPONSE_HEADER_ALLOWLIST.has(lower) || policy.extra?.has(lower)) return lower;
+  if (lower === 'x-request-id' || lower === 'request-id') return `${UPSTREAM_HEADER_PREFIX}request-id`;
+  if (lower.startsWith('x-ratelimit-')) return `${UPSTREAM_HEADER_PREFIX}ratelimit-${lower.slice('x-ratelimit-'.length)}`;
+  return undefined;
+}
+
+/** Parse a comma-separated list of header names into a lowercase set. */
+export function parseHeaderNameList(value: string | undefined): Set<string> {
+  return new Set((value ?? '').split(',').map((entry) => entry.trim().toLowerCase()).filter((entry) => /^[!#$%&'*+.^_`|~0-9a-z-]+$/u.test(entry)));
+}
+
 function isSensitiveHeaderName(name: string): boolean {
   const lower = name.toLowerCase();
   return SENSITIVE_HEADER_NAMES.has(lower)
