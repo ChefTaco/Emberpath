@@ -1090,9 +1090,10 @@ async function listAggregatedModels(access: ClientKeyAccess = {}): Promise<Respo
     });
   }
 
-  // A key with allowlists sees only the models and providers it may use; an alias that is
-  // not bound to a provider is listed when its name is allowed.
-  const data = [...dataMap.values()].filter((entry) => modelAllowed(access.allowedModels, entry.id)
+  // A key with allowlists sees only the models and providers it may use (an alias also when
+  // the model it resolves to is allowed, as routing accepts it); an alias that is not bound
+  // to a provider passes the provider list.
+  const data = [...dataMap.values()].filter((entry) => (modelAllowed(access.allowedModels, entry.id) || (entry.alias_for !== undefined && modelAllowed(access.allowedModels, entry.alias_for)))
     && (!access.allowedProviders || entry.owned_by === 'alias' || access.allowedProviders.includes(entry.owned_by) || runtimes.some((provider) => provider.slug === entry.owned_by && access.allowedProviders!.includes(provider.id))));
   return Response.json({ object: 'list', data });
 }
