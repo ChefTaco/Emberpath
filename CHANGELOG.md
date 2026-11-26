@@ -4,12 +4,14 @@
 
 ### Upgrade notes
 
-- **Password sign-in is off.** `POST /api/auth/login` and `POST /api/auth/reauthenticate` now
-  answer `410 Gone` (`PASSWORD_RELAY_DISABLED`) unless `EMBERPATH_PASSWORD_RELAY=true`. Hive suite
-  installations sign in through HiveXUI with Oathweave and are unaffected. A standalone
-  installation whose operators sign in with a password (OS PAM or `iam-oidc`) must set
-  `EMBERPATH_PASSWORD_RELAY=true` to keep doing so; the endpoints are deprecated and are removed
-  in the next major release.
+- **The Oathweave password relay is off.** With `HIVE_ROUTER_AUTH_MODE=iam-oidc`,
+  `POST /api/auth/login` and `POST /api/auth/reauthenticate` now answer `410 Gone`
+  (`PASSWORD_RELAY_DISABLED`) unless `EMBERPATH_PASSWORD_RELAY=true`. Hive suite installations
+  sign in through HiveXUI with Oathweave and are unaffected. A standalone installation whose
+  operators sign in to Emberpath with their Oathweave password must set
+  `EMBERPATH_PASSWORD_RELAY=true` to keep doing so; the relay is deprecated and is removed in the
+  next major release. OS mode (PAM, the default) is unchanged. Existing admin sessions and
+  `GET /api/auth/me` keep working.
 - No database migration: a Hive suite upgrade does not need `--allow-migrations` for Emberpath,
   and a downgrade to 2.9.0 keeps working (it ignores the new settings).
 - Requires `@hivemagnus/hive-common` 0.10.0.
@@ -30,9 +32,10 @@
 
 ### Deprecated
 
-- `POST /api/auth/login` and `POST /api/auth/reauthenticate` (off by default, see above): marked
-  `deprecated` in the OpenAPI document and answered with `Deprecation`, `Sunset` and
-  `Link: rel="deprecation"` headers. Removed in the next major release.
+- The `iam-oidc` password relay of `POST /api/auth/login` and `POST /api/auth/reauthenticate`
+  (off by default, see above): answered with `Deprecation`, `Sunset` and
+  `Link: rel="deprecation"` headers in that mode and described as deprecated in the OpenAPI
+  document. Removed in the next major release.
 
 ## [2.9.0] - 2026-11-26
 

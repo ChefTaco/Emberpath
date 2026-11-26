@@ -100,14 +100,14 @@ export function consoleAdminOpenApi() {
     security, requestBody: {required: true, content: json({type: 'object', required: ['idToken'], additionalProperties: false, properties: {idToken: {type: 'string', minLength: 1, maxLength: 16384}}})},
     responses: {'200': {description: 'Step-up recorded', content: json({type: 'object', required: ['ok', 'authTime', 'recentUntil'], properties: {ok: {const: true}, authTime: {type: 'string', format: 'date-time'}, recentUntil: {type: 'string', format: 'date-time'}}})},
       '400': {description: 'No ID token in the body (REAUTH_REQUIRED)'}, '401': stepUpError, '503': {description: 'Oathweave is not configured (STEP_UP_UNAVAILABLE) or its keys are unavailable (REAUTH_UNAVAILABLE)'}}}};
-  const retired = {'410': {description: 'Gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links'}};
+  const retired = {'410': {description: 'In iam-oidc mode, gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links'}};
   const deprecation = {Deprecation: {description: 'RFC 9745 deprecation date', schema: {type: 'string'}}, Sunset: {description: 'RFC 8594 sunset date', schema: {type: 'string'}}};
-  paths['/api/auth/login'] = {post: {operationId: 'passwordSignIn', deprecated: true, summary: 'Deprecated password sign-in (removed in the next major)',
-    description: 'Off by default (410 Gone). With EMBERPATH_PASSWORD_RELAY=true, signs in with a username and password (OS PAM, or relayed to Oathweave in iam-oidc mode) and sets the admin session cookie. Sign in through Oathweave instead.',
+  paths['/api/auth/login'] = {post: {operationId: 'passwordSignIn', summary: 'Password sign-in: OS (PAM) mode; the iam-oidc Oathweave relay is deprecated',
+    description: 'OS mode (HIVE_ROUTER_AUTH_MODE=os) checks the OS password through PAM and is unchanged. In iam-oidc mode this relayed the password to Oathweave: that relay is deprecated (Deprecation and Sunset headers), off by default (410 Gone) and removed in the next major; EMBERPATH_PASSWORD_RELAY=true keeps it for now. Sign in through Oathweave instead.',
     requestBody: {required: true, content: json({type: 'object', required: ['username', 'password'], properties: {username: {type: 'string'}, password: {type: 'string'}, mfaCode: {type: 'string'}}})},
     responses: {'200': {description: 'Signed in', headers: deprecation}, '401': {description: 'Invalid credentials or MFA_REQUIRED'}, ...retired}}};
-  paths['/api/auth/reauthenticate'] = {post: {operationId: 'passwordReauthenticate', deprecated: true, summary: 'Deprecated password re-authentication (removed in the next major)',
-    description: 'Off by default (410 Gone). With EMBERPATH_PASSWORD_RELAY=true, confirms the password of the signed-in session. Use POST /api/auth/step-up instead.', security: [{adminSession: []}],
+  paths['/api/auth/reauthenticate'] = {post: {operationId: 'passwordReauthenticate', summary: 'Confirm the password of an admin session: OS mode; the iam-oidc relay is deprecated',
+    description: 'As POST /api/auth/login: unchanged in OS mode; in iam-oidc mode deprecated, 410 Gone unless EMBERPATH_PASSWORD_RELAY=true, removed in the next major. Use POST /api/auth/step-up instead.', security: [{adminSession: []}],
     requestBody: {required: true, content: json({type: 'object', required: ['password'], properties: {password: {type: 'string'}, mfaCode: {type: 'string'}}})},
     responses: {'200': {description: 'Re-authenticated', headers: deprecation}, '401': {description: 'Re-authentication failed or MFA_REQUIRED'}, ...retired}}};
   paths['/api/auth/me'] = {get: {operationId: 'readAuthenticatedPrincipal', summary: 'Read this authenticated product principal and permissions', security, responses: {'200': {description: 'Public product principal without credential storage', content: json(ref('AdminMe'))}, '401': errors['401']}}};

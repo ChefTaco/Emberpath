@@ -126,9 +126,8 @@ node dist/src/index.js --env-file ~/.hive/router.env
 ```
 
 The administration API is at `http://127.0.0.1:9443/api`. Sign in through HiveXUI with
-Oathweave ([Oathweave browser sign-in](#oathweave-browser-sign-in)). Without Oathweave, set
-`EMBERPATH_PASSWORD_RELAY=true` (deprecated) and sign in with `POST /api/auth/login` as one of
-`HIVE_ROUTER_ADMIN_USERS`.
+Oathweave ([Oathweave browser sign-in](#oathweave-browser-sign-in)), or in OS mode with
+`POST /api/auth/login` as one of `HIVE_ROUTER_ADMIN_USERS`.
 The OpenAI-compatible API is at `http://127.0.0.1:4020/v1`; both listeners
 answer `GET /health`.
 
@@ -293,9 +292,8 @@ answers 503 when the database is down or every enabled provider is unhealthy.
 
 Next steps:
 
-1. Sign in: through HiveXUI with Oathweave, or, without Oathweave, with
-   `EMBERPATH_PASSWORD_RELAY=true` (deprecated) and `POST /api/auth/login` as a user listed in
-   `HIVE_ROUTER_ADMIN_USERS`, keeping the session cookie it sets.
+1. Sign in: through HiveXUI with Oathweave, or in OS mode with `POST /api/auth/login` as a user
+   listed in `HIVE_ROUTER_ADMIN_USERS`, keeping the session cookie it sets.
 2. Add a provider with `POST /api/providers`, for example `LLAMACPP` at
    `http://127.0.0.1:8000` with auth `NONE`.
 3. Create a client key with `hive-router create-key --name my-service`
@@ -381,8 +379,8 @@ sent upstream; `no-store` keeps it out of the cache.
 |---|---|---|
 | `HIVE_ROUTER_SECRET` | | **Required.** At least 32 characters. Signs admin sessions and encrypts stored provider secrets. Keep it stable: if you rotate it, sessions and stored provider credentials stop working. |
 | `HIVE_ROUTER_ADMIN_USERS` | `admin` | Comma-separated allowlist of account names that may sign in. Set it explicitly. |
-| `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave. Both are password sign-ins and need `EMBERPATH_PASSWORD_RELAY=true`. |
-| `EMBERPATH_PASSWORD_RELAY` | `false` | Deprecated, removed in the next major. `true` keeps the password endpoints `POST /api/auth/login` and `POST /api/auth/reauthenticate` (for a standalone installation without Oathweave browser sign-in). Off, both answer `410 Gone`. See [docs/OATHWEAVE.md](docs/OATHWEAVE.md#password-sign-in-is-retired). |
+| `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave by relaying the password (deprecated; needs `EMBERPATH_PASSWORD_RELAY=true`). |
+| `EMBERPATH_PASSWORD_RELAY` | `false` | Deprecated, removed in the next major. In `iam-oidc` mode, `true` keeps relaying passwords to Oathweave through `POST /api/auth/login` and `POST /api/auth/reauthenticate`; off, both answer `410 Gone`. OS mode is not affected. See [docs/OATHWEAVE.md](docs/OATHWEAVE.md#password-sign-in-is-retired). |
 | `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` | `300` | How recent the `auth_time` of a step-up ID token must be (1-3600). |
 | `EMBERPATH_STEP_UP_AUDIENCES` | `hivexui-emberpath` | Comma-separated Oathweave client IDs whose ID tokens `POST /api/auth/step-up` accepts. |
 | `HIVE_ROUTER_OS_AUTH_COMMAND` | | Replaces `pamtester` with another command. Intended for tests and development. |
@@ -495,8 +493,9 @@ browser-issuer tokens. The suite controller sets these; see
   routes without a permission of their own.
 - Credential and policy changes need a sign-in from the last 15 minutes. Confirm it
   with `POST /api/auth/step-up` and a fresh Oathweave ID token (HiveXUI does this for
-  you); see [docs/OATHWEAVE.md](docs/OATHWEAVE.md#step-up-with-an-id-token). The
-  password endpoints are retired: both modes above need `EMBERPATH_PASSWORD_RELAY=true`.
+  you); see [docs/OATHWEAVE.md](docs/OATHWEAVE.md#step-up-with-an-id-token). In OS
+  mode, `POST /api/auth/reauthenticate` with the OS password still works. The `iam-oidc`
+  password relay is retired and needs `EMBERPATH_PASSWORD_RELAY=true`.
 - Repeated failed logins lock out that username from that client address, and
   one address that fails against many usernames is locked out too.
   Re-authentication is rate-limited in the same way.

@@ -1082,14 +1082,19 @@ function markPasswordRelayDeprecated(context: AdminContext): void {
   context.header('Link', `<${PASSWORD_RELAY_DOCS}>; rel="deprecation"; type="text/html"`);
 }
 
-/** The retired password endpoints: 410 unless EMBERPATH_PASSWORD_RELAY=true, deprecated either way. */
+/**
+ * The Oathweave password relay (`iam-oidc` sign-in): 410 unless EMBERPATH_PASSWORD_RELAY=true,
+ * deprecated either way. OS sign-in (PAM) checks a local credential, relays nothing, and stays.
+ */
 function passwordRelayRefusal(context: AdminContext, pathname: string): Response | undefined {
   if (!PASSWORD_RELAY_PATHS.has(pathname)) return undefined;
+  const env = loadEnv();
+  if (env.HIVE_ROUTER_AUTH_MODE !== 'iam-oidc') return undefined;
   markPasswordRelayDeprecated(context);
-  if (loadEnv().EMBERPATH_PASSWORD_RELAY) return undefined;
+  if (env.EMBERPATH_PASSWORD_RELAY) return undefined;
   return context.json({
     error: 'PASSWORD_RELAY_DISABLED',
-    message: 'Emberpath no longer accepts passwords. Sign in through Oathweave (HiveXUI) and confirm sensitive actions with POST /api/auth/step-up and a fresh Oathweave ID token.',
+    message: 'Emberpath no longer relays Oathweave passwords. Sign in through Oathweave (HiveXUI) and confirm sensitive actions with POST /api/auth/step-up and a fresh Oathweave ID token.',
     stepUp: '/api/auth/step-up',
     docs: PASSWORD_RELAY_DOCS,
   }, 410);

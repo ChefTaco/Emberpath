@@ -6829,8 +6829,7 @@
     },
     "/api/auth/login": {
       "post": {
-        "deprecated": true,
-        "description": "Off by default (410 Gone). With EMBERPATH_PASSWORD_RELAY=true, signs in with a username and password (OS PAM, or relayed to Oathweave in iam-oidc mode) and sets the admin session cookie. Sign in through Oathweave instead.",
+        "description": "OS mode (HIVE_ROUTER_AUTH_MODE=os) checks the OS password through PAM and is unchanged. In iam-oidc mode this relayed the password to Oathweave: that relay is deprecated (Deprecation and Sunset headers), off by default (410 Gone) and removed in the next major; EMBERPATH_PASSWORD_RELAY=true keeps it for now. Sign in through Oathweave instead.",
         "operationId": "passwordSignIn",
         "requestBody": {
           "content": {
@@ -6879,10 +6878,10 @@
             "description": "Invalid credentials or MFA_REQUIRED"
           },
           "410": {
-            "description": "Gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links"
+            "description": "In iam-oidc mode, gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links"
           }
         },
-        "summary": "Deprecated password sign-in (removed in the next major)"
+        "summary": "Password sign-in: OS (PAM) mode; the iam-oidc Oathweave relay is deprecated"
       }
     },
     "/api/auth/me": {
@@ -6916,8 +6915,7 @@
     },
     "/api/auth/reauthenticate": {
       "post": {
-        "deprecated": true,
-        "description": "Off by default (410 Gone). With EMBERPATH_PASSWORD_RELAY=true, confirms the password of the signed-in session. Use POST /api/auth/step-up instead.",
+        "description": "As POST /api/auth/login: unchanged in OS mode; in iam-oidc mode deprecated, 410 Gone unless EMBERPATH_PASSWORD_RELAY=true, removed in the next major. Use POST /api/auth/step-up instead.",
         "operationId": "passwordReauthenticate",
         "requestBody": {
           "content": {
@@ -6962,7 +6960,7 @@
             "description": "Re-authentication failed or MFA_REQUIRED"
           },
           "410": {
-            "description": "Gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links"
+            "description": "In iam-oidc mode, gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links"
           }
         },
         "security": [
@@ -6970,7 +6968,7 @@
             "adminSession": []
           }
         ],
-        "summary": "Deprecated password re-authentication (removed in the next major)"
+        "summary": "Confirm the password of an admin session: OS mode; the iam-oidc relay is deprecated"
       }
     },
     "/api/auth/step-up": {

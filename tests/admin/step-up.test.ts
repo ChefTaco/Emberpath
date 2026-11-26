@@ -245,16 +245,30 @@ describe('step-up without Oathweave, and for a password session', () => {
   });
 });
 
-describe('retired password endpoints (EMBERPATH_PASSWORD_RELAY off)', () => {
-  it('answer 410 Gone with a pointer to the docs, deprecated, without checking any password', async () => {
-    for (const [path, headers] of [['/api/auth/login', { 'content-type': 'application/json' }], ['/api/auth/reauthenticate', bearer]] as const) {
-      const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify({ username: 'admin', password: 'obviously-fake-password' }) });
-      expect(response.status).toBe(410);
-      expect(await response.json()).toMatchObject({ error: 'PASSWORD_RELAY_DISABLED', stepUp: '/api/auth/step-up', docs: expect.stringContaining('docs/OATHWEAVE.md') });
-      expect(response.headers.get('deprecation')).toMatch(/^@\d+$/);
-      expect(response.headers.get('sunset')).toMatch(/GMT$/);
-      expect(response.headers.get('link')).toContain('rel="deprecation"');
+describe('the Oathweave password relay (iam-oidc mode, EMBERPATH_PASSWORD_RELAY off)', () => {
+  it('answers 410 Gone with a pointer to the docs, deprecated, without checking any password', async () => {
+    const env = loadEnv();
+    env.HIVE_ROUTER_AUTH_MODE = 'iam-oidc';
+    try {
+      for (const [path, headers] of [['/api/auth/login', { 'content-type': 'application/json' }], ['/api/auth/reauthenticate', bearer]] as const) {
+        const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify({ username: 'admin', password: 'obviously-fake-password' }) });
+        expect(response.status).toBe(410);
+        expect(await response.json()).toMatchObject({ error: 'PASSWORD_RELAY_DISABLED', stepUp: '/api/auth/step-up', docs: expect.stringContaining('docs/OATHWEAVE.md') });
+        expect(response.headers.get('deprecation')).toMatch(/^@\d+$/);
+        expect(response.headers.get('sunset')).toMatch(/GMT$/);
+        expect(response.headers.get('link')).toContain('rel="deprecation"');
+      }
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      env.HIVE_ROUTER_AUTH_MODE = 'os';
     }
-    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('leaves OS (PAM) sign-in alone: it checks a local credential and relays nothing', async () => {
+    const osAuth = await import('../../src/security/os-auth.js');
+    vi.spyOn(osAuth, 'authenticateOsUser').mockResolvedValue(false);
+    const response = await app.request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'obviously-fake-password' }) });
+    expect(response.status).not.toBe(410);
+    expect(response.headers.get('deprecation')).toBeNull();
   });
 });

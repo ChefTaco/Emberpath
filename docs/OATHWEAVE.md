@@ -85,14 +85,15 @@ Oathweave.
 
 ## Password sign-in is retired
 
-`POST /api/auth/login` and `POST /api/auth/reauthenticate` took a username and password and
-checked them through PAM (`HIVE_ROUTER_AUTH_MODE=os`) or relayed them to Oathweave
-(`iam-oidc`). Emberpath no longer handles passwords: both are off by default and answer
-`410 Gone` with `{"error": "PASSWORD_RELAY_DISABLED", "stepUp": "/api/auth/step-up", "docs": ...}`.
+In `iam-oidc` mode, `POST /api/auth/login` and `POST /api/auth/reauthenticate` took a person's
+Oathweave username and password and relayed them to Oathweave. Emberpath no longer handles
+Oathweave passwords: in that mode both are off by default and answer `410 Gone` with `{"error": "PASSWORD_RELAY_DISABLED", "stepUp": "/api/auth/step-up", "docs": ...}`.
 Sign in through HiveXUI with Oathweave browser sign-in, and confirm sensitive actions with
 [step-up](#step-up-with-an-id-token).
 
-A standalone installation that has no Oathweave browser sign-in can keep the old endpoints for
-now with `EMBERPATH_PASSWORD_RELAY=true`. They are deprecated (`Deprecation` and `Sunset`
-headers on every answer, `deprecated: true` in the OpenAPI document) and are removed in the next
-major release.
+A standalone installation that has no Oathweave browser sign-in can keep the relay for now with
+`EMBERPATH_PASSWORD_RELAY=true`. It is deprecated (`Deprecation` and `Sunset` headers on every
+answer in `iam-oidc` mode) and is removed in the next major release.
+
+OS mode (`HIVE_ROUTER_AUTH_MODE=os`, the standalone default) is not a relay: it checks the
+operator's OS password locally through PAM, and its sign-in and re-authentication are unchanged.
