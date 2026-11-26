@@ -6,6 +6,8 @@ import { authenticateIamOidcUser, requestHiveMemServiceToken, requestIamClientCr
 
 let server: ReturnType<typeof createServer> | null = null;
 let baseUrl = '';
+/** What the fake Oathweave saw: forwarded client addresses and revoked sessions. */
+const seen: { forwardedFor: Array<string | undefined>; logouts: string[]; mfaCodes: string[] } = { forwardedFor: [], logouts: [], mfaCodes: [] };
 
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
@@ -92,12 +94,35 @@ describe('security/iam-oidc', () => {
     server = createServer(async (request, response) => {
       const url = new URL(request.url ?? '/', baseUrl);
       if (request.method === 'POST' && url.pathname === '/api/v1/auth/login') {
+        seen.forwardedFor.push(request.headers['x-forwarded-for'] as string | undefined);
         const body = JSON.parse(await readBody(request)) as { username?: string; password?: string };
+        if (body.username === 'mfa-user' && body.password === 'correct-password') {
+          json(response, 200, { requiresMfa: true, mfaToken: 'mfa-challenge-token', methods: ['totp'] });
+          return;
+        }
         if (body.username !== 'admin' || body.password !== 'correct-password') {
           json(response, 401, { error: 'INVALID_CREDENTIALS' });
           return;
         }
         json(response, 200, { accessToken: 'iam-login-access-token', expiresIn: 900 });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/v1/auth/mfa/challenge') {
+        seen.forwardedFor.push(request.headers['x-forwarded-for'] as string | undefined);
+        const body = JSON.parse(await readBody(request)) as { mfaToken?: string; code?: string };
+        seen.mfaCodes.push(body.code ?? '');
+        if (body.mfaToken !== 'mfa-challenge-token' || body.code !== '123456') {
+          json(response, 401, { error: 'INVALID_MFA_CODE' });
+          return;
+        }
+        json(response, 200, { accessToken: 'iam-login-access-token', expiresIn: 900 });
+        return;
+      }
+
+      if (request.method === 'POST' && url.pathname === '/api/v1/auth/logout') {
+        seen.logouts.push(String(request.headers.authorization));
+        json(response, 200, { success: true });
         return;
       }
 
@@ -152,6 +177,9 @@ describe('security/iam-oidc', () => {
   });
 
   afterEach(async () => {
+    seen.forwardedFor.length = 0;
+    seen.logouts.length = 0;
+    seen.mfaCodes.length = 0;
     await new Promise<void>((resolve, reject) => {
       server?.close((error) => (error ? reject(error) : resolve()));
     });
@@ -168,6 +196,34 @@ describe('security/iam-oidc', () => {
       roles: ['SUPER_ADMIN'],
       permissions: [],
     });
+  });
+
+  it('ends both Oathweave sessions the sign-in opened', async () => {
+    await authenticateIamOidcUser('admin', 'correct-password', testEnv());
+    expect(seen.logouts.sort()).toEqual(['Bearer iam-login-access-token', 'Bearer iam-oidc-access-token']);
+  });
+
+  it('forwards the client address so Oathweave can limit each client separately', async () => {
+    await authenticateIamOidcUser('admin', 'correct-password', testEnv(), { clientIp: '::ffff:192.0.2.10' });
+    await authenticateIamOidcUser('admin', 'correct-password', testEnv(), { clientIp: 'not-an-address' });
+    expect(seen.forwardedFor).toEqual(['192.0.2.10', undefined]);
+  });
+
+  it('reports a multi-factor challenge instead of failing the sign-in', async () => {
+    await expect(authenticateIamOidcUser('mfa-user', 'correct-password', testEnv())).resolves.toEqual({ mfaRequired: true, methods: ['totp'] });
+    expect(seen.mfaCodes).toEqual([]);
+    expect(seen.logouts).toEqual([]);
+  });
+
+  it('completes a multi-factor sign-in with the authenticator code', async () => {
+    const user = await authenticateIamOidcUser('mfa-user', 'correct-password', testEnv(), { mfaCode: '123456', clientIp: '192.0.2.20' });
+    expect(user).toMatchObject({ subject: 'user-1', username: 'admin' });
+    expect(seen.forwardedFor).toEqual(['192.0.2.20', '192.0.2.20']);
+    expect(seen.logouts).toHaveLength(2);
+  });
+
+  it('rejects a wrong authenticator code', async () => {
+    await expect(authenticateIamOidcUser('mfa-user', 'correct-password', testEnv(), { mfaCode: '000000' })).resolves.toBeNull();
   });
 
   it('returns null for invalid IAM credentials', async () => {

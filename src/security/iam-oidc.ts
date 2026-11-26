@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { z } from 'zod';
@@ -9,6 +10,8 @@ import { iamTlsOptions } from './iam-tls.js';
 const iamLoginSchema = z.object({
   accessToken: z.string().optional(),
   requiresMfa: z.boolean().optional(),
+  mfaToken: z.string().optional(),
+  methods: z.array(z.string()).optional(),
   passwordExpired: z.boolean().optional(),
   user: z.object({
     roles: z.array(z.string()).optional(),
@@ -39,6 +42,24 @@ export interface IamOidcUser {
   displayName: string;
   roles: string[];
   permissions: string[];
+}
+
+/** Oathweave accepted the password but the account needs a second factor. */
+export interface IamMfaRequired {
+  mfaRequired: true;
+  /** Second factors the account has, as Oathweave reports them (`totp`, `webauthn`). */
+  methods: string[];
+}
+
+export interface IamSignInOptions {
+  /** A TOTP or recovery code, for accounts with multi-factor authentication. */
+  mfaCode?: string | undefined;
+  /**
+   * The signing-in client's address. It is sent as `X-Forwarded-For`, which Oathweave only
+   * honours when Emberpath's address is in its `TRUSTED_PROXY_IPS`; then Oathweave's per-address
+   * sign-in limits apply to each client instead of to Emberpath as a whole.
+   */
+  clientIp?: string | undefined;
 }
 
 export interface IamClientCredentialsToken {
@@ -115,19 +136,73 @@ function parseJson<T>(schema: z.ZodType<T>, response: HttpResult): T | null {
   return parsed.success ? parsed.data : null;
 }
 
-export async function authenticateIamOidcUser(username: string, password: string, env: Env = loadEnv()): Promise<IamOidcUser | null> {
-  if (!username || !password || !env.HIVE_ROUTER_IAM_CLIENT_SECRET) return null;
+function forwardedFor(clientIp: string | undefined): Record<string, string> {
+  const address = clientIp?.startsWith('::ffff:') && isIP(clientIp.slice(7)) === 4 ? clientIp.slice(7) : clientIp;
+  return address && isIP(address) ? { 'x-forwarded-for': address } : {};
+}
 
+/**
+ * End an Oathweave session this sign-in opened. Emberpath keeps its own admin session, so
+ * leaving the Oathweave ones open would only leave long-lived sessions nobody uses.
+ */
+async function revokeIamSession(accessToken: string, env: Env): Promise<void> {
+  try {
+    await requestUrl(endpoint(env.HIVE_IAM_INTERNAL_URL, '/api/v1/auth/logout'), {
+      method: 'POST',
+      env,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    // Best effort: the session still expires on its own.
+  }
+}
+
+export async function authenticateIamOidcUser(
+  username: string,
+  password: string,
+  env: Env = loadEnv(),
+  options: IamSignInOptions = {},
+): Promise<IamOidcUser | IamMfaRequired | null> {
+  const clientSecret = env.HIVE_ROUTER_IAM_CLIENT_SECRET;
+  if (!username || !password || !clientSecret) return null;
+
+  const clientHeaders = forwardedFor(options.clientIp);
   const login = await requestUrl(endpoint(env.HIVE_IAM_INTERNAL_URL, '/api/v1/auth/login'), {
     method: 'POST',
     env,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...clientHeaders },
     body: JSON.stringify({ username, password }),
   });
   if (login.status === 401 || login.status === 403) return null;
-  const loginBody = parseJson(iamLoginSchema, login);
+  let loginBody = parseJson(iamLoginSchema, login);
+  if (loginBody?.requiresMfa) {
+    if (!loginBody.mfaToken) return null;
+    if (!options.mfaCode) return { mfaRequired: true, methods: loginBody.methods ?? [] };
+    const challenge = await requestUrl(endpoint(env.HIVE_IAM_INTERNAL_URL, '/api/v1/auth/mfa/challenge'), {
+      method: 'POST',
+      env,
+      headers: { 'content-type': 'application/json', ...clientHeaders },
+      body: JSON.stringify({ mfaToken: loginBody.mfaToken, code: options.mfaCode }),
+    });
+    loginBody = parseJson(iamLoginSchema, challenge);
+  }
   if (!loginBody?.accessToken || loginBody.requiresMfa || loginBody.passwordExpired) return null;
 
+  const loginAccessToken = loginBody.accessToken;
+  try {
+    return await completeCodeFlow(loginAccessToken, clientSecret, username, loginBody, env);
+  } finally {
+    await revokeIamSession(loginAccessToken, env);
+  }
+}
+
+async function completeCodeFlow(
+  loginAccessToken: string,
+  clientSecret: string,
+  username: string,
+  loginBody: z.infer<typeof iamLoginSchema>,
+  env: Env,
+): Promise<IamOidcUser | null> {
   const state = randomBytes(24).toString('base64url');
   const verifier = randomBytes(48).toString('base64url');
   const authorizeUrl = endpoint(env.HIVE_IAM_INTERNAL_URL, '/api/v1/oauth/authorize');
@@ -141,7 +216,7 @@ export async function authenticateIamOidcUser(username: string, password: string
 
   const authorize = await requestUrl(authorizeUrl, {
     env,
-    headers: { authorization: `Bearer ${loginBody.accessToken}` },
+    headers: { authorization: `Bearer ${loginAccessToken}` },
   });
 
   if (authorize.status !== 302 || !authorize.headers.location) return null;
@@ -155,7 +230,7 @@ export async function authenticateIamOidcUser(username: string, password: string
     code,
     redirect_uri: env.HIVE_ROUTER_IAM_REDIRECT_URI,
     client_id: env.HIVE_ROUTER_IAM_CLIENT_ID,
-    client_secret: env.HIVE_ROUTER_IAM_CLIENT_SECRET,
+    client_secret: clientSecret,
     code_verifier: verifier,
   });
   const token = await requestUrl(endpoint(env.HIVE_IAM_INTERNAL_URL, '/api/v1/oauth/token'), {
@@ -171,6 +246,7 @@ export async function authenticateIamOidcUser(username: string, password: string
     env,
     headers: { authorization: `Bearer ${tokenBody.access_token}` },
   });
+  await revokeIamSession(tokenBody.access_token, env);
   const user = parseJson(userInfoSchema, userInfo);
   if (!user) return null;
 
