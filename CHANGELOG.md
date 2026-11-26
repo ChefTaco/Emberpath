@@ -1,9 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [2.9.0] - 2026-11-26
 
 ### Upgrade notes
 
+- No database migration: the schema is unchanged from 2.8.0, so a Hive suite upgrade does not
+  need `--allow-migrations` for Emberpath, and a downgrade to 2.8.0 keeps working with no
+  configuration change.
 - Oathweave token endpoints must be HTTPS; plain HTTP is accepted only for a loopback address
   (`127.0.0.0/8`, `::1`, `localhost`), in every `NODE_ENV` (before, only production required
   HTTPS, and only for the HiveMem client). Startup and `hive-router check` now stop with a
@@ -13,8 +16,7 @@
   is. Point them at Oathweave over HTTPS (in the Hive suite, `https://oathweave:4200`, which
   suite installs already use) and trust its certificate with `HIVE_ROUTER_IAM_CA_CERT_PATH` or
   `NODE_EXTRA_CA_CERTS`. A standalone Oathweave container serving plain HTTP on a Docker network
-  needs TLS first (see the updated container example in the README). No database migration;
-  rolling back to 2.8.0 needs no change either.
+  needs TLS first (see the updated container example in the README).
 
 ### Changed
 
