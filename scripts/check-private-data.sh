@@ -14,6 +14,10 @@
 #      hostnames, private network domains, usernames, or private project names.
 #      Lines starting with # and blank lines are ignored. The file is local so
 #      the denylist itself never becomes public.
+#
+# Findings print only the path, line number and rule, never the matching text,
+# so a failing CI run cannot copy a private term into its public log. A path
+# that itself contains a private term is printed as "(path redacted)".
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,6 +46,13 @@ fail() {
   printf 'private-data check: %s\n' "$1" >&2
   failures=$((failures + 1))
 }
+shown() {
+  if [[ -n "$TERMS_PATTERN" ]] && grep -qiE -- "$TERMS_PATTERN" <<< "$1"; then
+    printf '(path redacted)'
+  else
+    printf '%s' "$1"
+  fi
+}
 
 if [[ "$MODE" == "message" ]]; then
   if [[ -n "$TERMS_PATTERN" ]] && grep -vE '^#' "$MESSAGE_FILE" | grep -qiE -- "$TERMS_PATTERN"; then
@@ -60,7 +71,7 @@ fi
 for file in "${files[@]}"; do
   [[ -n "$file" ]] || continue
   if [[ "$file" =~ $FORBIDDEN_PATHS && ! "$file" =~ $ALLOWED_PATHS ]]; then
-    fail "forbidden file: $file"
+    fail "$(shown "$file"): forbidden file"
   fi
 done
 
@@ -73,13 +84,14 @@ if [[ -n "$TERMS_PATTERN" && "${#files[@]}" -gt 0 ]]; then
       [[ -f "$file" ]] || continue
       content="$(cat -- "$file")"
     fi
-    if matches="$(grep -niE -- "$TERMS_PATTERN" <<< "$content" | cut -c1-120)"; then
+    display="$(shown "$file")"
+    if matches="$(grep -naiE -- "$TERMS_PATTERN" <<< "$content" | cut -d: -f1)"; then
       while IFS= read -r line; do
-        fail "private term in $file:$line"
+        fail "$display:$line: private term"
       done <<< "$matches"
     fi
-    if grep -qiE -- "$TERMS_PATTERN" <<< "$file"; then
-      fail "private term in file name: $file"
+    if [[ "$display" != "$file" ]]; then
+      fail "$display: private term in file name"
     fi
   done
 fi

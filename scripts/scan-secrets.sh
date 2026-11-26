@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Lightweight repository secret scanner for Hive. It scans tracked and
 # non-ignored files only, so private local .env files stay outside the gate.
+# Findings print only the path, line number and rule, never the matching text,
+# so a failing CI run cannot copy a secret into its public log.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,17 +40,28 @@ PATTERNS=(
   "sk-[A-Za-z0-9_-]{24,}"
   "-----BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY-----"
 )
+# Rule names printed for each pattern above (same order).
+RULES=(
+  "DEPLOY_PASSWORD assignment"
+  "SSH_PASSWORD assignment"
+  "IAM_AGENT_SECRET assignment"
+  "HIVE_ROUTER_SECRET assignment"
+  "HIVEMEM_JWT_SECRET assignment"
+  "API key"
+  "private key"
+)
 
 while IFS= read -r file; do
   [[ -f "$file" ]] || continue
-  for pattern in "${PATTERNS[@]}"; do
+  for index in "${!PATTERNS[@]}"; do
+    pattern="${PATTERNS[$index]}"
     if matches=$(rg -n --no-heading --color=never -e "$pattern" -- "$file"); then
       while IFS= read -r match; do
         [[ -n "$match" ]] || continue
         if [[ "$match" =~ $PLACEHOLDER_PATTERN ]]; then
           continue
         fi
-        printf '%s:%s\n' "$file" "$match" >> "$TMP_MATCHES"
+        printf '%s:%s: %s\n' "$file" "${match%%:*}" "${RULES[$index]}" >> "$TMP_MATCHES"
       done <<< "$matches"
     else
       rc=$?
