@@ -1,9 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [2.8.0] - 2026-11-26
 
 ### Upgrade notes
 
+- No database migration: the schema is unchanged from 2.7.0, so a Hive suite upgrade does not
+  need `--allow-migrations` for Emberpath, and a downgrade to 2.7.0 keeps working (the new
+  per-key `quota` and allowlist metadata fields are then ignored).
+- Anthropic providers now receive `stream: true` requests unless their capabilities set
+  `streaming: false`. Review provider concurrency and budgets where Anthropic was previously
+  skipped for streamed traffic.
 - Behind a reverse proxy that is not on the same host (such as Hive's ingress), set
   `EMBERPATH_TRUSTED_PROXIES` to that proxy (an IP, CIDR range or host name) so admin sign-in
   throttling and the address forwarded to Oathweave use the real client instead of the proxy.
