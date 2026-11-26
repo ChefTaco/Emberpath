@@ -301,6 +301,69 @@ describe('providers/anthropic adapter', () => {
     expect((await execution.tracePromise!).errored).toBe(true);
   });
 
+  it('reports no usage for a stream cut short before its final count, and tells the client it failed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseResponse(TOOL_STREAM.slice(0, 5)).response);
+    const execution = await new AnthropicAdapter().execute(route({ stream: true, messages: [{ role: 'user', content: 'hi' }] }), provider());
+    const events = dataEvents(await execution.response.text());
+    expect(events.at(-1)).toEqual({ error: { message: 'The upstream stream ended before the answer was complete', type: 'upstream_incomplete' } });
+    const trace = await execution.tracePromise!;
+    expect(trace.errored).toBe(true);
+    // message_start's placeholder output count must not be taken as the real usage.
+    expect(trace.usage).toBeUndefined();
+  });
+
+  it('ends a cut-short Responses stream with response.failed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseResponse(TOOL_STREAM.slice(0, 5)).response);
+    const execution = await new AnthropicAdapter().execute(route({ stream: true, input: 'hi' }, 'v1.responses'), provider());
+    const events = dataEvents(await execution.response.text()) as Array<any>;
+    expect(events.at(-1)).toMatchObject({ type: 'response.failed', response: { status: 'failed', error: { code: 'upstream_incomplete' } } });
+  });
+
+  it('keeps the final usage when only message_stop is missing', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseResponse(TOOL_STREAM.slice(0, -1)).response);
+    const execution = await new AnthropicAdapter().execute(route({ stream: true, messages: [{ role: 'user', content: 'hi' }] }), provider());
+    await execution.response.text();
+    expect((await execution.tracePromise!).usage).toEqual({ inputTokens: 30, outputTokens: 40, totalTokens: 70 });
+  });
+
+  it('reports no usage when the client goes away mid-stream', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseResponse(TOOL_STREAM, 'per-event').response);
+    const execution = await new AnthropicAdapter().execute(route({ stream: true, messages: [{ role: 'user', content: 'hi' }] }), provider());
+    const reader = execution.response.body!.getReader();
+    await reader.read();
+    await reader.cancel();
+    expect((await execution.tracePromise!).usage).toBeUndefined();
+  });
+
+  it('turns a stream that opens with an error event into an HTTP error the gateway can fail over on', async () => {
+    const upstream = sseResponse([['error', { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }]]);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(upstream.response);
+    const execution = await new AnthropicAdapter().execute(route({ stream: true, messages: [{ role: 'user', content: 'hi' }] }), provider());
+    expect(execution.response.status).toBe(529);
+    expect(await execution.response.json()).toEqual({ error: { message: 'Overloaded', type: 'overloaded_error' } });
+    expect(execution.tracePromise).toBeUndefined();
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseResponse([['error', { type: 'error', error: { type: 'api_error', message: 'Internal' } }]]).response);
+    const other = await new AnthropicAdapter().execute(route({ stream: true, messages: [{ role: 'user', content: 'hi' }] }), provider());
+    expect(other.response.status).toBe(503);
+  });
+
+  it('announces Responses content parts and completes with the items it announced', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(sseResponse(TOOL_STREAM).response);
+    const execution = await new AnthropicAdapter().execute(route({ stream: true, input: 'Weather in Paris?', tools: [weatherTool] }, 'v1.responses'), provider());
+    const events = dataEvents(await execution.response.text()) as Array<any>;
+    const types = events.map((event) => event.type);
+    const added = types.indexOf('response.output_item.added');
+    expect(types.slice(added, added + 2)).toEqual(['response.output_item.added', 'response.content_part.added']);
+    expect(types.indexOf('response.content_part.added')).toBeLessThan(types.indexOf('response.output_text.delta'));
+    expect(types.indexOf('response.output_text.done')).toBeLessThan(types.indexOf('response.content_part.done'));
+    expect(types.indexOf('response.content_part.done')).toBeLessThan(types.indexOf('response.output_item.done'));
+    const announced = events.filter((event) => event.type === 'response.output_item.added').map((event) => event.item.id);
+    const completed = events.at(-1)!;
+    expect(completed.response.output.map((item: any) => item.id)).toEqual(announced);
+    expect(completed.response.output[0].content[0]).toEqual({ type: 'output_text', text: 'Let me check.', annotations: [] });
+  });
+
   it('cancels the upstream stream when the client goes away', async () => {
     const upstream = sseResponse(TOOL_STREAM, 'per-event');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(upstream.response);

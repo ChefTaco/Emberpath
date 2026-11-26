@@ -53,6 +53,29 @@
 
 ### Fixed
 
+- Actor onboarding, rotation and disable send the signed-in operator as `x-hive-operator`
+  on their writes to Oathweave, which refuses writes made with Emberpath's client token
+  without it (`ROUTER_OPERATOR_REQUIRED`). Without this, disabling an actor (the containment
+  path) failed against current Oathweave.
+- A streamed Anthropic answer that ends before Anthropic's final usage count (the client went
+  away, the idle timeout hit, or the upstream closed early) no longer reports the
+  placeholder output count from `message_start` as its usage. Its usage is unknown, so a key
+  with token budgets keeps its reservation instead of being refunded.
+- Anthropic providers accept `stream: true` requests by default (their default capabilities
+  said `streaming: false`, so streamed requests were never routed to them unless an operator
+  overrode it).
+- An Anthropic stream that opens with an error event (such as `overloaded_error`) becomes an
+  HTTP error (`529` for overloaded, otherwise `503`) before anything reaches the client, so it
+  counts against the provider's circuit and fails over like any other upstream error.
+- An Anthropic stream that ends without `message_stop` now ends with an error event
+  (`upstream_incomplete`; `response.failed` for the Responses API) instead of closing as if it
+  were complete.
+- Responses API streams from Anthropic providers announce each text part with
+  `response.content_part.added` and `.done` (OpenAI SDK stream helpers need them), and
+  `response.completed` lists the same items, with the same IDs and order, that the stream
+  announced.
+- A circuit breaker ignores late results from requests that started before the circuit last
+  opened, so a slow request finishing during a half-open trial can neither reopen nor close it.
 - A client that disconnects is noticed reliably: inference requests follow the inbound
   request's abort signal instead of a clone's, which could stop following it once the clone
   had been garbage-collected, so retries, backoff waits and failover went on for a caller

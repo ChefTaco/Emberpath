@@ -163,42 +163,66 @@ export function isCircuitOpen(providerId: string, now = Date.now()): boolean {
 }
 
 /**
- * Claim the provider for an attempt. Returns false when its circuit is open (or another
- * half-open trial is running); when the circuit is half-open, this request becomes the trial.
+ * How many times each provider's circuit has opened. An attempt carries the generation it
+ * entered under, so a late result from a request that started before the circuit opened
+ * cannot reopen or close the circuit during a later half-open trial.
  */
-export function enterProviderCircuit(providerId: string, now = Date.now()): boolean {
-  if (isCircuitOpen(providerId, now)) return false;
+const circuitGenerations = new Map<string, number>();
+
+/** A provider attempt's circuit ticket: the generation it entered under. */
+export type CircuitTicket = number;
+
+/**
+ * Claim the provider for an attempt. Returns undefined when its circuit is open (or another
+ * half-open trial is running); when the circuit is half-open, this request becomes the trial.
+ * Pass the returned ticket to `markProviderFailure` and `resetProviderCircuit`.
+ */
+export function enterProviderCircuit(providerId: string, now = Date.now()): CircuitTicket | undefined {
+  if (isCircuitOpen(providerId, now)) return undefined;
   const state = circuitBreakers.get(providerId);
   if (state?.openUntil !== undefined) state.trialStartedAt = now;
-  return true;
+  return circuitGenerations.get(providerId) ?? 0;
+}
+
+function stale(providerId: string, ticket: CircuitTicket | undefined): boolean {
+  return ticket !== undefined && ticket !== (circuitGenerations.get(providerId) ?? 0);
 }
 
 /** Give back a half-open trial that never reached the provider, so another request may try. */
-export function abandonProviderTrial(providerId: string): void {
+export function abandonProviderTrial(providerId: string, ticket?: CircuitTicket): void {
+  if (stale(providerId, ticket)) return;
   const state = circuitBreakers.get(providerId);
   if (state) delete state.trialStartedAt;
 }
 
-export function markProviderFailure(providerId: string, now = Date.now()): void {
+function openCircuit(providerId: string, now: number, openMs: number): void {
+  circuitGenerations.set(providerId, (circuitGenerations.get(providerId) ?? 0) + 1);
+  circuitBreakers.set(providerId, { failures: [], openUntil: now + openMs });
+}
+
+export function markProviderFailure(providerId: string, now = Date.now(), ticket?: CircuitTicket): void {
+  // A request that entered before the circuit last opened changes nothing.
+  if (stale(providerId, ticket)) return;
   const { threshold, windowMs, openMs } = circuitSettings();
   const state = circuitBreakers.get(providerId) ?? { failures: [] };
   // A request that was already running when the circuit opened changes nothing.
   if (state.openUntil !== undefined && state.openUntil > now) return;
   if (state.openUntil !== undefined) {
     // The half-open trial failed: open again for a full period.
-    circuitBreakers.set(providerId, { failures: [], openUntil: now + openMs });
+    openCircuit(providerId, now, openMs);
     return;
   }
   state.failures = [...state.failures.filter((at) => now - at < windowMs), now];
   if (state.failures.length >= threshold) {
-    state.openUntil = now + openMs;
-    state.failures = [];
-    delete state.trialStartedAt;
+    openCircuit(providerId, now, openMs);
+    return;
   }
   circuitBreakers.set(providerId, state);
 }
 
-export function resetProviderCircuit(providerId: string): void {
+/** Close the provider's circuit after a success (ignored for an attempt from before it last opened). */
+export function resetProviderCircuit(providerId: string, ticket?: CircuitTicket): void {
+  if (stale(providerId, ticket)) return;
   circuitBreakers.delete(providerId);
 }
 

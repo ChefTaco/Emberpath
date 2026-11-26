@@ -93,7 +93,7 @@ function defaultCapabilities(kind: ProviderKind): ProviderCapability {
         video: false,
         embeddings: false,
         longContext: true,
-        streaming: false,
+        streaming: true,
         passthroughRoutes: [],
         supportedRoutes: ['v1.models', 'v1.responses', 'v1.chat.completions'],
         tags: ['safe-tools', 'long-context'],
