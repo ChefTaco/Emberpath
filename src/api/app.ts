@@ -65,6 +65,28 @@ function createModelsRouteRequest(): RouteRequest {
   };
 }
 
+/**
+ * Live model lists by provider, kept for `EMBERPATH_MODELS_CACHE_TTL_MS` so clients polling
+ * `GET /v1/models` do not fan out a request to every backend each time. Concurrent callers
+ * share one fetch, and a provider whose settings changed is asked again.
+ */
+const liveModelCache = new Map<string, { version: number; at: number; models: Promise<AggregatedModelEntry[]> }>();
+
+export function clearLiveModelCache(): void {
+  liveModelCache.clear();
+}
+
+function cachedLiveProviderModels(provider: ProviderRuntime, now = Date.now()): Promise<AggregatedModelEntry[]> {
+  const ttl = loadEnv().EMBERPATH_MODELS_CACHE_TTL_MS;
+  if (ttl <= 0) return fetchLiveProviderModels(provider);
+  const version = provider.provider.updatedAt.getTime();
+  const cached = liveModelCache.get(provider.id);
+  if (cached && cached.version === version && now - cached.at < ttl) return cached.models;
+  const models = fetchLiveProviderModels(provider);
+  liveModelCache.set(provider.id, { version, at: now, models });
+  return models;
+}
+
 async function fetchLiveProviderModels(provider: ProviderRuntime): Promise<AggregatedModelEntry[]> {
   try {
     const adapter = getProviderAdapter(provider.kind);
@@ -998,7 +1020,7 @@ async function listAggregatedModels(): Promise<Response> {
       runtimes.map((provider) => (
         providerIdsWithStoredModels.has(provider.id)
           ? Promise.resolve([])
-          : fetchLiveProviderModels(provider)
+          : cachedLiveProviderModels(provider)
       )),
     )
   ).flat();

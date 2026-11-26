@@ -2,10 +2,71 @@ import type { Context, Next } from 'hono';
 import type { AppVariables } from '../types/app.js';
 import { prisma } from '../storage/client.js';
 import { safeJsonParse } from '../utils/json.js';
-import { verifyHashAsync } from './crypto.js';
+import { digestText, verifyHashAsync } from './crypto.js';
+import { loadEnv } from '../config/env.js';
 import { log } from '../telemetry/logger.js';
 
 export const OLLAMA_MANAGE_SCOPE = 'ollama:manage';
+
+/** Most entries either per-process map below keeps; the oldest goes first. */
+const MAX_TRACKED_KEYS = 10_000;
+
+function trim<V>(map: Map<string, V>): void {
+  while (map.size > MAX_TRACKED_KEYS) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
+/**
+ * Keys that passed the scrypt check recently, by SHA-256 of the raw key, for
+ * `EMBERPATH_API_KEY_CACHE_TTL_MS` (0 turns it off). Keys are 288-bit random, so the digest
+ * is as unguessable as the key; only the digest is held in memory.
+ */
+export const verifiedKeys = (() => {
+  const entries = new Map<string, { id: string; keyHash: string; at: number }>();
+  return {
+    recall(digest: string, now = Date.now()): { id: string; keyHash: string } | undefined {
+      const ttl = loadEnv().EMBERPATH_API_KEY_CACHE_TTL_MS;
+      const entry = entries.get(digest);
+      if (!entry) return undefined;
+      if (ttl <= 0 || now - entry.at >= ttl) {
+        entries.delete(digest);
+        return undefined;
+      }
+      return entry;
+    },
+    remember(digest: string, key: { id: string; keyHash: string }, now = Date.now()): void {
+      if (loadEnv().EMBERPATH_API_KEY_CACHE_TTL_MS <= 0) return;
+      entries.delete(digest);
+      entries.set(digest, { ...key, at: now });
+      trim(entries);
+    },
+    clear(): void { entries.clear(); },
+  };
+})();
+
+/**
+ * When each key's `lastUsedAt` was last written, so it is written at most once per
+ * `EMBERPATH_KEY_LAST_USED_INTERVAL_MS` (0 writes it on every request).
+ */
+export const lastUsedWrites = (() => {
+  const written = new Map<string, number>();
+  return {
+    due(keyId: string, now = Date.now()): boolean {
+      const interval = loadEnv().EMBERPATH_KEY_LAST_USED_INTERVAL_MS;
+      const last = written.get(keyId);
+      if (interval > 0 && last !== undefined && now - last < interval) return false;
+      written.delete(keyId);
+      written.set(keyId, now);
+      trim(written);
+      return true;
+    },
+    forget(keyId: string): void { written.delete(keyId); },
+    clear(): void { written.clear(); },
+  };
+})();
 
 /** The client key scope a request needs. */
 export function requiredScope(method: string, path: string): string {
@@ -31,13 +92,23 @@ export async function requireApiKey(
     orderBy: { createdAt: 'desc' },
   });
 
+  // A key verified recently is matched by its digest, as long as the same row (same id and
+  // stored hash) is still enabled and unexpired; rotation, disabling and deletion end the
+  // match at once because the row is read on every request.
+  const digest = digestText(rawKey);
+  const remembered = verifiedKeys.recall(digest);
+  let match: (typeof candidates)[number] | undefined = remembered
+    ? candidates.find((candidate) => candidate.id === remembered.id && candidate.keyHash === remembered.keyHash)
+    : undefined;
   // Off the event loop: the stored hash is scrypt, and deriving it synchronously
   // here would stall every stream being relayed for each incoming request.
-  let match: (typeof candidates)[number] | undefined;
-  for (const candidate of candidates) {
-    if (await verifyHashAsync(rawKey, candidate.keyHash)) {
-      match = candidate;
-      break;
+  if (!match) {
+    for (const candidate of candidates) {
+      if (await verifyHashAsync(rawKey, candidate.keyHash)) {
+        match = candidate;
+        verifiedKeys.remember(digest, { id: candidate.id, keyHash: candidate.keyHash });
+        break;
+      }
     }
   }
   if (!match) {
@@ -60,11 +131,14 @@ export async function requireApiKey(
     : permission !== OLLAMA_MANAGE_SCOPE;
   if (!allowed) return context.json({ error: 'Client key does not permit this operation' }, 403);
   context.set('clientApiKey', match);
-  void prisma.clientApiKey.update({
-    where: { id: match.id },
-    data: { lastUsedAt: new Date() },
-  }).catch((error: unknown) => {
-    log('warn', 'Failed to record client API key usage', { keyId: match.id, error: error instanceof Error ? error.message : String(error) });
-  });
+  if (lastUsedWrites.due(match.id)) {
+    void prisma.clientApiKey.update({
+      where: { id: match.id },
+      data: { lastUsedAt: new Date() },
+    }).catch((error: unknown) => {
+      lastUsedWrites.forget(match.id);
+      log('warn', 'Failed to record client API key usage', { keyId: match.id, error: error instanceof Error ? error.message : String(error) });
+    });
+  }
   await next();
 }

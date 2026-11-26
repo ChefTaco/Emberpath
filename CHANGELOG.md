@@ -64,6 +64,19 @@
 - Every third-party GitHub Action in CI and in the image release workflow is pinned by
   commit SHA (checkout and setup-node move to v7).
 
+### Performance
+
+- A client key that passed its scrypt check is matched by its SHA-256 digest for
+  `EMBERPATH_API_KEY_CACHE_TTL_MS` (default 60 s), so inference requests no longer run scrypt
+  on the libuv thread pool every time. The key's row is still read per request, so disabling,
+  deleting, expiring or rotating a key still applies at once.
+- A key's `lastUsedAt` is written at most once per `EMBERPATH_KEY_LAST_USED_INTERVAL_MS`
+  (default 60 s) instead of on every request, which cuts SQLite write contention with traces.
+  `lastUsedAt` can now be up to a minute behind; `0` restores per-request writes.
+- `GET /v1/models` keeps each provider's live model list for `EMBERPATH_MODELS_CACHE_TTL_MS`
+  (default 5 s) and shares one upstream request among concurrent calls, so polling clients
+  no longer fan out a request to every backend each time. `0` restores the old behaviour.
+
 ## [2.7.0] - 2026-11-26
 
 ### Upgrade notes
