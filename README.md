@@ -45,9 +45,13 @@ traces in the `/data` volume (`/data/router`). It does not include PAM (`pamtest
 administrators sign in through Oathweave (`HIVE_ROUTER_AUTH_MODE=iam-oidc`). This example
 joins the network of the
 [Oathweave container example](https://github.com/ChefTaco/Oathweave/blob/main/apps/iam-core/README.md#run-the-container-image)
-and uses the `hive-router` client secret Oathweave generated on its first start. Put a
-certificate and key for the listeners in `tls/` as `server.crt` and `server.key`, readable by
-the container's `node` user (uid 1000).
+and uses the `hive-router` client secret Oathweave generated on its first start. Emberpath
+sends that secret and sign-in passwords to Oathweave, so Oathweave must serve HTTPS here (see
+its [TLS](https://github.com/ChefTaco/Oathweave/blob/main/apps/iam-core/README.md#tls)
+section) with a certificate for the name `oathweave`; plain HTTP is accepted only on a loopback
+address. Put a certificate and key for the listeners in `tls/` as `server.crt` and
+`server.key`, and the CA certificate that signed Oathweave's certificate as `tls/oathweave-ca.crt`,
+all readable by the container's `node` user (uid 1000).
 
 ```bash
 umask 077
@@ -56,7 +60,8 @@ HIVE_AUTO_MIGRATE=true
 HIVE_ROUTER_SECRET=$(openssl rand -hex 32)
 HIVE_ROUTER_ADMIN_USERS=admin
 HIVE_ROUTER_AUTH_MODE=iam-oidc
-HIVE_IAM_INTERNAL_URL=http://oathweave:4200
+HIVE_IAM_INTERNAL_URL=https://oathweave:4200
+HIVE_ROUTER_IAM_CA_CERT_PATH=/config/tls/oathweave-ca.crt
 HIVE_ROUTER_IAM_CLIENT_SECRET=$(docker exec oathweave sed -n 's/^SEED_HIVE_ROUTER_CLIENT_SECRET=//p' /data/iam/initial-credentials.env)
 API_HOST=0.0.0.0
 ADMIN_HOST=0.0.0.0
@@ -386,7 +391,7 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 
 | Variable | Default | Description |
 |---|---|---|
-| `HIVE_IAM_INTERNAL_URL` | `http://127.0.0.1:4200` | IAM base URL as Emberpath reaches it. |
+| `HIVE_IAM_INTERNAL_URL` | `http://127.0.0.1:4200` | IAM base URL as Emberpath reaches it. With `HIVE_ROUTER_IAM_CLIENT_SECRET` set it must be HTTPS (plain HTTP only on a loopback address); otherwise startup stops. |
 | `HIVE_IAM_PUBLIC_URL` | `PUBLIC_ADMIN_URL/iam` | IAM URL shown to users. |
 | `HIVE_ROUTER_IAM_CLIENT_ID` | `hive-router` | OAuth client Emberpath uses. |
 | `HIVE_ROUTER_IAM_CLIENT_SECRET` | | Secret for that client. Required when `HIVE_ROUTER_AUTH_MODE=iam-oidc`; also enables the `/api/iam/*` proxy. |
@@ -395,7 +400,7 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 | `HIVE_ROUTER_IAM_PROXY_SCOPES` | IAM admin scopes | Permissions requested for the server-side proxy token. |
 | `HIVE_ROUTER_IAM_ISSUER` / `HIVE_ROUTER_IAM_AUDIENCE` | `hive-iam` / `hive-router` | Claims required on IAM tokens presented to Emberpath. |
 | `HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID` | `security-exporter` | IAM client id accepted for the security event exporter. |
-| `HIVE_ROUTER_IAM_CA_CERT_PATH` | | CA certificate trusted for IAM HTTPS (OIDC, JWKS, proxy). |
+| `HIVE_ROUTER_IAM_CA_CERT_PATH` | | CA certificate trusted for IAM HTTPS (OIDC, JWKS, proxy, and the client-credentials token requests for the IAM proxy and HiveMem). When set it is the only CA trusted there; otherwise the system store, including `NODE_EXTRA_CA_CERTS`, is used. |
 | `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | JWKS refresh interval and the maximum age of cached keys. When the maximum is exceeded, Emberpath rejects tokens. |
 | `HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
@@ -408,7 +413,7 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 | `HIVEMEM_CA_CERT_PATH` | | Certificate trusted for HiveMem HTTPS. |
 | `EMBERPATH_HIVEMEM_CLIENT_ID` / `EMBERPATH_HIVEMEM_CLIENT_SECRET` | | Oathweave machine client for HiveMem. Emberpath fetches short-lived client credentials tokens (audience `hivemem`) and renews them in-process before they expire. Set both or neither. |
 | `EMBERPATH_HIVEMEM_SCOPE` | `hivemem:admin:all` | Permissions requested for HiveMem service tokens. |
-| `EMBERPATH_HIVEMEM_TOKEN_URL` | `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token` | Oathweave token endpoint for the service credential; HTTPS in production. |
+| `EMBERPATH_HIVEMEM_TOKEN_URL` | `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token` | Oathweave token endpoint for the service credential. Must be HTTPS (plain HTTP only on a loopback address) when the client is set; otherwise startup stops. |
 | `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject emberpath --role admin`. It is never sent to the browser. With the Oathweave client set, it is only a fallback and is never sent after its own expiry. |
 | `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry reported by the admin API. |
 | `HIVE_STATUS_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |

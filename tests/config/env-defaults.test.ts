@@ -103,6 +103,59 @@ describe('configuration errors', () => {
     expect(problems[0]?.message).toMatch(/^ADMIN_PORT must be a TCP port between 1 and 65535\./u);
     expect(problems[0]?.message).not.toContain('70000');
   });
+
+  const hiveMemClient = { EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem', EMBERPATH_HIVEMEM_CLIENT_SECRET: 'fake-hivemem-client-secret-0123456789abcdef' };
+  const iamClient = { HIVE_ROUTER_IAM_CLIENT_SECRET: 'fake-iam-client-secret-0123456789abcdef' };
+
+  it('refuses a plain-HTTP Oathweave token endpoint off loopback in any mode, without echoing it', () => {
+    for (const NODE_ENV of ['development', 'test']) {
+      const { env, problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, NODE_ENV, ...hiveMemClient, EMBERPATH_HIVEMEM_TOKEN_URL: 'http://oathweave:4200/api/v1/oauth/token' });
+      expect(env).toBeNull();
+      expect(problems.map((problem) => problem.variable)).toEqual(['EMBERPATH_HIVEMEM_TOKEN_URL']);
+      expect(problems[0]?.message).toMatch(/^EMBERPATH_HIVEMEM_TOKEN_URL must use HTTPS \(plain HTTP is allowed only for a loopback address/u);
+      expect(problems[0]?.message).not.toContain('http://oathweave');
+      expect(problems[0]?.message).not.toContain(hiveMemClient.EMBERPATH_HIVEMEM_CLIENT_SECRET);
+    }
+    // The default endpoint follows HIVE_IAM_INTERNAL_URL.
+    expect(inspectEnv({ HIVE_ROUTER_SECRET: secret, ...hiveMemClient, HIVE_IAM_INTERNAL_URL: 'http://oathweave:4200' }).problems.map((problem) => problem.variable))
+      .toEqual(['EMBERPATH_HIVEMEM_TOKEN_URL']);
+  });
+
+  it('refuses a plain-HTTP Oathweave base URL off loopback when the Router client secret is set', () => {
+    const { problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, ...iamClient, HIVE_IAM_INTERNAL_URL: 'http://oathweave:4200' });
+    expect(problems.map((problem) => problem.variable)).toEqual(['HIVE_IAM_INTERNAL_URL']);
+    expect(problems[0]?.message).toMatch(/^HIVE_IAM_INTERNAL_URL must use HTTPS .* while HIVE_ROUTER_IAM_CLIENT_SECRET is set/u);
+    expect(problems[0]?.message).not.toContain(iamClient.HIVE_ROUTER_IAM_CLIENT_SECRET);
+    // Without a client secret nothing secret is sent there, so the URL is not checked.
+    expect(inspectEnv({ HIVE_ROUTER_SECRET: secret, HIVE_IAM_INTERNAL_URL: 'http://oathweave:4200' }).problems).toEqual([]);
+  });
+
+  it('accepts plain HTTP on loopback, including the default Oathweave URL', () => {
+    for (const url of [undefined, 'http://127.0.0.1:4200', 'http://localhost:4200', 'http://[::1]:4200']) {
+      const source = { HIVE_ROUTER_SECRET: secret, ...hiveMemClient, ...iamClient, ...(url ? { HIVE_IAM_INTERNAL_URL: url } : {}) };
+      expect(inspectEnv(source).problems, String(url)).toEqual([]);
+    }
+  });
+
+  it('accepts the Hive suite configuration: HTTPS Oathweave on the suite network with the suite CA', () => {
+    const existing = new URL(import.meta.url).pathname;
+    const { problems } = inspectEnv({
+      HIVE_ROUTER_SECRET: secret,
+      NODE_ENV: 'production',
+      TLS_CERT_PATH: existing,
+      TLS_KEY_PATH: existing,
+      NODE_EXTRA_CA_CERTS: existing,
+      HIVE_IAM_INTERNAL_URL: 'https://oathweave:4200',
+      HIVE_ROUTER_IAM_CA_CERT_PATH: existing,
+      HIVEMEM_INTERNAL_URL: 'https://hivemem:18790',
+      HIVEMEM_CA_CERT_PATH: existing,
+      HIVE_ROUTER_AUTH_MODE: 'iam-oidc',
+      ...iamClient,
+      ...hiveMemClient,
+      EMBERPATH_HIVEMEM_TOKEN_URL: 'https://oathweave:4200/api/v1/oauth/token',
+    });
+    expect(problems).toEqual([]);
+  });
 });
 
 describe('env-schema document', () => {
