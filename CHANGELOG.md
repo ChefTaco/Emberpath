@@ -1,6 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [2.7.0] - 2026-11-26
+
+### Upgrade notes
+
+- `POST /api/pull` now needs a client key whose scopes include `ollama:manage` (or `*`).
+  Keys without a scope list, and scoped keys that only hold `models:read` and
+  `inference:write` (such as agent keys), now get `403` there. Grant `ollama:manage` to the
+  keys that should make an Ollama backend download models; other routes are unchanged.
+- Clients of `/api/auth/login` and `/api/auth/reauthenticate` with Oathweave sign-in should
+  handle `401` with code `MFA_REQUIRED` (it lists the account's methods) and retry with
+  `mfaCode`. Before, such accounts got `Invalid credentials`.
+- A provider's `timeoutMs` is now a per-wait idle timeout (headers, then each body chunk),
+  and its `concurrency` limits running streams. Review both on providers that serve long
+  streams.
 
 ### Fixed
 
