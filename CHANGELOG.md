@@ -35,6 +35,10 @@
 
 ### Fixed
 
+- A client that disconnects is noticed reliably: inference requests follow the inbound
+  request's abort signal instead of a clone's, which could stop following it once the clone
+  had been garbage-collected, so retries, backoff waits and failover went on for a caller
+  that had gone.
 - A provider's circuit breaker counts failures in a rolling window
   (`EMBERPATH_CIRCUIT_WINDOW_MS`, default 60 s) instead of until the next success, and has a
   real half-open state: after the open period (`EMBERPATH_CIRCUIT_OPEN_MS`, default 30 s) one

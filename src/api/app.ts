@@ -262,7 +262,9 @@ async function buildRouteRequest(
     requestBodyText,
     requestBodyJson,
     bodyBuffer,
-    signal: rawRequest.signal,
+    // The inbound request's own signal: a clone's signal only follows it while the clone is
+    // still referenced, so a client disconnect could be missed once the clone was collected.
+    signal: context.req.raw.signal,
   };
 }
 
