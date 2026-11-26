@@ -285,6 +285,24 @@
           "metadata": {
             "additionalProperties": false,
             "properties": {
+              "allowedModels": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              "allowedProviders": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
               "environment": {
                 "enum": [
                   "dev",
@@ -323,6 +341,10 @@
               "quota": {
                 "additionalProperties": false,
                 "properties": {
+                  "dailyCostUsd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
                   "dailyRequests": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
@@ -333,12 +355,31 @@
                     "maximum": 9007199254740991,
                     "type": "integer"
                   },
+                  "maxInFlight": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000,
+                    "type": "integer"
+                  },
+                  "monthlyCostUsd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
                   "monthlyRequests": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
                     "type": "integer"
                   },
                   "monthlyTokens": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "requestsPerMinute": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "tokensPerMinute": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
                     "type": "integer"
@@ -475,6 +516,10 @@
               "acceptRetainedHistory": {
                 "type": "boolean"
               },
+              "dailyCostUsd": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
               "dailyRequests": {
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991,
@@ -485,12 +530,31 @@
                 "maximum": 9007199254740991,
                 "type": "integer"
               },
+              "maxInFlight": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "integer"
+              },
+              "monthlyCostUsd": {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
               "monthlyRequests": {
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991,
                 "type": "integer"
               },
               "monthlyTokens": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "requestsPerMinute": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "tokensPerMinute": {
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991,
                 "type": "integer"
@@ -508,10 +572,16 @@
           },
           "usage": {
             "properties": {
+              "dayCostUsd": {
+                "type": "number"
+              },
               "dayRequests": {
                 "type": "number"
               },
               "dayTokens": {
+                "type": "number"
+              },
+              "monthCostUsd": {
                 "type": "number"
               },
               "monthRequests": {
@@ -556,6 +626,24 @@
             "additionalProperties": false,
             "default": {},
             "properties": {
+              "allowedModels": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              "allowedProviders": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
               "environment": {
                 "enum": [
                   "dev",
@@ -594,6 +682,10 @@
               "quota": {
                 "additionalProperties": false,
                 "properties": {
+                  "dailyCostUsd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
                   "dailyRequests": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
@@ -604,12 +696,31 @@
                     "maximum": 9007199254740991,
                     "type": "integer"
                   },
+                  "maxInFlight": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000,
+                    "type": "integer"
+                  },
+                  "monthlyCostUsd": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
                   "monthlyRequests": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
                     "type": "integer"
                   },
                   "monthlyTokens": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "requestsPerMinute": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "tokensPerMinute": {
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991,
                     "type": "integer"

@@ -1,7 +1,17 @@
 import Database from '../storage/sqlite.js';
 import { randomUUID } from 'node:crypto';
 
-export interface LedgerLimits { dailyRequests?: number | undefined; monthlyRequests?: number | undefined; dailyTokens?: number | undefined; monthlyTokens?: number | undefined }
+export interface LedgerLimits {
+  dailyRequests?: number | undefined; monthlyRequests?: number | undefined; dailyTokens?: number | undefined; monthlyTokens?: number | undefined;
+  /** Requests and tokens in the last 60 seconds. Tokens are the actual count once settled, the reservation until then. */
+  requestsPerMinute?: number | undefined; tokensPerMinute?: number | undefined;
+  /** Spend (UTC day and month) from operator-declared provider prices; requests without a known cost add nothing. */
+  dailyCostUsd?: number | undefined; monthlyCostUsd?: number | undefined;
+}
+export interface MinuteUsage { requests: number; tokens: number }
+export interface CostUsage { dayCostUsd: number; monthCostUsd: number }
+const MINUTE_MS = 60_000;
+const MAX_CACHED_EARLIER_COSTS = 10_000;
 export interface LedgerUsage { dayRequests: number; monthRequests: number; dayTokens: number; monthTokens: number }
 
 export class QuotaLedger {
@@ -38,16 +48,53 @@ export class QuotaLedger {
     const day = read(keys.day); const month = read(keys.month);
     return { dayRequests: day?.requests ?? 0, monthRequests: month?.requests ?? 0, dayTokens: day?.tokens ?? 0, monthTokens: month?.tokens ?? 0 };
   }
+  /** Requests and tokens reserved by the key in the 60 seconds before `now`. */
+  minuteUsage(key: string, now = new Date()): MinuteUsage {
+    const row = this.db.prepare('SELECT COUNT(*) AS requests,COALESCE(SUM(COALESCE(actualTokens,reservedTokens)),0) AS tokens FROM QuotaReservation WHERE clientApiKeyId=? AND createdAt>?').get(key, now.getTime() - MINUTE_MS) as { requests: number; tokens: number };
+    return { requests: Number(row.requests), tokens: Number(row.tokens) };
+  }
+  /** Settled spend in the current UTC day and month. Earlier days of the month are summed once per day. */
+  costUsage(key: string, now = new Date()): CostUsage {
+    const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    const sum = (from: number, to: number): number => Number((this.db.prepare('SELECT COALESCE(SUM(costUsd),0) AS cost FROM QuotaReservation WHERE clientApiKeyId=? AND createdAt>=? AND createdAt<?').get(key, from, to) as { cost: number }).cost);
+    const earlierKey = `${key}:${dayStart}`;
+    let earlier = this.earlierCosts.get(earlierKey);
+    if (earlier === undefined) {
+      earlier = dayStart > monthStart ? sum(monthStart, dayStart) : 0;
+      this.earlierCosts.set(earlierKey, earlier);
+      while (this.earlierCosts.size > MAX_CACHED_EARLIER_COSTS) {
+        const oldest = this.earlierCosts.keys().next().value;
+        if (oldest === undefined) break;
+        this.earlierCosts.delete(oldest);
+      }
+    }
+    const day = sum(dayStart, Number.MAX_SAFE_INTEGER);
+    return { dayCostUsd: day, monthCostUsd: earlier + day };
+  }
+  private readonly earlierCosts = new Map<string, number>();
   reserve(key: string, tokens: number, limits: LedgerLimits, now = new Date()): { id?: string; exceeded: string[] } {
     if (!Number.isSafeInteger(tokens) || tokens < 0) throw new Error('Invalid token reservation');
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const usage = this.usage(key, now);
-      const exceeded = (['dailyRequests', 'monthlyRequests', 'dailyTokens', 'monthlyTokens'] as const).filter((name) => {
+      const exceeded: string[] = (['dailyRequests', 'monthlyRequests', 'dailyTokens', 'monthlyTokens'] as const).filter((name) => {
         const limit = limits[name]; if (limit === undefined || limit <= 0) return false;
         const used = { dailyRequests: usage.dayRequests + 1, monthlyRequests: usage.monthRequests + 1, dailyTokens: usage.dayTokens + tokens, monthlyTokens: usage.monthTokens + tokens }[name];
         return used > limit;
       });
+      const positive = (limit: number | undefined): limit is number => limit !== undefined && limit > 0;
+      if (positive(limits.requestsPerMinute) || positive(limits.tokensPerMinute)) {
+        const minute = this.minuteUsage(key, now);
+        if (positive(limits.requestsPerMinute) && minute.requests + 1 > limits.requestsPerMinute) exceeded.push('requestsPerMinute');
+        if (positive(limits.tokensPerMinute) && minute.tokens + tokens > limits.tokensPerMinute) exceeded.push('tokensPerMinute');
+      }
+      if (positive(limits.dailyCostUsd) || positive(limits.monthlyCostUsd)) {
+        // The cost of this request is not known before it runs: stop once the budget is spent.
+        const cost = this.costUsage(key, now);
+        if (positive(limits.dailyCostUsd) && cost.dayCostUsd >= limits.dailyCostUsd) exceeded.push('dailyCostUsd');
+        if (positive(limits.monthlyCostUsd) && cost.monthCostUsd >= limits.monthlyCostUsd) exceeded.push('monthlyCostUsd');
+      }
       if (exceeded.length) { this.db.exec('ROLLBACK'); return { exceeded }; }
       const keys = this.keys(key, now); const id = randomUUID();
       for (const bucket of [keys.day, keys.month]) this.db.prepare('INSERT INTO QuotaBucket(id,requests,tokens) VALUES (?,1,?) ON CONFLICT(id) DO UPDATE SET requests=requests+1,tokens=tokens+excluded.tokens').run(bucket, tokens);

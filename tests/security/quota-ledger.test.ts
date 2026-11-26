@@ -100,3 +100,45 @@ it('keeps per-key trends isolated and reports mixed or missing price coverage as
     expect(ledger.trends('actor-b')).toMatchObject([{ requests: 1, tokens: 40, costUsd: 1 }]);
   } finally { db.close(); }
 });
+
+it('limits requests and tokens per rolling minute, counting settled tokens as reported', () => {
+  const db = new Database(':memory:');
+  try {
+    for (const sql of schemaStatements) db.exec(sql);
+    const ledger = new QuotaLedger(db);
+    const t0 = new Date('2026-09-07T10:00:00Z');
+    const at = (ms: number) => new Date(t0.getTime() + ms);
+    expect(ledger.reserve('key', 10, { requestsPerMinute: 2 }, at(0)).exceeded).toEqual([]);
+    expect(ledger.reserve('key', 10, { requestsPerMinute: 2 }, at(1_000)).exceeded).toEqual([]);
+    expect(ledger.reserve('key', 10, { requestsPerMinute: 2 }, at(2_000)).exceeded).toEqual(['requestsPerMinute']);
+    // The first request leaves the window after 60 seconds.
+    expect(ledger.reserve('key', 10, { requestsPerMinute: 2 }, at(60_001)).exceeded).toEqual([]);
+
+    const big = ledger.reserve('tpm', 900, { tokensPerMinute: 1000 }, at(0));
+    expect(ledger.reserve('tpm', 200, { tokensPerMinute: 1000 }, at(1)).exceeded).toEqual(['tokensPerMinute']);
+    ledger.attach(big.id!, 'big'); ledger.settle('big', 100);
+    expect(ledger.reserve('tpm', 200, { tokensPerMinute: 1000 }, at(2)).exceeded).toEqual([]);
+    expect(ledger.minuteUsage('tpm', at(3))).toEqual({ requests: 2, tokens: 300 });
+  } finally { db.close(); }
+});
+
+it('stops a key once its daily or monthly spend reaches the budget', () => {
+  const db = new Database(':memory:');
+  try {
+    for (const sql of schemaStatements) db.exec(sql);
+    const ledger = new QuotaLedger(db);
+    const spend = (traceId: string, costUsd: number, now: Date) => {
+      const reservation = ledger.reserve('spender', 1, {}, now); ledger.attach(reservation.id!, traceId);
+      ledger.settle(traceId, 1, { costUsd, source: 'operator-declared-provider-prices', estimated: false });
+    };
+    spend('earlier-day', 4, new Date('2026-09-02T10:00:00Z'));
+    spend('last-month', 50, new Date('2026-08-31T10:00:00Z'));
+    const today = new Date('2026-09-07T10:00:00Z');
+    expect(ledger.reserve('spender', 1, { dailyCostUsd: 1, monthlyCostUsd: 5 }, today).exceeded).toEqual([]);
+    spend('today', 1, today);
+    expect(ledger.costUsage('spender', today)).toEqual({ dayCostUsd: 1, monthCostUsd: 5 });
+    expect(ledger.reserve('spender', 1, { dailyCostUsd: 1 }, today).exceeded).toEqual(['dailyCostUsd']);
+    expect(ledger.reserve('spender', 1, { monthlyCostUsd: 5 }, today).exceeded).toEqual(['monthlyCostUsd']);
+    expect(ledger.reserve('spender', 1, { dailyCostUsd: 2, monthlyCostUsd: 6 }, today).exceeded).toEqual([]);
+  } finally { db.close(); }
+});

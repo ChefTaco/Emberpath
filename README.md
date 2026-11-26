@@ -202,7 +202,9 @@ suite does this during the upgrade) and then re-issues the token and updates the
   ([retries and execution traces](#retries-and-execution-traces)).
 - **Client API keys and quotas**: OpenAI-style `sk-...` keys, stored only as
   hashes, with daily and monthly request and token caps (soft warnings, then
-  hard `429`s). A request that no provider answered (every candidate failed, or
+  hard `429`s), per-minute request and token limits, a cap on requests in flight,
+  daily and monthly USD budgets, and model and provider allowlists
+  ([key metadata](#api-keys-from-the-command-line)). A request that no provider answered (every candidate failed, or
   none was available) is not charged against the token caps.
 - **Provider limits**: a provider's `timeoutMs` bounds the wait for the response
   headers and then each wait for the next piece of the body, so long streams run
@@ -538,6 +540,38 @@ A key's metadata may list `scopes`: `models:read` for `GET` requests,
 `inference:write` for the others, `*` for all. A key without a `scopes` list may do
 everything except `POST /api/pull`, which makes an Ollama backend download a model
 and needs an explicit `ollama:manage` (or `*`) scope.
+
+A key's metadata may also carry limits and allowlists (all optional; a key without them
+behaves as before):
+
+```json
+{
+  "quota": {
+    "dailyTokens": 2000000, "monthlyRequests": 100000,
+    "requestsPerMinute": 120, "tokensPerMinute": 200000, "maxInFlight": 4,
+    "dailyCostUsd": 5, "monthlyCostUsd": 100
+  },
+  "allowedModels": ["gpt-4o-mini", "llama3.*"],
+  "allowedProviders": ["local-ollama"]
+}
+```
+
+- `requestsPerMinute` and `tokensPerMinute` count the key's requests and tokens in any 60
+  seconds (tokens as reserved, then as the provider reported them). Exceeding them answers
+  `429` with `retry-after: 60`.
+- `maxInFlight` caps the key's requests running at once, streams included, in this
+  Emberpath process; one more answers `429` with `x-hive-quota-exceeded: maxInFlight`.
+- `dailyCostUsd` and `monthlyCostUsd` (UTC) stop the key once its spend reaches the budget.
+  Spend comes from the operator-declared provider prices (`inputCostPerMillionTokens` and
+  `outputCostPerMillionTokens`) and is known only after a request ends, so requests already
+  running can take the key a little past the budget, and requests without a known price
+  (no declared price, or estimated usage) count as nothing.
+- `allowedModels` lists model or alias names, or prefixes ending in `*`. A request may use a
+  model when the name it sends, or the model an alias resolves to, is listed; a request
+  without a model is allowed only for reads. Other requests get `403`.
+- `allowedProviders` lists provider slugs or IDs; only those are candidates for the key's
+  requests, and a request that only other providers could serve gets `403`.
+- `GET /v1/models` lists only the models and providers the key may use.
 
 ## Testing
 

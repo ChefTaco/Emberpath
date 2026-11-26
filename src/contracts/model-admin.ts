@@ -348,8 +348,20 @@ export const clientKeyMetadataSchema = z.object({
     monthlyRequests: z.number().int().positive().optional(),
     dailyTokens: z.number().int().positive().optional(),
     monthlyTokens: z.number().int().positive().optional(),
+    /** Requests and tokens in any 60 seconds. */
+    requestsPerMinute: z.number().int().positive().optional(),
+    tokensPerMinute: z.number().int().positive().optional(),
+    /** Requests running at once, streams included. */
+    maxInFlight: z.number().int().positive().max(100000).optional(),
+    /** Spend per UTC day and month, from operator-declared provider prices. */
+    dailyCostUsd: z.number().positive().finite().optional(),
+    monthlyCostUsd: z.number().positive().finite().optional(),
     warnAtPercent: z.number().int().min(1).max(99).optional(),
   }).strict().optional(),
+  /** Model or alias names (or prefixes ending in `*`) the key may use; unset means all. */
+  allowedModels: z.array(z.string().min(1).max(256)).max(500).optional(),
+  /** Provider slugs or IDs the key may be routed to; unset means all. */
+  allowedProviders: z.array(z.string().min(1).max(256)).max(500).optional(),
   notes: z.string().max(2000).optional(),
   labels: z.record(z.string(), z.string()).optional(),
 }).strict();
@@ -401,7 +413,8 @@ export const clientKeyReadSchema = z.object({id: z.string(), name: z.string(), k
 // Creation deliberately returns fewer fields than rotation; both reveal a key once.
 export const clientKeyCreatedSchema = z.object({id: z.string(), name: z.string(), keyPrefix: z.string(), apiKey: z.string()});
 export const clientKeyRotatedSchema = clientKeyReadSchema.extend({apiKey: z.string()});
-export const quotaUsageSchema = z.object({dayRequests: z.number(), monthRequests: z.number(), dayTokens: z.number(), monthTokens: z.number()});
+export const quotaUsageSchema = z.object({dayRequests: z.number(), monthRequests: z.number(), dayTokens: z.number(), monthTokens: z.number(),
+  dayCostUsd: z.number().optional(), monthCostUsd: z.number().optional()});
 export const clientKeyUsageSchema = z.object({clientApiKeyId: z.string(), name: z.string(),
   history: z.object({cutoverAt: z.number(), historicalCoverage: z.string()}).optional(),
   daily: z.array(z.object({day: z.string(), requests: z.number(), tokens: z.number().nullable(), costUsd: z.number().nullable(), estimatedRequests: z.number()})),
