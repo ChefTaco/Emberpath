@@ -27,8 +27,14 @@ describe('security/client-address', () => {
     expect(await resolveClientAddress('172.20.0.5', '203.0.113.5', byName)).toBe('172.20.0.5');
   });
 
+  it('accepts the HiveCommon presets', async () => {
+    const proxies = parseTrustedProxies('private');
+    expect(await resolveClientAddress('172.20.0.4', '203.0.113.5', proxies)).toBe('203.0.113.5');
+    expect(await resolveClientAddress('198.51.100.9', '203.0.113.5', proxies)).toBe('198.51.100.9');
+  });
+
   it('validates the setting', () => {
-    for (const value of ['loopback', 'none', '10.0.0.0/8 ::1', 'ingress,192.0.2.1', '']) expect(isValidTrustedProxies(value), value).toBe(true);
+    for (const value of ['loopback', 'none', '10.0.0.0/8 ::1', 'ingress,192.0.2.1', '', 'private linklocal']) expect(isValidTrustedProxies(value), value).toBe(true);
     for (const value of ['10.0.0.0/33', '1.2.3', 'bad_host!', '::1/129']) expect(isValidTrustedProxies(value), value).toBe(false);
     expect(normalizeIpAddress(' ::ffff:192.0.2.1 ')).toBe('192.0.2.1');
   });

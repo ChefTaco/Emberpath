@@ -1,7 +1,12 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { lookup } from 'node:dns/promises';
-import { BlockList, isIP } from 'node:net';
 import type { Context } from 'hono';
+import {
+  normalizeIpAddress as normalizeAddress,
+  resolveClientAddress as resolveWithTrusted,
+  trustedProxies as parseAddressRanges,
+  type TrustedProxies as AddressRanges,
+} from '@hivemagnus/hive-common/rate-limit';
 
 /**
  * Client address for sign-in throttling, admin session records and the address Emberpath
@@ -13,74 +18,63 @@ import type { Context } from 'hono';
  * proxies, so an address a caller wrote into the header itself is used only when every hop
  * after it is trusted.
  *
- * The setting is a comma- or space-separated list of IP addresses, CIDR ranges, host names
- * (resolved through DNS, such as a Compose service) and the keywords `loopback` (the
- * default) and `none`.
+ * The setting is a comma- or space-separated list of IP addresses, CIDR ranges, the
+ * HiveCommon presets `loopback` (the default), `private` and `linklocal`, host names (resolved
+ * through DNS, such as a Compose service or Hive's `ingress`), and `none`. Parsing and the
+ * right-to-left walk are HiveCommon's (`@hivemagnus/hive-common/rate-limit`); host names are
+ * resolved here, because HiveCommon's list holds only addresses.
  */
 export const DEFAULT_TRUSTED_PROXIES = 'loopback';
-const MAX_FORWARDED_HOPS = 32;
 const HOST_TTL_MS = 30_000;
 const HOST_MISS_RETRY_MS = 5_000;
 const HOST_NAME = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/iu;
-export const TRUSTED_PROXIES_ERROR = 'EMBERPATH_TRUSTED_PROXIES entries must be IP addresses, CIDR ranges, host names, loopback or none';
+export const TRUSTED_PROXIES_ERROR = 'EMBERPATH_TRUSTED_PROXIES entries must be IP addresses, CIDR ranges, host names, loopback, private, linklocal or none';
 
 type Resolver = (host: string) => Promise<string[]>;
 interface HostEntry { addresses: Set<string>; at: number; pending?: Promise<void> | undefined }
 export interface TrustedProxies {
   trusts(address: string): Promise<boolean>;
+  /** A synchronous view for HiveCommon's resolver, with host names freshly resolved. */
+  snapshot(): Promise<AddressRanges>;
 }
 
-/** Strip an IPv4-mapped IPv6 prefix and surrounding space. */
+/** Strip an IPv4-mapped IPv6 prefix and surrounding space; "" when it is not an address. */
 export function normalizeIpAddress(raw: string | null | undefined): string {
-  if (!raw) return '';
-  const trimmed = raw.trim();
-  return trimmed.toLowerCase().startsWith('::ffff:') && isIP(trimmed.slice(7)) === 4 ? trimmed.slice(7) : trimmed;
+  return normalizeAddress(raw) ?? '';
 }
 
-function family(address: string): 'ipv4' | 'ipv6' | null {
-  const version = isIP(address);
-  return version === 4 ? 'ipv4' : version === 6 ? 'ipv6' : null;
-}
+const PRESETS = new Set(['loopback', 'private', 'linklocal']);
 
 const defaultResolver: Resolver = async (host) =>
   (await lookup(host, { all: true, verbatim: true })).map((entry) => normalizeIpAddress(entry.address));
 
-/** Parse the list; throws on an entry that is not an address, range, host name or keyword. */
+/** Parse the list; throws on an entry that is not an address, range, preset, host name or `none`. */
 export function parseTrustedProxies(value: string | undefined, resolver: Resolver = defaultResolver, now: () => number = Date.now): TrustedProxies {
-  const blocks = new BlockList();
-  const hosts = new Map<string, HostEntry>();
   const tokens = (value?.trim() ? value : DEFAULT_TRUSTED_PROXIES).split(/[\s,]+/u).map((token) => token.trim()).filter(Boolean);
+  const ranges: string[] = [];
+  const hosts = new Map<string, HostEntry>();
   for (const token of tokens) {
     if (token === 'none') continue;
-    if (token === 'loopback') {
-      blocks.addSubnet('127.0.0.0', 8, 'ipv4');
-      blocks.addAddress('::1', 'ipv6');
+    if (PRESETS.has(token.toLowerCase()) || normalizeAddress(token.split('/')[0]) !== undefined) {
+      ranges.push(token);
       continue;
     }
-    const [base = '', prefix, extra] = token.split('/');
-    const address = normalizeIpAddress(base);
-    const kind = family(address);
-    if (kind && prefix === undefined) {
-      blocks.addAddress(address, kind);
-      continue;
-    }
-    if (kind && extra === undefined && /^\d{1,3}$/u.test(prefix ?? '')) {
-      const bits = Number(prefix);
-      if (bits <= (kind === 'ipv4' ? 32 : 128)) {
-        blocks.addSubnet(address, bits, kind);
-        continue;
-      }
-    }
-    if (prefix === undefined && HOST_NAME.test(token) && !/^[\d.]+$/u.test(token)) {
+    if (HOST_NAME.test(token) && !/^[\d.]+$/u.test(token)) {
       hosts.set(token.toLowerCase(), { addresses: new Set(), at: -Infinity });
       continue;
     }
     throw new Error(TRUSTED_PROXIES_ERROR);
   }
+  let addressRanges: AddressRanges;
+  try {
+    addressRanges = parseAddressRanges(ranges);
+  } catch {
+    throw new Error(TRUSTED_PROXIES_ERROR);
+  }
 
   async function refresh(host: string, entry: HostEntry): Promise<void> {
     entry.pending ??= resolver(host)
-      .then((addresses) => { entry.addresses = new Set(addresses); })
+      .then((addresses) => { entry.addresses = new Set(addresses.map(normalizeIpAddress).filter(Boolean)); })
       .catch(() => { entry.addresses = new Set(); })
       .finally(() => {
         entry.at = now();
@@ -88,13 +82,13 @@ export function parseTrustedProxies(value: string | undefined, resolver: Resolve
       });
     await entry.pending;
   }
+  const hostHas = (address: string): boolean => [...hosts.values()].some((entry) => entry.addresses.has(address));
 
   return {
     async trusts(raw) {
       const address = normalizeIpAddress(raw);
-      const kind = family(address);
-      if (!kind) return false;
-      if (blocks.check(address, kind)) return true;
+      if (!address) return false;
+      if (addressRanges.has(address)) return true;
       for (const [host, entry] of hosts) {
         const age = now() - entry.at;
         // A container restart can change the proxy's address: look again on a miss.
@@ -102,6 +96,11 @@ export function parseTrustedProxies(value: string | undefined, resolver: Resolve
         if (entry.addresses.has(address)) return true;
       }
       return false;
+    },
+    async snapshot() {
+      // Host names are refreshed when stale, so the synchronous check below sees current addresses.
+      for (const [host, entry] of hosts) if (now() - entry.at > HOST_TTL_MS) await refresh(host, entry);
+      return { has: (address: string) => addressRanges.has(address) || hostHas(normalizeIpAddress(address)), entries: [...addressRanges.entries, ...hosts.keys()] };
     },
   };
 }
@@ -133,16 +132,12 @@ export function socketPeerAddress(context: Context): string {
 
 /** Resolve the client from the socket peer and, behind a trusted proxy, X-Forwarded-For. */
 export async function resolveClientAddress(peer: string, forwardedFor: string | undefined, proxies: TrustedProxies): Promise<string> {
-  let client = normalizeIpAddress(peer);
-  if (!client || !forwardedFor || !(await proxies.trusts(client))) return client;
-  const hops = forwardedFor.split(',').slice(-MAX_FORWARDED_HOPS);
-  for (let index = hops.length - 1; index >= 0; index -= 1) {
-    const hop = normalizeIpAddress(hops[index]);
-    if (!family(hop)) break; // Malformed: keep the last address a trusted proxy vouched for.
-    client = hop;
-    if (!(await proxies.trusts(hop))) break;
-  }
-  return client;
+  const normalized = normalizeIpAddress(peer);
+  if (!normalized) return '';
+  // Make sure host-name proxies are looked up (and looked up again on a miss) before the walk.
+  if (!(await proxies.trusts(normalized))) return normalized;
+  const resolved = resolveWithTrusted({ peer: normalized, forwardedFor, trusted: await proxies.snapshot() });
+  return resolved.address === 'unknown' ? '' : resolved.address;
 }
 
 /** The request's client address, or undefined when it is unknown. */
