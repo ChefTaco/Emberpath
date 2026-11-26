@@ -18,6 +18,14 @@ export interface QuotaLimits {
   monthlyRequests?: number | undefined;
   dailyTokens?: number | undefined;
   monthlyTokens?: number | undefined;
+  /** Requests and tokens in any 60 seconds (tokens as reserved, then as reported). */
+  requestsPerMinute?: number | undefined;
+  tokensPerMinute?: number | undefined;
+  /** Requests running at once (in-process). */
+  maxInFlight?: number | undefined;
+  /** Spend per UTC day and month from operator-declared provider prices. */
+  dailyCostUsd?: number | undefined;
+  monthlyCostUsd?: number | undefined;
   /** Percentage of a limit at which a soft warning is emitted (default 80). */
   warnAtPercent?: number | undefined;
   acceptRetainedHistory?: boolean;
@@ -28,6 +36,8 @@ export interface QuotaUsage {
   monthRequests: number;
   dayTokens: number;
   monthTokens: number;
+  dayCostUsd?: number | undefined;
+  monthCostUsd?: number | undefined;
 }
 
 export interface QuotaEvaluation {
@@ -48,6 +58,11 @@ function hasAnyLimit(limits: QuotaLimits): boolean {
   );
 }
 
+/** Rate and spend limits; they read only the reservation ledger, never retained trace history. */
+function hasRateOrCostLimit(limits: QuotaLimits): boolean {
+  return [limits.requestsPerMinute, limits.tokensPerMinute, limits.dailyCostUsd, limits.monthlyCostUsd].some((limit) => limit !== undefined);
+}
+
 /**
  * Evaluate usage against limits. Pure and deterministic so quota policy is fully
  * unit-testable. A dimension is `exceeded` when usage meets or passes its limit,
@@ -63,6 +78,8 @@ export function evaluateQuota(limits: QuotaLimits, usage: QuotaUsage): QuotaEval
     { name: 'monthlyRequests', limit: limits.monthlyRequests, used: usage.monthRequests },
     { name: 'dailyTokens', limit: limits.dailyTokens, used: usage.dayTokens },
     { name: 'monthlyTokens', limit: limits.monthlyTokens, used: usage.monthTokens },
+    ...(usage.dayCostUsd !== undefined ? [{ name: 'dailyCostUsd', limit: limits.dailyCostUsd, used: usage.dayCostUsd }] : []),
+    ...(usage.monthCostUsd !== undefined ? [{ name: 'monthlyCostUsd', limit: limits.monthlyCostUsd, used: usage.monthCostUsd }] : []),
   ];
 
   for (const dimension of dimensions) {
@@ -94,7 +111,7 @@ export function quotaLedger(): QuotaLedger {
 }
 export function clearQuotaUsageCache(): void { /* Ledger reads are current and uncached. */ }
 export async function computeClientKeyUsage(clientApiKeyId: string, now = new Date()): Promise<QuotaUsage> {
-  return quotaLedger().usage(clientApiKeyId, now);
+  return { ...quotaLedger().usage(clientApiKeyId, now), ...quotaLedger().costUsage(clientApiKeyId, now) };
 }
 
 export interface QuotaCheckResult {
@@ -117,9 +134,10 @@ export async function enforceClientKeyQuota(clientKey: ClientApiKey, reservedTok
     const history = quotaLedger().history();
     if (hasAnyLimit(limits) && history?.historicalCoverage === 'retained-traces-only' && !limits.acceptRetainedHistory && new Date(history.cutoverAt).toISOString().slice(0, 7) === new Date().toISOString().slice(0, 7)) return { enforced: true, allowed: false, exceeded: [], warnings: ['Historical trace retention may have removed usage; explicitly reconcile this month before enabling hard budgets'], unavailable: true };
     const reservation = await sqliteWrite(() => quotaLedger().reserve(clientKey.id, reservedTokens, limits));
-    const usage = quotaLedger().usage(clientKey.id);
+    const hasCostLimit = limits.dailyCostUsd !== undefined || limits.monthlyCostUsd !== undefined;
+    const usage = { ...quotaLedger().usage(clientKey.id), ...(hasCostLimit ? quotaLedger().costUsage(clientKey.id) : {}) };
     const evaluation = evaluateQuota(limits, usage);
-    return { enforced: hasAnyLimit(limits), allowed: reservation.exceeded.length === 0, exceeded: reservation.exceeded, warnings: evaluation.warnings, ...(reservation.id ? { reservationId: reservation.id } : {}) };
+    return { enforced: hasAnyLimit(limits) || hasRateOrCostLimit(limits), allowed: reservation.exceeded.length === 0, exceeded: reservation.exceeded, warnings: evaluation.warnings, ...(reservation.id ? { reservationId: reservation.id } : {}) };
   } catch {
     return { enforced: true, allowed: false, exceeded: [], warnings: [], unavailable: true };
   }

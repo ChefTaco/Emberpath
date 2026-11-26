@@ -10,6 +10,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { decodeInferenceBody } from './request-body.js';
 import { outputAllowance } from './output-allowance.js';
+import { acquireKeySlot, applyClientKeyAccess, modelAllowed, readClientKeyAccess, type ClientKeyAccess } from '../security/key-access.js';
 import type { Context } from 'hono';
 import { ZodError } from 'zod';
 import type { AppVariables } from '../types/app.js';
@@ -528,6 +529,8 @@ function traceResponseHeaders(upstream: Headers, sent: Headers): Record<string, 
   return redactHeaders({ ...toHeaderObject(upstream), ...toHeaderObject(sent) });
 }
 
+const MINUTE_LIMITS = new Set(['requestsPerMinute', 'tokensPerMinute']);
+
 /**
  * Reserve `tokenReservation` tokens against the calling client key's quota.
  * Returns the response to send when the request must stop here.
@@ -555,7 +558,7 @@ async function reserveClientQuota(
         quota: { exceeded: quota.exceeded },
       },
       429,
-      { 'retry-after': '3600', 'x-hive-quota-exceeded': quota.exceeded.join(',') },
+      { 'retry-after': quota.exceeded.length > 0 && quota.exceeded.every((name) => MINUTE_LIMITS.has(name)) ? '60' : '3600', 'x-hive-quota-exceeded': quota.exceeded.join(',') },
     );
   }
   return { reservationId: quota.reservationId, warnings: quota.warnings };
@@ -570,7 +573,7 @@ function inboundAttribution(route: RouteRequest): InboundAttribution {
   return attribution;
 }
 
-async function handleRouteExecution(
+async function executeRoute(
   context: Context<{ Variables: AppVariables }>,
   endpointKind: EndpointKind,
   options: { routingTrait?: string; upstreamPath?: string } = {},
@@ -598,7 +601,7 @@ async function handleRouteExecution(
   }
 
   const providers = await listProviderRuntimes();
-  const decision = await resolveRoute(route, providers);
+  const decision = applyClientKeyAccess(await resolveRoute(route, providers), route, readClientKeyAccess(clientKey?.metadataJson), providers);
   const attribution = inboundAttribution(route);
 
   const trace = await startTrace({
@@ -839,6 +842,39 @@ async function handleRouteExecution(
   });
 }
 
+/**
+ * Run a request inside the calling key's in-flight limit (`quota.maxInFlight`): the slot is
+ * held until the response body, stream included, has ended.
+ */
+async function withKeyInFlightLimit(context: Context<{ Variables: AppVariables }>, run: () => Promise<Response>): Promise<Response> {
+  const clientKey = context.get('clientApiKey');
+  const max = clientKey ? readClientKeyQuota(clientKey.metadataJson).maxInFlight : undefined;
+  if (!clientKey || max === undefined) return run();
+  const release = acquireKeySlot(clientKey.id, max);
+  if (!release) {
+    requestCounter.inc({ plane: 'api', route: `${context.req.method} ${context.req.path}`, method: context.req.method, status: '429', provider: 'quota', outcome: 'quota_exceeded' });
+    return context.json({ error: 'Too many requests in flight for this client key', quota: { exceeded: ['maxInFlight'] } }, 429, { 'retry-after': '1', 'x-hive-quota-exceeded': 'maxInFlight' });
+  }
+  try {
+    return holdUntilBodyDone(await run(), release);
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+function handleRouteExecution(
+  context: Context<{ Variables: AppVariables }>,
+  endpointKind: EndpointKind,
+  options: { routingTrait?: string; upstreamPath?: string } = {},
+): Promise<Response> {
+  return withKeyInFlightLimit(context, () => executeRoute(context, endpointKind, options));
+}
+
+function handleDecisionsExecution(context: Context<{ Variables: AppVariables }>): Promise<Response> {
+  return withKeyInFlightLimit(context, () => executeDecisions(context));
+}
+
 /** Output allowance per question when reserving client quota for a decision. */
 const DECISIONS_OUTPUT_TOKENS_PER_QUESTION = 64;
 
@@ -872,7 +908,7 @@ function decisionsUnavailable(rejections: DecisionsRejection[]): { status: numbe
  * every other inference call (client key, aliases, rules, failover, traces,
  * quotas), served by OpenAI natively or by Jev through translation.
  */
-async function handleDecisionsExecution(context: Context<{ Variables: AppVariables }>): Promise<Response> {
+async function executeDecisions(context: Context<{ Variables: AppVariables }>): Promise<Response> {
   const startedAt = Date.now();
   // Routing traits are a chat-path feature; a trait header never applies here.
   const route = { ...await buildRouteRequest(context, 'v1.decisions'), routingTrait: undefined };
@@ -902,7 +938,8 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
   const providers = await listProviderRuntimes();
   // Images are judged per backend by the planner, which names the feature when
   // a backend cannot take them, so they do not filter candidates here.
-  const decision = await resolveRoute({ ...route, modalities: [] }, providers);
+  const clientKey = context.get('clientApiKey');
+  const decision = applyClientKeyAccess(await resolveRoute({ ...route, modalities: [] }, providers), route, readClientKeyAccess(clientKey?.metadataJson), providers);
   const attribution = inboundAttribution(route);
   const trace = await startTrace({
     requestId: route.requestId,
@@ -998,7 +1035,7 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
   return new Response(responseText, { status, headers: responseHeaders });
 }
 
-async function listAggregatedModels(): Promise<Response> {
+async function listAggregatedModels(access: ClientKeyAccess = {}): Promise<Response> {
   const [providers, aliases, runtimes] = await Promise.all([
     prisma.providerModel.findMany({
       where: {
@@ -1053,7 +1090,11 @@ async function listAggregatedModels(): Promise<Response> {
     });
   }
 
-  const data = [...dataMap.values()];
+  // A key with allowlists sees only the models and providers it may use (an alias also when
+  // the model it resolves to is allowed, as routing accepts it); an alias that is not bound
+  // to a provider passes the provider list.
+  const data = [...dataMap.values()].filter((entry) => (modelAllowed(access.allowedModels, entry.id) || (entry.alias_for !== undefined && modelAllowed(access.allowedModels, entry.alias_for)))
+    && (!access.allowedProviders || entry.owned_by === 'alias' || access.allowedProviders.includes(entry.owned_by) || runtimes.some((provider) => provider.slug === entry.owned_by && access.allowedProviders!.includes(provider.id))));
   return Response.json({ object: 'list', data });
 }
 
@@ -1095,7 +1136,7 @@ export function createApiApp(): Hono<{ Variables: AppVariables }> {
   });
   registerHealthProbes(app);
 
-  app.get('/v1/models', async () => listAggregatedModels());
+  app.get('/v1/models', async (context) => listAggregatedModels(readClientKeyAccess(context.get('clientApiKey')?.metadataJson)));
   app.post('/v1/responses', (context) => handleRouteExecution(context, 'v1.responses'));
   app.post('/v1/chat/completions', (context) => handleRouteExecution(context, 'v1.chat.completions'));
   app.post('/v1/completions', (context) => handleRouteExecution(context, 'v1.completions'));
