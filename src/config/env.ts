@@ -134,6 +134,13 @@ export const envSchema = z.object({
   HIVE_IAM_PUBLIC_URL: optionalUrlSchema,
   HIVE_STATUS_ALLOW_INSECURE_TLS: booleanStringSchema.prefault('false'),
   HIVE_ROUTER_AUTH_MODE: z.enum(['os', 'iam-oidc']).default('os'),
+  // Deprecated password sign-in (/api/auth/login, /api/auth/reauthenticate). Off: both answer 410.
+  EMBERPATH_PASSWORD_RELAY: z.enum(['true', 'false']).default('false').transform(value => value === 'true'),
+  EMBERPATH_STEP_UP_MAX_AGE_SECONDS: z.coerce.number().int().min(1).max(3600).default(300),
+  EMBERPATH_STEP_UP_AUDIENCES: z.string().optional().refine(
+    value => value === undefined || value.split(',').map(item => item.trim()).filter(Boolean).every(item => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item)),
+    { error: 'EMBERPATH_STEP_UP_AUDIENCES must be comma-separated Oathweave client IDs' },
+  ),
   HIVE_ROUTER_IAM_CLIENT_ID: z.string().min(1).default('hive-router'),
   HIVE_ROUTER_IAM_CLIENT_SECRET: optionalSecretSchema,
   HIVE_ROUTER_IAM_REDIRECT_URI: optionalUrlSchema,

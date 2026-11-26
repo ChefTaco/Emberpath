@@ -2,6 +2,8 @@
 // a trusted proxy, and the socket peer otherwise.
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The deprecated password sign-in, explicitly opted in (it is off by default).
+vi.stubEnv('EMBERPATH_PASSWORD_RELAY', 'true');
 vi.stubEnv('HIVE_ROUTER_AUTH_MODE', 'iam-oidc');
 vi.stubEnv('HIVE_ROUTER_IAM_CLIENT_SECRET', 'fake-router-client-secret-0123456789');
 

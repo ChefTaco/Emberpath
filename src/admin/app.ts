@@ -29,7 +29,11 @@ import {
 } from '../telemetry/metrics.js';
 import type { AppVariables } from '../types/app.js';
 import { requestIdMiddleware } from '../utils/request.js';
-import { authenticateAdmin, isMfaRequired, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession } from '../security/admin-auth.js';
+import { authenticateAdmin, isMfaRequired, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession, type AuthenticatedAdmin } from '../security/admin-auth.js';
+import { isRecentAuthenticationError } from '@hivemagnus/hive-common/oathweave';
+import { linkedLocalId, parseAccountLinks } from '../security/admin-identity.js';
+import { RECENT_OPERATOR_AUTHENTICATION_MS, STEP_UP_CHALLENGE_TTL_MS, issueStepUpChallenge, rememberStepUp, rememberedStepUp, stepUpSettingsFromEnvironment, stepUpVerifier, takeStepUpChallenge } from '../security/step-up.js';
+import { decodeJwt } from 'jose';
 import { createOathweaveServiceToken, oathweaveTokenUrl, type OathweaveServiceToken, type OathweaveTokenEvent } from '../security/oathweave-service-token.js';
 import { createHiveMemCredential, type HiveMemCredential } from '../security/hivemem-credential.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
@@ -1034,7 +1038,7 @@ export function requiredPermissionForRequest(method: string, path: string): stri
   const verb = method.toUpperCase();
   if (verb === 'OPTIONS') return null;
   if (verb === 'GET' || verb === 'HEAD') return requiredReadPermission(path);
-  if (path === '/api/auth/reauthenticate' || path === '/api/auth/logout' || path === '/api/auth/login') return null;
+  if (path === '/api/auth/reauthenticate' || path === '/api/auth/logout' || path === '/api/auth/login' || path === '/api/auth/step-up' || path === '/api/auth/step-up/challenge') return null;
   if (/^\/api\/testing\/preview\/?$/.test(path)) return 'router:testing:read';
   if (path.startsWith('/api/hive/upgrades/')) return 'hive:upgrades:write';
   if (path.startsWith('/api/iam/users')) return verb === 'DELETE' ? 'iam:users:delete' : 'iam:users:write';
@@ -1062,12 +1066,47 @@ export function requiredPermissionForRequest(method: string, path: string): stri
 }
 
 export function hasRecentOperatorAuthentication(authenticatedAt: number | undefined, now = Date.now()): boolean {
-  return typeof authenticatedAt === 'number' && authenticatedAt <= now + 30_000 && now - authenticatedAt <= 15 * 60_000;
+  return typeof authenticatedAt === 'number' && authenticatedAt <= now + 30_000 && now - authenticatedAt <= RECENT_OPERATOR_AUTHENTICATION_MS;
+}
+
+const PASSWORD_RELAY_PATHS = new Set(['/api/auth/login', '/api/auth/reauthenticate']);
+/** Where the retirement of the password endpoints is explained. */
+export const PASSWORD_RELAY_DOCS = 'https://github.com/ChefTaco/Emberpath/blob/main/docs/OATHWEAVE.md#password-sign-in-is-retired';
+/** RFC 9745 `Deprecation` (the date it was deprecated) and RFC 8594 `Sunset` for the password endpoints. */
+const PASSWORD_RELAY_DEPRECATED_AT = '@1795651200'; // 2026-11-26T00:00:00Z
+const PASSWORD_RELAY_SUNSET = 'Mon, 31 May 2027 00:00:00 GMT';
+
+function markPasswordRelayDeprecated(context: AdminContext): void {
+  context.header('Deprecation', PASSWORD_RELAY_DEPRECATED_AT);
+  context.header('Sunset', PASSWORD_RELAY_SUNSET);
+  context.header('Link', `<${PASSWORD_RELAY_DOCS}>; rel="deprecation"; type="text/html"`);
+}
+
+/** The retired password endpoints: 410 unless EMBERPATH_PASSWORD_RELAY=true, deprecated either way. */
+function passwordRelayRefusal(context: AdminContext, pathname: string): Response | undefined {
+  if (!PASSWORD_RELAY_PATHS.has(pathname)) return undefined;
+  markPasswordRelayDeprecated(context);
+  if (loadEnv().EMBERPATH_PASSWORD_RELAY) return undefined;
+  return context.json({
+    error: 'PASSWORD_RELAY_DISABLED',
+    message: 'Emberpath no longer accepts passwords. Sign in through Oathweave (HiveXUI) and confirm sensitive actions with POST /api/auth/step-up and a fresh Oathweave ID token.',
+    stepUp: '/api/auth/step-up',
+    docs: PASSWORD_RELAY_DOCS,
+  }, 410);
+}
+
+/** A principal's last sign-in: its token or session, or a later verified step-up of the same session. */
+function lastOperatorAuthentication(principal: AuthenticatedAdmin, now = Date.now()): number | undefined {
+  const steppedUp = rememberedStepUp(principal.user.id, principal.resourceAuthorization ? 'oathweave' : 'session', principal.sessionId, now);
+  if (steppedUp === undefined) return principal.authenticatedAt;
+  return principal.authenticatedAt === undefined ? steppedUp : Math.max(principal.authenticatedAt, steppedUp);
 }
 
 async function attachAdminSessionAndEnforcePermission(context: AdminContext, next: Next): Promise<Response | void> {
   const pathname = normalizeAdminPath(rawRequestPathname(context.req.url));
   if (pathname === null) return context.json({ error: 'Invalid request path' }, 400);
+  const retired = passwordRelayRefusal(context, pathname);
+  if (retired) return retired;
   if (pathname === '/api/auth/login' || pathname === '/api/security/events') {
     await next();
     return;
@@ -1080,12 +1119,13 @@ async function attachAdminSessionAndEnforcePermission(context: AdminContext, nex
   context.set('adminUser', principal.user);
   context.set('adminRoles', principal.roles);
   context.set('adminPermissions', principal.permissions);
+  context.set('adminPrincipal', principal);
   const required = requiredPermissionForRequest(context.req.method, pathname);
   if (required && !hasAdminPermission(principal.permissions, required)) {
     return context.json({ error: 'Forbidden', requiredPermission: required }, 403);
   }
   const sensitive = required && ((pathname.startsWith('/api/hive/upgrades') && !['GET','HEAD'].includes(context.req.method)) || pathname.startsWith('/api/iam/password-policy') || pathname.startsWith('/api/iam/clients') || pathname.startsWith('/api/iam/roles') || pathname.startsWith('/api/hive/actors') || pathname.startsWith('/api/client-keys'));
-  if (sensitive && !hasRecentOperatorAuthentication(principal.authenticatedAt)) return context.json({ error: 'STEP_UP_REQUIRED', message: 'Sign in again before changing credentials or security policy.' }, 403);
+  if (sensitive && !hasRecentOperatorAuthentication(lastOperatorAuthentication(principal))) return context.json({ error: 'STEP_UP_REQUIRED', message: 'Sign in again before changing credentials or security policy.' }, 403);
   await next();
 }
 
@@ -1828,6 +1868,71 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
     reauthThrottle.recordSuccess(throttleUser, clientIp);
     await destroyAdminSession(context); await createAdminSession(principal, context);
     return context.json({ ok: true });
+  });
+  app.post('/api/auth/step-up/challenge', async (context) => {
+    const principal = context.get('adminPrincipal');
+    if (!principal?.sessionId) return context.json({ error: 'Unauthorized' }, 401);
+    if (!stepUpSettingsFromEnvironment(loadEnv())) {
+      return context.json({ error: 'STEP_UP_UNAVAILABLE', message: 'Oathweave sign-in is not configured (OATHWEAVE_ISSUER and OATHWEAVE_JWKS_URL), so a step-up cannot be verified.' }, 503);
+    }
+    const env = loadEnv();
+    const challenge = issueStepUpChallenge(principal.user.id);
+    context.header('Cache-Control', 'no-store');
+    return context.json({
+      nonce: challenge.nonce,
+      startedAt: new Date(challenge.startedAt).toISOString(),
+      expiresIn: STEP_UP_CHALLENGE_TTL_MS / 1000,
+      maxAgeSeconds: env.EMBERPATH_STEP_UP_MAX_AGE_SECONDS,
+      audiences: stepUpSettingsFromEnvironment(env)!.audiences,
+    });
+  });
+  app.post('/api/auth/step-up', async (context) => {
+    // The /api/* middleware verified the caller (a bearer token or an admin session).
+    const principal = context.get('adminPrincipal');
+    if (!principal?.sessionId) return context.json({ error: 'Unauthorized' }, 401);
+    const verifier = stepUpVerifier(stepUpSettingsFromEnvironment(loadEnv()));
+    if (!verifier) {
+      return context.json({ error: 'STEP_UP_UNAVAILABLE', message: 'Oathweave sign-in is not configured (OATHWEAVE_ISSUER and OATHWEAVE_JWKS_URL), so a step-up cannot be verified.' }, 503);
+    }
+    const input = z.object({ idToken: z.string().min(1).max(16_384) }).strict().safeParse(await context.req.json().catch(() => undefined));
+    if (!input.success) return context.json({ error: 'REAUTH_REQUIRED', message: 'Send {"idToken": "..."}: a fresh Oathweave ID token.' }, 400);
+    // No lockout: a signed proof cannot be guessed, and a person whose sign-in went stale must be able
+    // to retry at once. Only a verified proof changes anything.
+    const refuse = (code: string, reason: string, status: 401 | 503 = 401) =>
+      context.json({ error: code, reason, message: status === 503 ? 'Oathweave keys are unavailable; try again.' : 'The step-up proof was refused. Sign in again with Oathweave.' }, status);
+    // The proof must answer a challenge this user started here (single use): its nonce, and a
+    // sign-in no older than the challenge (prompt=login).
+    let nonce: unknown;
+    try { nonce = decodeJwt(input.data.idToken)['nonce']; } catch { nonce = undefined; }
+    const startedAt = takeStepUpChallenge(nonce, principal.user.id);
+    if (startedAt === undefined) return refuse('REAUTH_INVALID', 'unknown_challenge');
+    let proof;
+    try {
+      // A bearer principal must prove the same person and the same Oathweave session.
+      const check = { nonce: nonce as string, authenticatedAfter: Math.floor(startedAt / 1000) };
+      proof = await verifier.verify(input.data.idToken, principal.resourceAuthorization
+        ? { ...check, ...(principal.iamSubject ? { subject: principal.iamSubject } : {}), sessionId: principal.sessionId }
+        : principal.iamSubject ? { ...check, subject: principal.iamSubject } : check);
+    } catch (error) {
+      if (isRecentAuthenticationError(error)) return refuse(error.code, error.reason, error.status === 503 ? 503 : 401);
+      throw error;
+    }
+    // Without an Oathweave subject on the session (OS sign-in), the proof must be linked to this account.
+    if (!principal.iamSubject) {
+      let linked: string | undefined;
+      try { linked = linkedLocalId(parseAccountLinks(process.env.EMBERPATH_OATHWEAVE_IDENTITIES_JSON ?? '[]'), proof); } catch { linked = undefined; }
+      if (linked !== principal.user.id) return refuse('REAUTH_INVALID', 'not_linked');
+    }
+    const authTimeMs = proof.authTime * 1000;
+    rememberStepUp(principal.user.id, principal.resourceAuthorization ? 'oathweave' : 'session', principal.sessionId, authTimeMs);
+    await recordAuditEvent({
+      actorType: 'admin-user',
+      adminUserId: principal.user.id,
+      action: 'auth.step_up',
+      entityType: 'admin-session',
+      metadata: { audience: proof.audience, authTime: new Date(authTimeMs).toISOString() },
+    });
+    return context.json({ ok: true, authTime: new Date(authTimeMs).toISOString(), recentUntil: new Date(authTimeMs + RECENT_OPERATOR_AUTHENTICATION_MS).toISOString() });
   });
   app.post('/api/auth/logout', requireAdminAuth, async (context) => {
     const user = context.get('adminUser');

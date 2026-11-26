@@ -6827,6 +6827,64 @@
         "x-permission": "router:admin:read"
       }
     },
+    "/api/auth/login": {
+      "post": {
+        "deprecated": true,
+        "description": "Off by default (410 Gone). With EMBERPATH_PASSWORD_RELAY=true, signs in with a username and password (OS PAM, or relayed to Oathweave in iam-oidc mode) and sets the admin session cookie. Sign in through Oathweave instead.",
+        "operationId": "passwordSignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mfaCode": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "username",
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "headers": {
+              "Deprecation": {
+                "description": "RFC 9745 deprecation date",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "description": "RFC 8594 sunset date",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials or MFA_REQUIRED"
+          },
+          "410": {
+            "description": "Gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links"
+          }
+        },
+        "summary": "Deprecated password sign-in (removed in the next major)"
+      }
+    },
     "/api/auth/me": {
       "get": {
         "operationId": "readAuthenticatedPrincipal",
@@ -6854,6 +6912,222 @@
           }
         ],
         "summary": "Read this authenticated product principal and permissions"
+      }
+    },
+    "/api/auth/reauthenticate": {
+      "post": {
+        "deprecated": true,
+        "description": "Off by default (410 Gone). With EMBERPATH_PASSWORD_RELAY=true, confirms the password of the signed-in session. Use POST /api/auth/step-up instead.",
+        "operationId": "passwordReauthenticate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mfaCode": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Re-authenticated",
+            "headers": {
+              "Deprecation": {
+                "description": "RFC 9745 deprecation date",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Sunset": {
+                "description": "RFC 8594 sunset date",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Re-authentication failed or MFA_REQUIRED"
+          },
+          "410": {
+            "description": "Gone unless EMBERPATH_PASSWORD_RELAY=true: error PASSWORD_RELAY_DISABLED, with stepUp and docs links"
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Deprecated password re-authentication (removed in the next major)"
+      }
+    },
+    "/api/auth/step-up": {
+      "post": {
+        "description": "Send the ID token of a fresh Oathweave authorization (prompt=login or max_age, PKCE, the nonce of POST /api/auth/step-up/challenge) issued to a client in EMBERPATH_STEP_UP_AUDIENCES (default hivexui-emberpath). Emberpath verifies the signature, issuer (OATHWEAVE_ISSUER), audience, lifetime, the challenge nonce (single use), that sub and sid are the caller's, and that auth_time is within EMBERPATH_STEP_UP_MAX_AGE_SECONDS (default 300) and not before the challenge. Credential and policy changes of this session then count from that auth_time for 15 minutes. No password is accepted.",
+        "operationId": "stepUpWithIdToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "idToken": {
+                    "maxLength": 16384,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idToken"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "authTime": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "ok": {
+                      "const": true
+                    },
+                    "recentUntil": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "authTime",
+                    "recentUntil"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Step-up recorded"
+          },
+          "400": {
+            "description": "No ID token in the body (REAUTH_REQUIRED)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Step-up proof refused: error is REAUTH_REQUIRED, REAUTH_STALE or REAUTH_INVALID with a reason"
+          },
+          "503": {
+            "description": "Oathweave is not configured (STEP_UP_UNAVAILABLE) or its keys are unavailable (REAUTH_UNAVAILABLE)"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Confirm a recent sign-in with a fresh Oathweave ID token"
+      }
+    },
+    "/api/auth/step-up/challenge": {
+      "post": {
+        "description": "Put the nonce in an authorization request with prompt=login (or max_age) for one of the audiences, then send its ID token to POST /api/auth/step-up within expiresIn seconds. The sign-in must not be older than startedAt.",
+        "operationId": "startStepUp",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "audiences": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "expiresIn": {
+                      "type": "integer"
+                    },
+                    "maxAgeSeconds": {
+                      "type": "integer"
+                    },
+                    "nonce": {
+                      "type": "string"
+                    },
+                    "startedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "nonce",
+                    "startedAt",
+                    "expiresIn",
+                    "maxAgeSeconds",
+                    "audiences"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Challenge (Cache-Control: no-store)"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "503": {
+            "description": "Oathweave is not configured (STEP_UP_UNAVAILABLE)"
+          }
+        },
+        "security": [
+          {
+            "resourceBearer": []
+          },
+          {
+            "adminSession": []
+          }
+        ],
+        "summary": "Start a step-up: a single-use nonce for a fresh Oathweave authorization"
       }
     },
     "/api/chat": {

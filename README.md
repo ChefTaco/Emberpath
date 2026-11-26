@@ -125,8 +125,10 @@ node dist/src/index.js check --env-file ~/.hive/router.env
 node dist/src/index.js --env-file ~/.hive/router.env
 ```
 
-The administration API is at `http://127.0.0.1:9443/api`. Sign in with
-`POST /api/auth/login` as one of `HIVE_ROUTER_ADMIN_USERS`.
+The administration API is at `http://127.0.0.1:9443/api`. Sign in through HiveXUI with
+Oathweave ([Oathweave browser sign-in](#oathweave-browser-sign-in)). Without Oathweave, set
+`EMBERPATH_PASSWORD_RELAY=true` (deprecated) and sign in with `POST /api/auth/login` as one of
+`HIVE_ROUTER_ADMIN_USERS`.
 The OpenAI-compatible API is at `http://127.0.0.1:4020/v1`; both listeners
 answer `GET /health`.
 
@@ -291,8 +293,9 @@ answers 503 when the database is down or every enabled provider is unhealthy.
 
 Next steps:
 
-1. Sign in with `POST /api/auth/login` as a user listed in `HIVE_ROUTER_ADMIN_USERS`,
-   keeping the session cookie it sets.
+1. Sign in: through HiveXUI with Oathweave, or, without Oathweave, with
+   `EMBERPATH_PASSWORD_RELAY=true` (deprecated) and `POST /api/auth/login` as a user listed in
+   `HIVE_ROUTER_ADMIN_USERS`, keeping the session cookie it sets.
 2. Add a provider with `POST /api/providers`, for example `LLAMACPP` at
    `http://127.0.0.1:8000` with auth `NONE`.
 3. Create a client key with `hive-router create-key --name my-service`
@@ -378,7 +381,10 @@ sent upstream; `no-store` keeps it out of the cache.
 |---|---|---|
 | `HIVE_ROUTER_SECRET` | | **Required.** At least 32 characters. Signs admin sessions and encrypts stored provider secrets. Keep it stable: if you rotate it, sessions and stored provider credentials stop working. |
 | `HIVE_ROUTER_ADMIN_USERS` | `admin` | Comma-separated allowlist of account names that may sign in. Set it explicitly. |
-| `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave. |
+| `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave. Both are password sign-ins and need `EMBERPATH_PASSWORD_RELAY=true`. |
+| `EMBERPATH_PASSWORD_RELAY` | `false` | Deprecated, removed in the next major. `true` keeps the password endpoints `POST /api/auth/login` and `POST /api/auth/reauthenticate` (for a standalone installation without Oathweave browser sign-in). Off, both answer `410 Gone`. See [docs/OATHWEAVE.md](docs/OATHWEAVE.md#password-sign-in-is-retired). |
+| `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` | `300` | How recent the `auth_time` of a step-up ID token must be (1-3600). |
+| `EMBERPATH_STEP_UP_AUDIENCES` | `hivexui-emberpath` | Comma-separated Oathweave client IDs whose ID tokens `POST /api/auth/step-up` accepts. |
 | `HIVE_ROUTER_OS_AUTH_COMMAND` | | Replaces `pamtester` with another command. Intended for tests and development. |
 | `EMBERPATH_TRUSTED_PROXIES` | `loopback` | Proxies in front of the admin listener whose `X-Forwarded-For` names the client: a comma- or space-separated list of IP addresses, CIDR ranges, host names (resolved through DNS, such as a Compose service), the presets `loopback`, `private` (RFC 1918 and IPv6 unique-local) and `linklocal`, and `none`. The header is read from the right only when the socket peer is listed, skipping further listed hops, so an address a caller wrote itself is never used. The result keys the sign-in throttle, is stored on the admin session and is the single `X-Forwarded-For` address sent to Oathweave and HiveMem. Behind Hive's ingress, list the ingress. |
 | `HIVE_ROUTER_CLI_TOKEN` | | Shared token required by `hive-router create-key` when set. |
@@ -463,7 +469,8 @@ browser-issuer tokens. The suite controller sets these; see
 - **OS mode** (`HIVE_ROUTER_AUTH_MODE=os`): an allowlisted user signs in with
   their OS password, which is checked through PAM. Every OS-mode operator has
   full admin rights.
-- **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`): `POST /api/auth/login`
+- **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`, deprecated, needs
+  `EMBERPATH_PASSWORD_RELAY=true`): `POST /api/auth/login`
   passes the password to Oathweave, completes an authorization code + PKCE flow,
   then checks the username against `HIVE_ROUTER_ADMIN_USERS`. The Oathweave sessions
   this opens are ended once the sign-in is done. An account with multi-factor
@@ -486,8 +493,10 @@ browser-issuer tokens. The suite controller sets these; see
   `iam:groups:read` and `iam:groups:write` for groups, `iam:sa:read` and
   `iam:sa:write` for enrollments, and `iam:admin:read` or `iam:admin:write` for IAM
   routes without a permission of their own.
-- Credential and policy changes need a sign-in from the last 15 minutes. Confirm
-  the password again with `POST /api/auth/reauthenticate` when needed.
+- Credential and policy changes need a sign-in from the last 15 minutes. Confirm it
+  with `POST /api/auth/step-up` and a fresh Oathweave ID token (HiveXUI does this for
+  you); see [docs/OATHWEAVE.md](docs/OATHWEAVE.md#step-up-with-an-id-token). The
+  password endpoints are retired: both modes above need `EMBERPATH_PASSWORD_RELAY=true`.
 - Repeated failed logins lock out that username from that client address, and
   one address that fails against many usernames is locked out too.
   Re-authentication is rate-limited in the same way.

@@ -1,5 +1,39 @@
 # Changelog
 
+## [Unreleased]
+
+### Upgrade notes
+
+- **Password sign-in is off.** `POST /api/auth/login` and `POST /api/auth/reauthenticate` now
+  answer `410 Gone` (`PASSWORD_RELAY_DISABLED`) unless `EMBERPATH_PASSWORD_RELAY=true`. Hive suite
+  installations sign in through HiveXUI with Oathweave and are unaffected. A standalone
+  installation whose operators sign in with a password (OS PAM or `iam-oidc`) must set
+  `EMBERPATH_PASSWORD_RELAY=true` to keep doing so; the endpoints are deprecated and are removed
+  in the next major release.
+- No database migration: a Hive suite upgrade does not need `--allow-migrations` for Emberpath,
+  and a downgrade to 2.9.0 keeps working (it ignores the new settings).
+- Requires `@hivemagnus/hive-common` 0.10.0.
+
+### Added
+
+- `POST /api/auth/step-up/challenge` and `POST /api/auth/step-up {"idToken"}`: confirm a recent
+  sign-in with a fresh Oathweave ID token instead of a password. The challenge hands out a
+  single-use nonce for the authorization request (`prompt=login` or `max_age`); the ID token must
+  carry it, and its `auth_time` must not be older than the challenge. It is verified with HiveCommon's recent-authentication check (signature,
+  issuer, an audience in `EMBERPATH_STEP_UP_AUDIENCES`, default `hivexui-emberpath`, lifetime,
+  the caller's subject and session, and `auth_time` within `EMBERPATH_STEP_UP_MAX_AGE_SECONDS`,
+  default 300). The session's credential and policy changes then count from that `auth_time`,
+  with the same 15-minute rule as before. Refusals are `401` `REAUTH_REQUIRED`, `REAUTH_STALE` or
+  `REAUTH_INVALID` with a `reason`.
+- `EMBERPATH_PASSWORD_RELAY`, `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` and
+  `EMBERPATH_STEP_UP_AUDIENCES` settings.
+
+### Deprecated
+
+- `POST /api/auth/login` and `POST /api/auth/reauthenticate` (off by default, see above): marked
+  `deprecated` in the OpenAPI document and answered with `Deprecation`, `Sunset` and
+  `Link: rel="deprecation"` headers. Removed in the next major release.
+
 ## [2.9.0] - 2026-11-26
 
 ### Upgrade notes

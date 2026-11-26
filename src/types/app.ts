@@ -10,6 +10,8 @@ export interface AppVariables {
   adminUser?: AdminUser;
   adminRoles?: string[];
   adminPermissions?: string[];
+  /** The verified admin principal of this request, set by the admin API's auth middleware. */
+  adminPrincipal?: import('../security/admin-auth.js').AuthenticatedAdmin;
   clientApiKey?: ClientApiKey;
   traceContext?: TraceRuntimeContext;
 }
