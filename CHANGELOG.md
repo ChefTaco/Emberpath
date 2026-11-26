@@ -26,6 +26,12 @@
 
 ### Added
 
+- Optional exact-match response cache (`EMBERPATH_RESPONSE_CACHE_TTL_MS`, off by default,
+  with `EMBERPATH_RESPONSE_CACHE_MAX_ENTRIES` and `EMBERPATH_RESPONSE_CACHE_MAX_BYTES`) for
+  deterministic, non-streaming requests: `temperature: 0` chat completions, completions and
+  Responses API calls, and embeddings. Entries are per client key and exact request body.
+  A hit answers with `x-emberpath-cache: hit`, is traced with a `cache.hit` event and the
+  source trace, and charges no tokens or spend.
 - Per-key rate and concurrency limits in the key's `quota` metadata: `requestsPerMinute`
   and `tokensPerMinute` (rolling 60 seconds, from the reservation ledger, `429` with
   `retry-after: 60`) and `maxInFlight` (requests running at once, streams included, per

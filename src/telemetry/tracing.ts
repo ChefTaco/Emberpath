@@ -42,6 +42,7 @@ export type TraceResponseMeta =
   | { contentType: string; truncated?: boolean; bytesReceived?: number }
   | { contentType: string; streamPhase: 'pre-first-byte' | 'mid-stream'; reachedClient: boolean; retrySafe: boolean }
   | { denialReason: string }
+  | { contentType: string; cache: { hit: true; sourceTraceId: string; providerId: string; providerKind: string; providerModel?: string | undefined } }
   | { error: string }
   | { contentType: string; decisionsApi: DecisionsResponseSummary }
   | { error: string; decisionsApi: { rejections: Array<{ provider: string; backend?: string | undefined; reason: string }> } }
@@ -72,6 +73,7 @@ export type TraceEventInput =
   | { type: 'provider.error'; phase: 'execution'; message: string; data: ProviderAttemptData }
   | { type: 'request.aborted'; phase: 'execution'; message: string; data: { during: 'backoff'; providerId: string; attempt: number } }
   | { type: 'route.denied'; phase: 'routing'; message: string }
+  | { type: 'cache.hit'; phase: 'execution'; message: string; data: { sourceTraceId: string; providerId: string } }
   | { type: 'provider.ineligible'; phase: 'routing'; message: string; data: { provider: string; backend?: string | undefined } };
 
 export interface FinalizeTraceInput {

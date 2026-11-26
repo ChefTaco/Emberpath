@@ -209,6 +209,11 @@ export const envSchema = z.object({
   EMBERPATH_KEY_LAST_USED_INTERVAL_MS: z.coerce.number().int().min(0).max(86_400_000).default(60_000),
   // GET /v1/models keeps a provider's live model list this long (0: ask on every call).
   EMBERPATH_MODELS_CACHE_TTL_MS: z.coerce.number().int().min(0).max(3_600_000).default(5_000),
+  // Exact-match response cache for deterministic, non-streaming requests (temperature 0 and
+  // embeddings), per client key, in memory: TTL (0 = off, the default), entries and bytes.
+  EMBERPATH_RESPONSE_CACHE_TTL_MS: z.coerce.number().int().min(0).max(86_400_000).default(0),
+  EMBERPATH_RESPONSE_CACHE_MAX_ENTRIES: z.coerce.number().int().min(1).max(1_000_000).default(1_000),
+  EMBERPATH_RESPONSE_CACHE_MAX_BYTES: byteLimitSchema.default(64 * 1024 * 1024),
 }).transform((env) => {
   const tls = Boolean(env.TLS_CERT_PATH && env.TLS_KEY_PATH);
   const scheme = tls ? 'https' : 'http';

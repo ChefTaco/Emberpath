@@ -10,6 +10,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { decodeInferenceBody } from './request-body.js';
 import { outputAllowance } from './output-allowance.js';
+import { CACHE_HEADER, lookupCachedResponse, planResponseCache, storeCachedResponse, type CachedResponse } from './response-cache.js';
 import { acquireKeySlot, applyClientKeyAccess, modelAllowed, readClientKeyAccess, type ClientKeyAccess } from '../security/key-access.js';
 import type { Context } from 'hono';
 import { ZodError } from 'zod';
@@ -650,6 +651,10 @@ async function executeRoute(
     return context.json({ error: decision.denialReason }, 403);
   }
 
+  const cachePlan = planResponseCache(route, clientKey?.id);
+  const cached = cachePlan?.lookup ? lookupCachedResponse(cachePlan.key) : undefined;
+  if (cached) return answerFromCache(route, trace.traceId, cached, quotaWarnings, startedAt);
+
   const deadlineMs = attemptDeadline(startedAt, loadEnv().EMBERPATH_REQUEST_DEADLINE_MS, attribution.execution);
   const executionResult = await runExecutionWithFailover(route, decision, providers, trace.traceId, deadlineMs);
   const provider = executionResult.provider;
@@ -806,6 +811,21 @@ async function executeRoute(
 
   const responseText = await execution.response.text();
   const usage = execution.usage ?? estimateUsage(route, responseText, execution.reasoningText);
+  if (cachePlan?.store) {
+    const providerModel = execution.providerModel ?? decision.targetModel ?? route.model;
+    const stored = storeCachedResponse(cachePlan.key, {
+      status: execution.response.status,
+      headers: [...responseHeaders.entries()].filter(([name]) => name !== 'x-hive-quota-warning' && name !== RETRY_HEADER),
+      body: responseText,
+      usage,
+      estimatedUsage: execution.usage === undefined,
+      providerId: provider.id,
+      providerKind: provider.kind,
+      ...(providerModel ? { providerModel } : {}),
+      sourceTraceId: trace.traceId,
+    });
+    responseHeaders.set(CACHE_HEADER, stored ? 'miss' : 'bypass');
+  }
   await finalizeTrace({
     traceId: trace.traceId,
     statusCode: execution.response.status,
@@ -873,6 +893,33 @@ function handleRouteExecution(
 
 function handleDecisionsExecution(context: Context<{ Variables: AppVariables }>): Promise<Response> {
   return withKeyInFlightLimit(context, () => executeDecisions(context));
+}
+
+/**
+ * Answer a request from the response cache. The trace records the hit and the trace that
+ * produced the answer, but no provider: nothing was sent upstream, so the key's token budget
+ * and spend are not charged and adaptive routing does not see a provider latency.
+ */
+async function answerFromCache(route: RouteRequest, traceId: string, cached: CachedResponse, quotaWarnings: string[], startedAt: number): Promise<Response> {
+  const headers = new Headers(cached.headers);
+  if (quotaWarnings.length > 0) headers.set('x-hive-quota-warning', quotaWarnings.join(','));
+  headers.set(RETRY_HEADER, 'none');
+  headers.set(CACHE_HEADER, 'hit');
+  await addTraceEvent(traceId, { type: 'cache.hit', phase: 'execution', message: 'Answered from the response cache', data: { sourceTraceId: cached.sourceTraceId, providerId: cached.providerId } });
+  await finalizeTrace({
+    traceId,
+    statusCode: cached.status,
+    outcome: TraceOutcome.SUCCEEDED,
+    responseHeaders: redactHeaders(toHeaderObject(headers)),
+    usage: cached.usage,
+    estimatedUsage: cached.estimatedUsage,
+    noProviderAnswer: true,
+    responseBody: cached.body,
+    responseMeta: { contentType: headers.get('content-type') ?? 'application/json', cache: { hit: true, sourceTraceId: cached.sourceTraceId, providerId: cached.providerId, providerKind: cached.providerKind, providerModel: cached.providerModel } },
+  });
+  requestDuration.observe({ plane: 'api', route: route.routeKey, method: route.method, provider: 'cache' }, Date.now() - startedAt);
+  requestCounter.inc({ plane: 'api', route: route.routeKey, method: route.method, status: `${cached.status}`, provider: 'cache', outcome: 'cache_hit' });
+  return new Response(cached.body, { status: cached.status, headers });
 }
 
 /** Output allowance per question when reserving client quota for a decision. */
