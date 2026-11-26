@@ -112,13 +112,13 @@ describe('api/provider-guards circuit breaker', () => {
     const id = 'circuit-trial-success';
     resetProviderCircuit(id);
     for (let index = 0; index < 3; index += 1) markProviderFailure(id, t0);
-    expect(enterProviderCircuit(id, t0 + 1_000)).toBe(false);
+    expect(enterProviderCircuit(id, t0 + 1_000)).toBeUndefined();
     const after = t0 + 30_000;
-    expect(enterProviderCircuit(id, after)).toBe(true);
+    expect(enterProviderCircuit(id, after)).toBeDefined();
     // Another request while the trial runs skips the provider.
-    expect(enterProviderCircuit(id, after + 10)).toBe(false);
+    expect(enterProviderCircuit(id, after + 10)).toBeUndefined();
     resetProviderCircuit(id);
-    expect(enterProviderCircuit(id, after + 20)).toBe(true);
+    expect(enterProviderCircuit(id, after + 20)).toBeDefined();
     // A single new failure does not trip a closed circuit again.
     markProviderFailure(id, after + 30);
     expect(isCircuitOpen(id, after + 30)).toBe(false);
@@ -129,7 +129,7 @@ describe('api/provider-guards circuit breaker', () => {
     resetProviderCircuit(id);
     for (let index = 0; index < 3; index += 1) markProviderFailure(id, t0);
     const after = t0 + 30_000;
-    expect(enterProviderCircuit(id, after)).toBe(true);
+    expect(enterProviderCircuit(id, after)).toBeDefined();
     markProviderFailure(id, after + 5);
     expect(isCircuitOpen(id, after + 5 + 29_000)).toBe(true);
     expect(isCircuitOpen(id, after + 5 + 30_000)).toBe(false);
@@ -140,9 +140,9 @@ describe('api/provider-guards circuit breaker', () => {
     resetProviderCircuit(id);
     for (let index = 0; index < 3; index += 1) markProviderFailure(id, t0);
     const after = t0 + 30_000;
-    expect(enterProviderCircuit(id, after)).toBe(true);
+    expect(enterProviderCircuit(id, after)).toBeDefined();
     abandonProviderTrial(id);
-    expect(enterProviderCircuit(id, after + 1)).toBe(true);
+    expect(enterProviderCircuit(id, after + 1)).toBeDefined();
   });
 
   it('ignores failures of requests that were running when the circuit opened', () => {
@@ -166,5 +166,40 @@ describe('api/provider-guards circuit breaker', () => {
       env.EMBERPATH_CIRCUIT_FAILURE_THRESHOLD = saved;
       resetProviderCircuit('circuit-threshold');
     }
+  });
+});
+
+describe('api/provider-guards circuit tickets', () => {
+  const t0 = 2_000_000_000_000;
+
+  it('ignore a late result from a request that started before the circuit opened', () => {
+    const id = 'circuit-late-ticket';
+    resetProviderCircuit(id);
+    const early = enterProviderCircuit(id, t0)!;
+    for (let index = 0; index < 3; index += 1) markProviderFailure(id, t0 + 1);
+    const after = t0 + 30_001;
+    const trial = enterProviderCircuit(id, after)!;
+    expect(trial).not.toBe(early);
+    // The early request finishes during the trial: neither its failure nor its success counts.
+    markProviderFailure(id, after + 1, early);
+    expect(isCircuitOpen(id, after + 1)).toBe(true); // the trial is still running
+    resetProviderCircuit(id, early);
+    expect(isCircuitOpen(id, after + 2)).toBe(true);
+    // The trial's own success closes the circuit.
+    resetProviderCircuit(id, trial);
+    expect(isCircuitOpen(id, after + 3)).toBe(false);
+  });
+
+  it('let the trial failure reopen the circuit, ignoring a stale failure', () => {
+    const id = 'circuit-trial-ticket-failure';
+    resetProviderCircuit(id);
+    const early = enterProviderCircuit(id, t0)!;
+    for (let index = 0; index < 3; index += 1) markProviderFailure(id, t0 + 1);
+    const after = t0 + 30_001;
+    const trial = enterProviderCircuit(id, after)!;
+    abandonProviderTrial(id, early);
+    expect(enterProviderCircuit(id, after + 1)).toBeUndefined();
+    markProviderFailure(id, after + 2, trial);
+    expect(isCircuitOpen(id, after + 2 + 29_000)).toBe(true);
   });
 });

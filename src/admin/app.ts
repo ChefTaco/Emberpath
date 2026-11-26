@@ -396,7 +396,23 @@ function extractArray(payload: unknown, keys: string[]): Record<string, unknown>
   return [];
 }
 
-async function requestIamServiceJson(path: string, requestId: string, body?: unknown, method?: string): Promise<ServiceJsonResult | null> {
+/**
+ * The verified operator behind an admin request, as the `x-hive-operator` value Oathweave
+ * requires on writes made with the Router's own client token. Undefined without a session.
+ */
+async function iamOperatorHeader(context: Context<{ Variables: AppVariables }>): Promise<string | undefined> {
+  const operator = await verifyAdminSession(context);
+  if (!operator) return undefined;
+  return JSON.stringify({
+    id: operator.user.id,
+    sessionId: operator.sessionId,
+    authenticatedAt: operator.authenticatedAt,
+    authMode: operator.authMode,
+    ...(operator.iamSubject ? { iamSubject: operator.iamSubject } : {}),
+  });
+}
+
+async function requestIamServiceJson(path: string, requestId: string, body?: unknown, method?: string, operator?: string): Promise<ServiceJsonResult | null> {
   const env = loadEnv();
   const accessToken = await getIamProxyAccessToken();
   if (!accessToken) return null;
@@ -408,6 +424,8 @@ async function requestIamServiceJson(path: string, requestId: string, body?: unk
       authorization: `Bearer ${accessToken}`,
       'x-request-id': requestId,
       'x-hive-request-id': requestId,
+      // Oathweave refuses writes made with the Router's token unless they name the operator.
+      ...(operator ? { 'x-hive-operator': operator } : {}),
     },
     allowInsecureTls: env.HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS,
     tls: iamTlsOptions(targetUrl, env),
@@ -583,16 +601,8 @@ async function proxyIamRequest(context: Context<{ Variables: AppVariables }>): P
   headers.authorization = `Bearer ${accessToken}`;
   // IAM trusts this header only from the Router's own client token; never pass a caller's copy through.
   delete headers['x-hive-operator'];
-  const operator = await verifyAdminSession(context);
-  if (operator) {
-    headers['x-hive-operator'] = JSON.stringify({
-      id: operator.user.id,
-      sessionId: operator.sessionId,
-      authenticatedAt: operator.authenticatedAt,
-      authMode: operator.authMode,
-      ...(operator.iamSubject ? { iamSubject: operator.iamSubject } : {}),
-    });
-  }
+  const operator = await iamOperatorHeader(context);
+  if (operator) headers['x-hive-operator'] = operator;
   if (bodyBuffer) headers["content-length"] = String(bodyBuffer.length);
 
   return new Promise((resolve) => {
@@ -1474,13 +1484,14 @@ async function createEnrolledActor(context: AdminContext, body: z.infer<typeof a
       return transaction.actorEnrollment.update({ where: { actorId: body.agentId }, data: { ...patch, encryptedSecrets: encryptText(JSON.stringify(secrets)), receiptExpiresAt: new Date(Date.now() + 900_000), leaseUntil: null } });
     });
   };
+  const operator = await iamOperatorHeader(context);
   try {
     if (!enrollment.iamId) {
-      const response = await requestIamServiceJson('service-accounts', requestId, { name: `hive-actor-${body.agentId}`, description: body.description, clientId: body.iamClientId, roleIds: body.roleIds, allowedIps: body.allowedIps, ...(enrollment.credentialExpiresAt ? { expiresAt: enrollment.credentialExpiresAt.toISOString() } : {}), operationId: digestText('actor:' + body.agentId + ':' + requestHash) }, 'POST');
+      const response = await requestIamServiceJson('service-accounts', requestId, { name: `hive-actor-${body.agentId}`, description: body.description, clientId: body.iamClientId, roleIds: body.roleIds, allowedIps: body.allowedIps, ...(enrollment.credentialExpiresAt ? { expiresAt: enrollment.credentialExpiresAt.toISOString() } : {}), operationId: digestText('actor:' + body.agentId + ':' + requestHash) }, 'POST', operator);
       const id = actorIdentifier(response?.body, 'id');
       if (!response || response.status >= 300 || !id) throw new Error('iam_enrollment_failed');
       secrets.iamApiKey = actorIdentifier(response.body, 'apiKey');
-      if (!secrets.iamApiKey) { const rotation = await requestIamServiceJson(`service-accounts/${encodeURIComponent(id)}/rotate`, requestId, {}, 'POST'); secrets.iamApiKey = actorIdentifier(rotation?.body, 'apiKey'); if (!secrets.iamApiKey) throw new Error('iam_receipt_recovery_failed'); }
+      if (!secrets.iamApiKey) { const rotation = await requestIamServiceJson(`service-accounts/${encodeURIComponent(id)}/rotate`, requestId, {}, 'POST', operator); secrets.iamApiKey = actorIdentifier(rotation?.body, 'apiKey'); if (!secrets.iamApiKey) throw new Error('iam_receipt_recovery_failed'); }
       await persist({ iamId: id });
     }
     steps.push(responseStep('iam', 'service-account.enroll', 200, { id: enrollment.iamId }));
@@ -1549,6 +1560,7 @@ async function runActorLifecycle(context: AdminContext, action: 'rotate' | 'disa
   const user = context.get('adminUser')!;
   const requestId = context.get('requestId');
   const actorId = getParamId(context);
+  const operator = await iamOperatorHeader(context);
   const body = actorLifecycleSchema.parse(await context.req.json().catch(() => ({})));
   const identifiers = await resolveActorLifecycleTargets(requestId, actorId);
   const enrollment = await prisma.actorEnrollment.findFirst({ where: { OR: [
@@ -1601,7 +1613,7 @@ async function runActorLifecycle(context: AdminContext, action: 'rotate' | 'disa
             });
           } else if (target.service === 'iam') {
             const path = target.key === 'iamUserId' ? 'users/' : 'service-accounts/';
-            const response = await requestIamServiceJson(path + encodeURIComponent(target.id) + (action === 'rotate' ? '/rotate' : ''), requestId, action === 'rotate' ? {} : { active: false }, action === 'rotate' ? 'POST' : 'PATCH');
+            const response = await requestIamServiceJson(path + encodeURIComponent(target.id) + (action === 'rotate' ? '/rotate' : ''), requestId, action === 'rotate' ? {} : { active: false }, action === 'rotate' ? 'POST' : 'PATCH', operator);
             step.status = response?.status ?? 503;
             step.ok = step.status >= 200 && step.status < 300;
             if (action === 'rotate') {

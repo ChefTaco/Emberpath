@@ -143,7 +143,8 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
     if (route.signal?.aborted) break;
     const provider = entry.provider;
     if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
-    if (!enterProviderCircuit(provider.id)) {
+    const circuit = enterProviderCircuit(provider.id);
+    if (circuit === undefined) {
       await addTraceEvent(traceId, { type: 'provider.skipped', phase: 'routing', message: `Provider ${provider.slug} skipped because its circuit is open` });
       continue;
     }
@@ -154,7 +155,7 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
       try {
         await semaphore.acquire(route.signal);
       } catch (error) {
-        abandonProviderTrial(provider.id);
+        abandonProviderTrial(provider.id, circuit);
         if (!(error instanceof ProviderSlotUnavailable)) return clientDisconnected(provider.id, attempt, false);
         // A saturated provider is not a failing one: leave its circuit alone and try the next.
         failureError = `Provider ${provider.slug} is busy: ${error.message.toLowerCase()}`;
@@ -165,12 +166,12 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
         upstreamAttempts += 1;
         const outcome = entry.backend === 'openai' ? await attemptOpenAi(route, entry) : await attemptJev(route, entry);
         if (shouldFailoverStatus(outcome.status)) {
-          markProviderFailure(provider.id);
+          markProviderFailure(provider.id, Date.now(), circuit);
           failureResponse = { status: outcome.status, text: outcome.text, contentType: outcome.headers.get('content-type') ?? 'application/json' };
           failureError = `Upstream returned ${outcome.status}`;
           failure = { type: 'provider.failover', message: `Provider ${provider.slug} returned ${outcome.status}`, status: outcome.status, retryAfterMs: upstreamRetryAfterMs(outcome.headers) };
         } else {
-          resetProviderCircuit(provider.id);
+          resetProviderCircuit(provider.id, circuit);
           const response = new Response(outcome.text, { status: outcome.status, headers: outcome.headers });
           return {
             result: {
@@ -184,10 +185,10 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
         }
       } catch (error) {
         if (route.signal?.aborted) {
-          abandonProviderTrial(provider.id);
+          abandonProviderTrial(provider.id, circuit);
           return clientDisconnected(provider.id, attempt, false);
         }
-        markProviderFailure(provider.id);
+        markProviderFailure(provider.id, Date.now(), circuit);
         failureError = error instanceof JevResponseMismatch ? error.message
           : error instanceof Error && error.name === 'TimeoutError' ? `Provider ${provider.slug} timed out`
           : error instanceof Error && /^decision_[a-z_0-9]+$/u.test(error.message) ? error.message

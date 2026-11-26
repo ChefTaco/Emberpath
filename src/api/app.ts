@@ -360,7 +360,8 @@ async function runExecutionWithFailover(
     if (route.signal?.aborted) break;
     // Failover to a later candidate stops once the request's deadline has passed.
     if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
-    if (!enterProviderCircuit(provider.id)) {
+    const circuit = enterProviderCircuit(provider.id);
+    if (circuit === undefined) {
       await addTraceEvent(traceId, {
         type: 'provider.skipped',
         phase: 'routing',
@@ -379,11 +380,11 @@ async function runExecutionWithFailover(
         await semaphore.acquire(route.signal);
       } catch (error) {
         if (!(error instanceof ProviderSlotUnavailable)) {
-          abandonProviderTrial(provider.id);
+          abandonProviderTrial(provider.id, circuit);
           return clientDisconnected(provider, attempt, false);
         }
         // A saturated provider is not a failing one: leave its circuit alone and try the next.
-        abandonProviderTrial(provider.id);
+        abandonProviderTrial(provider.id, circuit);
         lastFailureError = `Provider ${provider.slug} is busy: ${error.message.toLowerCase()}`;
         await addTraceEvent(traceId, {
           type: 'provider.skipped',
@@ -411,7 +412,7 @@ async function runExecutionWithFailover(
         lastUpstreamExhausted = upstreamExhausted(execution.response.headers);
 
         if (shouldFailoverStatus(execution.response.status)) {
-          markProviderFailure(provider.id);
+          markProviderFailure(provider.id, Date.now(), circuit);
           keepFailureResponse(execution.response);
           lastFailureError = `Upstream returned ${execution.response.status}`;
           failure = {
@@ -441,12 +442,12 @@ async function runExecutionWithFailover(
             if (looksLikeStreamError(peeked.firstChunkText)) {
               // The failed stream is abandoned here; release its upstream connection.
               void peeked.stream.cancel().catch(() => undefined);
-              markProviderFailure(provider.id);
+              markProviderFailure(provider.id, Date.now(), circuit);
               lastFailureError = `Provider ${provider.slug} emitted a stream error before the first token`;
               streamFailureCounter.inc({ route: route.routeKey, provider: provider.slug, phase: 'pre-first-byte' });
               failure = { type: 'provider.stream_failover', outcome: 'stream_error', message: lastFailureError, status: execution.response.status };
             } else {
-              resetProviderCircuit(provider.id);
+              resetProviderCircuit(provider.id, circuit);
               keepFailureResponse(undefined);
               const rebuiltResponse = new Response(peeked.stream, {
                 status: execution.response.status,
@@ -455,17 +456,17 @@ async function runExecutionWithFailover(
               return finish({ provider, execution: { ...execution, response: holdSlot(rebuiltResponse) } });
             }
           } else {
-            resetProviderCircuit(provider.id);
+            resetProviderCircuit(provider.id, circuit);
             keepFailureResponse(undefined);
             return finish({ provider, execution: { ...execution, response: holdSlot(execution.response) } });
           }
         }
       } catch (error) {
         if (route.signal?.aborted) {
-          abandonProviderTrial(provider.id);
+          abandonProviderTrial(provider.id, circuit);
           return clientDisconnected(provider, attempt, false);
         }
-        markProviderFailure(provider.id);
+        markProviderFailure(provider.id, Date.now(), circuit);
         lastUpstreamExhausted = false;
         lastFailureError = error instanceof Error ? error.message : 'Unknown provider execution error';
         failure = { type: 'provider.error', outcome: 'network_error', message: lastFailureError };

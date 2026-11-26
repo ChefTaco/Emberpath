@@ -1,4 +1,5 @@
 import { ProviderKind } from '../generated/prisma/client.js';
+import { peekStreamStart } from '../api/stream-failover.js';
 import type { UsageSnapshot } from '../telemetry/tracing.js';
 import { prettyJson } from '../utils/json.js';
 import { parseAnthropicModels } from './model-parsers.js';
@@ -399,6 +400,24 @@ export class AnthropicStreamTranslator {
     return usageSnapshot(this.usage);
   }
 
+  /**
+   * Usage as Anthropic reported it, or undefined when the stream ended before its final
+   * count (`message_delta` usage or `message_stop`): `message_start` carries the input but
+   * only a placeholder output count, so a cut-short stream's usage is unknown. Unknown usage
+   * keeps the quota reservation instead of refunding it.
+   */
+  reportedUsage(): UsageSnapshot | undefined {
+    return this.state === 'complete' || this.finalUsageSeen ? usageSnapshot(this.usage) : undefined;
+  }
+
+  private finalUsageSeen = false;
+
+  /** The events that tell the client a stream ended before Anthropic finished it. */
+  truncated(): string {
+    if (this.state !== 'open') return '';
+    return this.handle({ type: 'error', error: { type: 'upstream_incomplete', message: 'The upstream stream ended before the answer was complete' } });
+  }
+
   handle(data: Json): string {
     const type = typeof data.type === 'string' ? data.type : '';
     if (type === 'message_start' && isRecord(data.message)) {
@@ -419,12 +438,15 @@ export class AnthropicStreamTranslator {
     }
     if (type === 'message_delta') {
       if (isRecord(data.delta) && typeof data.delta.stop_reason === 'string') this.stopReason = data.delta.stop_reason;
-      if (isRecord(data.usage)) this.usage = { ...this.usage, ...data.usage };
+      if (isRecord(data.usage)) {
+        this.usage = { ...this.usage, ...data.usage };
+        this.finalUsageSeen = true;
+      }
       return '';
     }
     if (type === 'message_stop') {
       this.state = 'complete';
-      if (this.format === 'responses') return this.event('response.completed', { response: buildResponsesBody(this.model, this.answer()) });
+      if (this.format === 'responses') return this.event('response.completed', { response: this.completedResponse() });
       const usage = this.usageSnapshot();
       return this.chunk({}, finishReason(this.stopReason))
         + (this.includeUsage
@@ -444,6 +466,18 @@ export class AnthropicStreamTranslator {
     return '';
   }
 
+  /** The final Responses API object, with the same items (IDs and order) the stream announced. */
+  private completedResponse(): Json {
+    const body = buildResponsesBody(this.model, this.answer());
+    const items = [...this.blocks.values()]
+      .filter((block) => block.kind === 'text' || block.kind === 'tool')
+      .sort((left, right) => left.outputIndex - right.outputIndex)
+      .map((block) => (block.kind === 'text'
+        ? responseMessage(this.itemId(block), block.text)
+        : responseFunctionCall({ id: block.id, name: block.name, arguments: JSON.stringify(toolInput(block.arguments)) })));
+    return { ...body, id: this.responseId(), output: items.length > 0 ? items : body.output };
+  }
+
   private startBlock(index: number, block: Json): string {
     const blockType = typeof block.type === 'string' ? block.type : '';
     const kind: StreamBlock['kind'] = blockType === 'text' ? 'text' : blockType === 'tool_use' ? 'tool' : blockType === 'thinking' ? 'thinking' : 'other';
@@ -460,6 +494,7 @@ export class AnthropicStreamTranslator {
     if (kind === 'text') {
       const opening = this.format === 'responses'
         ? this.event('response.output_item.added', { output_index: state.outputIndex, item: { type: 'message', id: this.itemId(state), role: 'assistant', status: 'in_progress', content: [] } })
+          + this.event('response.content_part.added', { item_id: this.itemId(state), output_index: state.outputIndex, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } })
         : '';
       return opening + (typeof block.text === 'string' && block.text ? this.deltaBlock(index, { type: 'text_delta', text: block.text }) : '');
     }
@@ -501,6 +536,7 @@ export class AnthropicStreamTranslator {
     if (!block || this.format !== 'responses') return '';
     if (block.kind === 'text') {
       return this.event('response.output_text.done', { item_id: this.itemId(block), output_index: block.outputIndex, content_index: 0, text: block.text })
+        + this.event('response.content_part.done', { item_id: this.itemId(block), output_index: block.outputIndex, content_index: 0, part: { type: 'output_text', text: block.text, annotations: [] } })
         + this.event('response.output_item.done', { output_index: block.outputIndex, item: responseMessage(this.itemId(block), block.text) });
     }
     if (block.kind === 'tool') {
@@ -536,7 +572,7 @@ function translateStream(upstream: ReadableStream<Uint8Array>, translator: Anthr
     finishTrace({
       responseBody: toolCalls.length > 0 ? `${text}${text ? '\n' : ''}${JSON.stringify({ tool_calls: toolCalls })}` : text,
       reasoningText: reasoning,
-      usage: translator.usageSnapshot(),
+      ...(translator.reportedUsage() ? { usage: translator.reportedUsage() } : {}),
       ...(firstByteMs === undefined ? {} : { firstByteMs }),
       ...(errored ? { errored: true } : {}),
     });
@@ -566,6 +602,8 @@ function translateStream(upstream: ReadableStream<Uint8Array>, translator: Anthr
             if (isRecord(parsed)) output += translator.handle(parsed);
             if (translator.state !== 'open') break;
           }
+          // An upstream that ends without `message_stop` is reported to the client as a failure.
+          if (done) output += translator.truncated();
           if (output) controller.enqueue(encoder.encode(output));
           if (translator.state !== 'open' || done) {
             // A stream that ends without `message_stop` was cut short.
@@ -588,6 +626,25 @@ function translateStream(upstream: ReadableStream<Uint8Array>, translator: Anthr
     },
   });
   return { stream, tracePromise };
+}
+
+/** The error in the first event of an Anthropic stream, if that event is an error. */
+function openingStreamError(text: string): { type: string; message: string } | undefined {
+  const first = text.split(/\r?\n\r?\n/).find((block) => eventData(block) !== undefined);
+  const data = first === undefined ? undefined : eventData(first);
+  if (data === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || parsed.type !== 'error') return undefined;
+  const error = isRecord(parsed.error) ? parsed.error : {};
+  return {
+    type: typeof error.type === 'string' ? error.type : 'upstream_error',
+    message: typeof error.message === 'string' ? error.message : 'Anthropic reported a stream error',
+  };
 }
 
 function errorResponse(status: number, message: string): Response {
@@ -634,7 +691,16 @@ export class AnthropicAdapter implements ProviderAdapter {
     if (route.stream && upstream.body && (upstream.headers.get('content-type') ?? '').includes('text/event-stream')) {
       const body = isRecord(route.requestBodyJson) ? route.requestBodyJson : {};
       const includeUsage = isRecord(body.stream_options) && body.stream_options.include_usage === true;
-      const { stream, tracePromise } = translateStream(upstream.body, new AnthropicStreamTranslator(format, model, includeUsage));
+      // A stream that opens with an error event (Anthropic answers 200 and then reports
+      // `overloaded_error`, say) becomes an HTTP error before anything reaches the client,
+      // so it counts against the provider's circuit and can fail over.
+      const peeked = await peekStreamStart(upstream.body);
+      const error = openingStreamError(peeked.firstChunkText);
+      if (error) {
+        void peeked.stream.cancel().catch(() => undefined);
+        return { response: Response.json({ error: { message: error.message, type: error.type } }, { status: error.type === 'overloaded_error' ? 529 : 503 }) };
+      }
+      const { stream, tracePromise } = translateStream(peeked.stream, new AnthropicStreamTranslator(format, model, includeUsage));
       return {
         response: new Response(stream, {
           status: 200,
