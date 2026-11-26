@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Anthropic providers stream and use tools. A `stream: true` request is sent to Anthropic
+  as a stream and relayed as OpenAI `chat.completion.chunk` events (or Responses API
+  events), ending with `[DONE]` and, when `stream_options.include_usage` is set, a usage
+  chunk. OpenAI `tools`, `tool_choice` and `parallel_tool_calls` become Anthropic tools;
+  `tool_use` answers become `tool_calls` (or `function_call` output items) with the
+  `tool_calls` finish reason; assistant `tool_calls` and `role: "tool"` messages become
+  `tool_use` and `tool_result` blocks with their IDs. The Responses API `input`,
+  `instructions`, `function_call` and `function_call_output` items are read, and
+  `max_completion_tokens`, `top_p` and `stop` are passed on. Without an explicit maximum
+  the output allowance is 4096 tokens (was 1024), matching the quota reservation.
+- A provider's `timeoutMs` no longer cuts long streams. It now bounds the wait for the
+  response headers and then each wait for the next body chunk, not the whole body.
+- A provider's `concurrency` slot is held until the response body has ended (or the client
+  went away), so it limits running streams, not just header waits. A request whose client
+  disconnects while it waits for a slot leaves the queue without calling the provider.
+- A request that no provider answered (every candidate failed, or none was available) no
+  longer keeps its token reservation against the client key's daily and monthly caps.
+- `POST /api/pull` needs the `ollama:manage` (or `*`) client key scope; a key without a
+  scope list may no longer make an Ollama backend download models.
+- Oathweave password sign-in (`HIVE_ROUTER_AUTH_MODE=iam-oidc`) works for accounts with
+  multi-factor authentication: `/api/auth/login` answers `MFA_REQUIRED` with the account's
+  methods instead of `Invalid credentials`, and accepts `mfaCode` (a TOTP or recovery code),
+  as does `/api/auth/reauthenticate`. A correct password awaiting its second factor is not
+  counted as a failed attempt. The two Oathweave sessions each sign-in opened are now ended
+  once it completes, and the client address is sent as `X-Forwarded-For` so an Oathweave that
+  trusts Emberpath as a proxy limits sign-in attempts per client.
+- The README no longer names a stale suite pin.
+
 ## [2.6.0] - 2026-11-24
 
 ### Added
