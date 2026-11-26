@@ -1,4 +1,5 @@
 import { config as loadDotEnv } from 'dotenv';
+import { DEFAULT_TRUSTED_PROXIES, isValidTrustedProxies, TRUSTED_PROXIES_ERROR } from '../security/client-address.js';
 import { join, resolve } from 'node:path';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { z } from 'zod';
@@ -173,6 +174,9 @@ export const envSchema = z.object({
   // Inference plane: no provider retry, backoff wait or failover starts later than this many
   // milliseconds after the request arrived (an earlier x-hive-execution deadline_ms wins).
   EMBERPATH_REQUEST_DEADLINE_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(300_000),
+  // Proxies whose X-Forwarded-For names the admin client (sign-in throttling, session records,
+  // the address forwarded to Oathweave and HiveMem): IPs, CIDRs, host names, loopback or none.
+  EMBERPATH_TRUSTED_PROXIES: z.string().default(DEFAULT_TRUSTED_PROXIES).refine(isValidTrustedProxies, { error: TRUSTED_PROXIES_ERROR }),
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrlSchema,
   PROMETHEUS_PREFIX: z.string().default('hive_router_'),
   DEFAULT_TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).default(7),
@@ -254,6 +258,7 @@ function describeIssue(variable: string, source: NodeJS.ProcessEnv): string {
     return `${HIVEXUI_URL_ERROR} without credentials or a fragment, or unset. Fix it ${FIX_HINT}.`;
   }
   if (variable === 'DATABASE_URL') return `${SQLITE_DATABASE_URL_ERROR}. Fix it ${FIX_HINT}.`;
+  if (variable === 'EMBERPATH_TRUSTED_PROXIES') return `${TRUSTED_PROXIES_ERROR}. Fix it ${FIX_HINT}.`;
   if (variable.endsWith('_PORT')) {
     return `${variable} must be a TCP port between 1 and 65535. Fix it ${FIX_HINT}.`;
   }

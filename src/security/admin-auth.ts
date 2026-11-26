@@ -2,7 +2,7 @@ import type { AdminUser } from '../generated/prisma/client.js';
 import { SignJWT, jwtVerify } from 'jose';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Context, Next } from 'hono';
-import { getConnInfo } from '@hono/node-server/conninfo';
+import { clientAddress } from './client-address.js';
 import { randomUUID } from 'node:crypto';
 import { configuredOathweaveVerifier, linkedLocalId, parseAccountLinks } from './admin-identity.js';
 import { loadEnv } from '../config/env.js';
@@ -42,13 +42,7 @@ export async function createAdminSession(principal: AuthenticatedAdmin, context:
       sessionId,
       userId: principal.user.id,
       expiresAt,
-      ipAddress: (() => {
-        try {
-          return getConnInfo(context).remote.address ?? null;
-        } catch {
-          return null;
-        }
-      })(),
+      ipAddress: (await clientAddress(context, loadEnv().EMBERPATH_TRUSTED_PROXIES)) ?? null,
       userAgent: context.req.header('user-agent') ?? null,
     },
   });

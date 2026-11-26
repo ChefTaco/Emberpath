@@ -344,6 +344,7 @@ directory. Variables with no default are optional unless marked **required**.
 | `HIVE_ROUTER_ADMIN_USERS` | `admin` | Comma-separated allowlist of account names that may sign in. Set it explicitly. |
 | `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave. |
 | `HIVE_ROUTER_OS_AUTH_COMMAND` | | Replaces `pamtester` with another command. Intended for tests and development. |
+| `EMBERPATH_TRUSTED_PROXIES` | `loopback` | Proxies in front of the admin listener whose `X-Forwarded-For` names the client: a comma- or space-separated list of IP addresses, CIDR ranges, host names (resolved through DNS, such as a Compose service) and the keywords `loopback` and `none`. The header is read from the right only when the socket peer is listed, skipping further listed hops, so an address a caller wrote itself is never used. The result keys the sign-in throttle, is stored on the admin session and is the single `X-Forwarded-For` address sent to Oathweave and HiveMem. Behind Hive's ingress, list the ingress. |
 | `HIVE_ROUTER_CLI_TOKEN` | | Shared token required by `hive-router create-key` when set. |
 | `SEED_CLIENT_API_KEY` | | Optional client key inserted on first start. |
 
@@ -426,7 +427,9 @@ browser-issuer tokens. The suite controller sets these; see
   client's address to Oathweave as `X-Forwarded-For`; Oathweave applies its
   per-address sign-in limits to that address only when Emberpath's address is in
   Oathweave's `TRUSTED_PROXY_IPS`, otherwise every sign-in through Emberpath counts
-  against Emberpath's own address. IAM `admin` and `super_admin` roles grant
+  against Emberpath's own address. Behind a reverse proxy, list it in
+  `EMBERPATH_TRUSTED_PROXIES` so the client, not the proxy, is throttled and forwarded.
+  IAM `admin` and `super_admin` roles grant
   full access. Other users need a permission for each request, reads included:
   for example `router:providers:read` or `router:providers:write`,
   `iam:users:read`, `memory:read`. Any `:write` grant also covers the matching
