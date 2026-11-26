@@ -2,19 +2,36 @@
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-26
+
 ### Upgrade notes
 
 - **The Oathweave password relay is off.** With `HIVE_ROUTER_AUTH_MODE=iam-oidc`,
   `POST /api/auth/login` and `POST /api/auth/reauthenticate` now answer `410 Gone`
-  (`PASSWORD_RELAY_DISABLED`) unless `EMBERPATH_PASSWORD_RELAY=true`. Hive suite installations
-  sign in through HiveXUI with Oathweave and are unaffected. A standalone installation whose
-  operators sign in to Emberpath with their Oathweave password must set
-  `EMBERPATH_PASSWORD_RELAY=true` to keep doing so; the relay is deprecated and is removed in the
-  next major release. OS mode (PAM, the default) is unchanged. Existing admin sessions and
-  `GET /api/auth/me` keep working.
-- No database migration: a Hive suite upgrade does not need `--allow-migrations` for Emberpath,
-  and a downgrade to 2.9.0 keeps working (it ignores the new settings).
-- Requires `@hivemagnus/hive-common` 0.10.0.
+  (`PASSWORD_RELAY_DISABLED`) unless `EMBERPATH_PASSWORD_RELAY=true`. OS mode (PAM, the
+  default) is unchanged. Existing admin sessions and `GET /api/auth/me` keep working.
+  - **Standalone `iam-oidc` installations** whose operators still sign in to Emberpath with
+    their Oathweave password must set `EMBERPATH_PASSWORD_RELAY=true` before upgrading to keep
+    doing so. The relay is deprecated (answers carry `Deprecation`, `Sunset: Mon, 31 May 2027`
+    and `Link: rel="deprecation"` headers) and is removed in the next major release; move those
+    operators to HiveXUI with Oathweave browser sign-in.
+  - **Hive suite installations** sign in through HiveXUI with Oathweave and get the setting from
+    the Hive suite controller (Hive 3.15.1 sets it on post-upgrade); nothing to set by hand.
+- **Step-up uses ID tokens.** Credential and policy changes still need a sign-in from the last
+  15 minutes; HiveXUI 0.14.0 and later confirm it through the new `POST /api/auth/step-up`
+  endpoints with a fresh Oathweave ID token instead of a password. Older HiveXUI releases used
+  the password re-authentication, which now answers `410` in `iam-oidc` mode unless the relay is
+  on, so upgrade HiveXUI alongside Emberpath. Step-ups are kept in memory: after an Emberpath
+  restart, step up again before the next credential or policy change.
+- New settings and defaults: `EMBERPATH_PASSWORD_RELAY` (`false`),
+  `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` (`300`, 1-3600) and `EMBERPATH_STEP_UP_AUDIENCES`
+  (`hivexui-emberpath`). Step-up needs Oathweave browser sign-in configured
+  (`OATHWEAVE_ISSUER` and `OATHWEAVE_JWKS_URL`); otherwise it answers `503`
+  `STEP_UP_UNAVAILABLE`.
+- No database migration: the schema is unchanged from 2.9.0, so a Hive suite upgrade does not
+  need `--allow-migrations` for Emberpath, and a downgrade to 2.9.0 keeps working (it ignores the
+  new settings; step-ups held in memory are lost on the restart anyway).
+- Requires `@hivemagnus/hive-common` 0.10.0 (bundled in the image).
 
 ### Added
 
