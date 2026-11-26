@@ -49,7 +49,8 @@ export function planResponseCache(route: RouteRequest, clientKeyId: string | und
   const directives = (route.headers['cache-control'] ?? '').toLowerCase().split(',').map((part) => part.trim());
   if (directives.includes('no-store')) return undefined;
   const bodyDigest = createHash('sha256').update(route.requestBodyText).digest('hex');
-  const key = createHash('sha256').update([clientKeyId, route.endpointKind, route.path, route.routingTrait ?? '', bodyDigest].join('\u0000')).digest('hex');
+  // None of these parts is secret; the body is represented by its digest.
+  const key = [clientKeyId, route.endpointKind, route.path, route.routingTrait ?? '', bodyDigest].join('\u0000');
   return { key, lookup: !directives.includes('no-cache'), store: true };
 }
 
