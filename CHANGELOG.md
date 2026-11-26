@@ -1,5 +1,42 @@
 # Changelog
 
+## [Unreleased]
+
+### Upgrade notes
+
+- **The Oathweave password relay is off.** With `HIVE_ROUTER_AUTH_MODE=iam-oidc`,
+  `POST /api/auth/login` and `POST /api/auth/reauthenticate` now answer `410 Gone`
+  (`PASSWORD_RELAY_DISABLED`) unless `EMBERPATH_PASSWORD_RELAY=true`. Hive suite installations
+  sign in through HiveXUI with Oathweave and are unaffected. A standalone installation whose
+  operators sign in to Emberpath with their Oathweave password must set
+  `EMBERPATH_PASSWORD_RELAY=true` to keep doing so; the relay is deprecated and is removed in the
+  next major release. OS mode (PAM, the default) is unchanged. Existing admin sessions and
+  `GET /api/auth/me` keep working.
+- No database migration: a Hive suite upgrade does not need `--allow-migrations` for Emberpath,
+  and a downgrade to 2.9.0 keeps working (it ignores the new settings).
+- Requires `@hivemagnus/hive-common` 0.10.0.
+
+### Added
+
+- `POST /api/auth/step-up/challenge` and `POST /api/auth/step-up {"idToken"}`: confirm a recent
+  sign-in with a fresh Oathweave ID token instead of a password. The challenge hands out a
+  single-use nonce for the authorization request (`prompt=login` or `max_age`); the ID token must
+  carry it, and its `auth_time` must not be older than the challenge. It is verified with HiveCommon's recent-authentication check (signature,
+  issuer, an audience in `EMBERPATH_STEP_UP_AUDIENCES`, default `hivexui-emberpath`, lifetime,
+  the caller's subject and session, and `auth_time` within `EMBERPATH_STEP_UP_MAX_AGE_SECONDS`,
+  default 300). The session's credential and policy changes then count from that `auth_time`,
+  with the same 15-minute rule as before. Refusals are `401` `REAUTH_REQUIRED`, `REAUTH_STALE` or
+  `REAUTH_INVALID` with a `reason`.
+- `EMBERPATH_PASSWORD_RELAY`, `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` and
+  `EMBERPATH_STEP_UP_AUDIENCES` settings.
+
+### Deprecated
+
+- The `iam-oidc` password relay of `POST /api/auth/login` and `POST /api/auth/reauthenticate`
+  (off by default, see above): answered with `Deprecation`, `Sunset` and
+  `Link: rel="deprecation"` headers in that mode and described as deprecated in the OpenAPI
+  document. Removed in the next major release.
+
 ## [2.9.0] - 2026-11-26
 
 ### Upgrade notes

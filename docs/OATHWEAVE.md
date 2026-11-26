@@ -35,3 +35,65 @@ proxy/coordinator paths, even if an operator mistakenly grants broad permissions
 Use each owning product API. Suite lifecycle operations belong to Hive/Magnus.
 Native compatibility paths remain available. HiveXUI is the only UI; Emberpath serves
 no UI of its own.
+
+## Step-up with an ID token
+
+Credential and policy changes (`/api/client-keys`, `/api/iam/clients`, `/api/iam/roles`,
+`/api/iam/password-policy`, `/api/hive/actors`, `/api/hive/upgrades` writes) need a sign-in from
+the last 15 minutes and otherwise answer `403` with `STEP_UP_REQUIRED`. For a bearer token that
+is its `auth_time`. To confirm a sign-in without a password:
+
+1. Start a step-up. The answer holds a single-use `nonce` (valid for 10 minutes), when the
+   re-authentication started, the window and the accepted clients:
+
+   ```http
+   POST /api/auth/step-up/challenge
+   Authorization: Bearer <the caller's Emberpath access token>
+   ```
+
+   ```json
+   {"nonce": "...", "startedAt": "...", "expiresIn": 600, "maxAgeSeconds": 300, "audiences": ["hivexui-emberpath"]}
+   ```
+
+2. Ask Oathweave for a fresh authorization with that nonce: `prompt=login` (or `max_age`), PKCE,
+   for one of the `audiences` clients, and exchange the code.
+3. Send the ID token:
+
+   ```http
+   POST /api/auth/step-up
+   Authorization: Bearer <an Emberpath access token of the same Oathweave session>
+   Content-Type: application/json
+
+   {"idToken": "<ID token>"}
+   ```
+
+Emberpath checks it with HiveCommon's `createRecentAuthenticationVerifier`: RS256 against
+`OATHWEAVE_JWKS_URL`, issuer `OATHWEAVE_ISSUER`, an audience in `EMBERPATH_STEP_UP_AUDIENCES`
+(default `hivexui-emberpath`), a lifetime of at most 15 minutes, the `nonce` of a challenge this
+user started (used up by the attempt), `sub` equal to the caller's Oathweave subject and `sid`
+equal to the caller's Oathweave session, and `auth_time` at most
+`EMBERPATH_STEP_UP_MAX_AGE_SECONDS` (default 300) old and not earlier than the challenge (30 s of
+clock tolerance): a forced sign-in must be new. An access token is never accepted as an
+ID token. The answer is `{"ok": true, "authTime": "...", "recentUntil": "..."}`; that session's
+credential and policy changes then count from `authTime` for 15 minutes. A refused proof is
+`401` with `error` `REAUTH_REQUIRED`, `REAUTH_STALE` or `REAUTH_INVALID` and a `reason`; `503`
+means Oathweave is not configured (`STEP_UP_UNAVAILABLE`) or its keys are unavailable
+(`REAUTH_UNAVAILABLE`). Step-ups are kept in memory: after a restart, step up again. A session
+signed in with the deprecated password sign-in can step up the same way when its account is
+linked to the Oathweave identity (`EMBERPATH_OATHWEAVE_IDENTITIES_JSON`) or was signed in through
+Oathweave.
+
+## Password sign-in is retired
+
+In `iam-oidc` mode, `POST /api/auth/login` and `POST /api/auth/reauthenticate` took a person's
+Oathweave username and password and relayed them to Oathweave. Emberpath no longer handles
+Oathweave passwords: in that mode both are off by default and answer `410 Gone` with `{"error": "PASSWORD_RELAY_DISABLED", "stepUp": "/api/auth/step-up", "docs": ...}`.
+Sign in through HiveXUI with Oathweave browser sign-in, and confirm sensitive actions with
+[step-up](#step-up-with-an-id-token).
+
+A standalone installation that has no Oathweave browser sign-in can keep the relay for now with
+`EMBERPATH_PASSWORD_RELAY=true`. It is deprecated (`Deprecation` and `Sunset` headers on every
+answer in `iam-oidc` mode) and is removed in the next major release.
+
+OS mode (`HIVE_ROUTER_AUTH_MODE=os`, the standalone default) is not a relay: it checks the
+operator's OS password locally through PAM, and its sign-in and re-authentication are unchanged.
