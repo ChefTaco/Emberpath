@@ -348,6 +348,7 @@ directory. Variables with no default are optional unless marked **required**.
 | `EMBERPATH_API_KEY_CACHE_TTL_MS` | `60000` | A client key that passed its scrypt check is matched by its SHA-256 digest for this long, so the slow check runs about once a minute per key instead of on every request. The key's row is still read on every request: disabling, deleting, expiring or rotating a key applies at once. `0` turns the cache off. |
 | `EMBERPATH_KEY_LAST_USED_INTERVAL_MS` | `60000` | A key's `lastUsedAt` is written at most this often (so it can be up to this much behind). `0` writes it on every request. |
 | `EMBERPATH_MODELS_CACHE_TTL_MS` | `5000` | `GET /v1/models` keeps the live model list of each provider without stored models this long, and concurrent calls share one upstream request. A provider whose settings change is asked again at once. `0` asks on every call. |
+
 ### Response cache (optional)
 
 | Variable | Default | Description |
