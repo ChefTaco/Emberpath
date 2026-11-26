@@ -71,6 +71,7 @@ import { safeJsonParse } from '../utils/json.js';
 import { resolveRoute } from '../routing/service.js';
 import { resolveAdaptiveScores, ADAPTIVE_SETTING_KEY } from '../routing/adaptive.js';
 import { parseRoutingObjectiveConfig, loadRoutingObjectiveConfig, ROUTING_OBJECTIVE_SETTING_KEY } from '../routing/objective.js';
+import { lastUsedWrites } from '../security/api-auth.js';
 import { computeClientKeyUsage, quotaLedger, evaluateQuota, readClientKeyQuota } from '../security/quota.js';
 import {
   authorizeSecurityExporterToken,
@@ -1539,6 +1540,8 @@ async function rotateActor(context: AdminContext): Promise<Response> {
 async function rotateClientKey(id: string): Promise<{ safeKey: Omit<ClientApiKey, 'keyHash'>; apiKey: string }> {
   const apiKey = generateOpenAiStyleApiKey();
   const updated = await prisma.clientApiKey.update({ where: { id }, data: { keyPrefix: apiKey.slice(0, 8), keyHash: hashValue(apiKey), lastUsedAt: null } });
+  // The new key's first use records lastUsedAt again.
+  lastUsedWrites.forget(id);
   return { safeKey: sanitizeClientApiKey(updated), apiKey };
 }
 

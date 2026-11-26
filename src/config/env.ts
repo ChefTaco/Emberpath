@@ -202,6 +202,13 @@ export const envSchema = z.object({
   CAPTURE_BINARY_MEDIA: booleanStringSchema,
   CAPTURE_REQUEST_BODIES: booleanStringSchema.prefault('false'),
   CAPTURE_RESPONSE_BODIES: booleanStringSchema.prefault('false'),
+  // A client key that passed its (slow, scrypt) check is matched by digest for this long; the
+  // key's row is still read on every request, so disabling or rotating it applies at once.
+  EMBERPATH_API_KEY_CACHE_TTL_MS: z.coerce.number().int().min(0).max(3_600_000).default(60_000),
+  // A client key's lastUsedAt is written at most this often (0: on every request).
+  EMBERPATH_KEY_LAST_USED_INTERVAL_MS: z.coerce.number().int().min(0).max(86_400_000).default(60_000),
+  // GET /v1/models keeps a provider's live model list this long (0: ask on every call).
+  EMBERPATH_MODELS_CACHE_TTL_MS: z.coerce.number().int().min(0).max(3_600_000).default(5_000),
 }).transform((env) => {
   const tls = Boolean(env.TLS_CERT_PATH && env.TLS_KEY_PATH);
   const scheme = tls ? 'https' : 'http';
