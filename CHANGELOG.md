@@ -2,21 +2,6 @@
 
 ## [Unreleased]
 
-### Added
-
-- Per-key rate and concurrency limits in the key's `quota` metadata: `requestsPerMinute`
-  and `tokensPerMinute` (rolling 60 seconds, from the reservation ledger, `429` with
-  `retry-after: 60`) and `maxInFlight` (requests running at once, streams included, per
-  process). One runaway key can no longer fill a provider's slots for every other key.
-- Per-key USD budgets: `quota.dailyCostUsd` and `quota.monthlyCostUsd` (UTC) stop a key once
-  its spend from operator-declared provider prices reaches the budget. Requests without a
-  known cost count as nothing. `GET /api/client-keys/:id/usage` reports `dayCostUsd` and
-  `monthCostUsd` and warns at `warnAtPercent`.
-- Per-key model and provider allowlists: `allowedModels` (names or `prefix*`) and
-  `allowedProviders` (slugs or IDs) in the key's metadata are enforced on every inference
-  route, including `/v1/decisions`, and filter `GET /v1/models`. A refused request gets `403`
-  and a `DENIED` trace.
-
 ### Upgrade notes
 
 - Behind a reverse proxy that is not on the same host (such as Hive's ingress), set
@@ -41,6 +26,18 @@
 
 ### Added
 
+- Per-key rate and concurrency limits in the key's `quota` metadata: `requestsPerMinute`
+  and `tokensPerMinute` (rolling 60 seconds, from the reservation ledger, `429` with
+  `retry-after: 60`) and `maxInFlight` (requests running at once, streams included, per
+  process). One runaway key can no longer fill a provider's slots for every other key.
+- Per-key USD budgets: `quota.dailyCostUsd` and `quota.monthlyCostUsd` (UTC) stop a key once
+  its spend from operator-declared provider prices reaches the budget. Requests without a
+  known cost count as nothing. `GET /api/client-keys/:id/usage` reports `dayCostUsd` and
+  `monthCostUsd` and warns at `warnAtPercent`.
+- Per-key model and provider allowlists: `allowedModels` (names or `prefix*`) and
+  `allowedProviders` (slugs or IDs) in the key's metadata are enforced on every inference
+  route, including `/v1/decisions`, and filter `GET /v1/models`. A refused request gets `403`
+  and a `DENIED` trace.
 - `EMBERPATH_TRUSTED_PROXIES` (default `loopback`): the admin listener reads the client
   address from `X-Forwarded-For`, right to left, when the socket peer is a listed proxy. The
   sign-in and re-authentication throttles, the admin session's recorded address and the
