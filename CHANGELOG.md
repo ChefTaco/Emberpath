@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- CI runs the gates on Node 24 and on Node 26, the runtime major of the published image.
+- Every third-party GitHub Action in CI and in the image release workflow is pinned by
+  commit SHA (checkout and setup-node move to v7).
+
 ## [2.7.0] - 2026-11-26
 
 ### Upgrade notes
