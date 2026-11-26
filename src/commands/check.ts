@@ -7,7 +7,7 @@ import { packageInfo } from '../config/paths.js';
 import { resolveSqlitePath } from '../storage/sqlite-path.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
 import { requestServiceHealth } from '../contracts/service-health.js';
-import { unverifiedJwtExpiry } from '../security/hivemem-credential.js';
+import { unverifiedJwtExpiry } from '../security/oathweave-service-token.js';
 
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 

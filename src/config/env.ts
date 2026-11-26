@@ -1,5 +1,6 @@
 import { config as loadDotEnv } from 'dotenv';
 import { DEFAULT_TRUSTED_PROXIES, isValidTrustedProxies, TRUSTED_PROXIES_ERROR } from '../security/client-address.js';
+import { oathweaveTokenUrl, oathweaveTokenUrlProblem } from '../security/oathweave-service-token.js';
 import { join, resolve } from 'node:path';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { z } from 'zod';
@@ -352,8 +353,16 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
     const missing = env.EMBERPATH_HIVEMEM_CLIENT_ID ? 'EMBERPATH_HIVEMEM_CLIENT_SECRET' : 'EMBERPATH_HIVEMEM_CLIENT_ID';
     add(missing, `${missing} is not set. Set EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET together to the Oathweave machine client Emberpath uses for HiveMem, or neither.`);
   }
-  if (env.EMBERPATH_HIVEMEM_CLIENT_ID && env.NODE_ENV === 'production' && new URL(env.EMBERPATH_HIVEMEM_TOKEN_URL).protocol !== 'https:') {
-    add('EMBERPATH_HIVEMEM_TOKEN_URL', 'EMBERPATH_HIVEMEM_TOKEN_URL must use HTTPS in production, because Emberpath sends its client secret there. Point it, or HIVE_IAM_INTERNAL_URL, at the Oathweave HTTPS endpoint.');
+  // Emberpath sends Oathweave client secrets (and, for sign-in, passwords) to these endpoints,
+  // so they must be HTTPS; plain HTTP is accepted only for a loopback address. Values are
+  // never echoed: a URL may carry credentials.
+  const hiveMemTokenUrlProblem = env.EMBERPATH_HIVEMEM_CLIENT_ID ? oathweaveTokenUrlProblem(env.EMBERPATH_HIVEMEM_TOKEN_URL) : undefined;
+  if (hiveMemTokenUrlProblem) {
+    add('EMBERPATH_HIVEMEM_TOKEN_URL', `EMBERPATH_HIVEMEM_TOKEN_URL ${hiveMemTokenUrlProblem}, because Emberpath sends its HiveMem client secret there. Point it, or HIVE_IAM_INTERNAL_URL, at the Oathweave HTTPS endpoint (for example https://oathweave:4200/api/v1/oauth/token) and trust its certificate with HIVE_ROUTER_IAM_CA_CERT_PATH or NODE_EXTRA_CA_CERTS.`);
+  }
+  const iamTokenUrlProblem = env.HIVE_ROUTER_IAM_CLIENT_SECRET ? oathweaveTokenUrlProblem(oathweaveTokenUrl(env.HIVE_IAM_INTERNAL_URL)) : undefined;
+  if (iamTokenUrlProblem) {
+    add('HIVE_IAM_INTERNAL_URL', `HIVE_IAM_INTERNAL_URL ${iamTokenUrlProblem} while HIVE_ROUTER_IAM_CLIENT_SECRET is set, because Emberpath sends that client secret and sign-in passwords there. Point it at the Oathweave HTTPS endpoint (for example https://oathweave:4200) and trust its certificate with HIVE_ROUTER_IAM_CA_CERT_PATH or NODE_EXTRA_CA_CERTS.`);
   }
   if (env.HIVE_ROUTER_AUTH_MODE === 'iam-oidc' && !env.HIVE_ROUTER_IAM_CLIENT_SECRET) {
     add('HIVE_ROUTER_IAM_CLIENT_SECRET', 'HIVE_ROUTER_IAM_CLIENT_SECRET is required when HIVE_ROUTER_AUTH_MODE=iam-oidc. Set it to the hive-router client secret registered in Hive IAM (at least 24 characters), or use HIVE_ROUTER_AUTH_MODE=os.');

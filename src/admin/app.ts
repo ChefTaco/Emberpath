@@ -30,7 +30,7 @@ import {
 import type { AppVariables } from '../types/app.js';
 import { requestIdMiddleware } from '../utils/request.js';
 import { authenticateAdmin, isMfaRequired, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession } from '../security/admin-auth.js';
-import { requestHiveMemServiceToken, requestIamClientCredentialsToken } from '../security/iam-oidc.js';
+import { createOathweaveServiceToken, oathweaveTokenUrl, type OathweaveServiceToken, type OathweaveTokenEvent } from '../security/oathweave-service-token.js';
 import { createHiveMemCredential, type HiveMemCredential } from '../security/hivemem-credential.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
 import { decryptText, digestText, encryptText, generateOpenAiStyleApiKey, hashValue, maskSecret, safeEqualText } from '../security/crypto.js';
@@ -261,8 +261,6 @@ const HOP_BY_HOP_HEADERS = new Set([
   "upgrade",
 ]);
 
-let cachedIamProxyToken: { accessToken: string; expiresAtMs: number } | null = null;
-
 /** The admin client's address: the socket peer, or behind a trusted proxy its X-Forwarded-For. */
 function requestClientIp(context: Context): Promise<string | undefined> {
   return clientAddress(context, loadEnv().EMBERPATH_TRUSTED_PROXIES);
@@ -296,23 +294,37 @@ function buildProxyRequestHeaders(request: Request, targetUrl: URL, requestId?: 
   return headers;
 }
 
+function logServiceTokenEvent(name: string): (event: OathweaveTokenEvent) => void {
+  return (event) => event.type === 'refreshed'
+    ? log('debug', `${name} refreshed`, { expiresAt: event.expiresAt === null ? null : new Date(event.expiresAt).toISOString() })
+    : log('warn', `${name} refresh failed`, { reason: event.reason });
+}
+
+let iamProxyTokenState: { env: Env; token: OathweaveServiceToken | null } | null = null;
+
+/** The Router's own Oathweave client token for the IAM proxy, one per loaded configuration. */
+function iamProxyToken(): OathweaveServiceToken | null {
+  const env = loadEnv();
+  if (iamProxyTokenState?.env !== env) {
+    iamProxyTokenState = {
+      env,
+      token: env.HIVE_ROUTER_IAM_CLIENT_SECRET
+        ? createOathweaveServiceToken({
+            tokenUrl: oathweaveTokenUrl(env.HIVE_IAM_INTERNAL_URL),
+            clientId: env.HIVE_ROUTER_IAM_CLIENT_ID,
+            clientSecret: env.HIVE_ROUTER_IAM_CLIENT_SECRET,
+            scope: env.HIVE_ROUTER_IAM_PROXY_SCOPES,
+            env,
+            onEvent: logServiceTokenEvent('IAM proxy token'),
+          })
+        : null,
+    };
+  }
+  return iamProxyTokenState.token;
+}
+
 async function getIamProxyAccessToken(): Promise<string | null> {
-  const now = Date.now();
-  if (cachedIamProxyToken && cachedIamProxyToken.expiresAtMs - 30_000 > now) {
-    return cachedIamProxyToken.accessToken;
-  }
-
-  const token = await requestIamClientCredentialsToken(loadEnv());
-  if (!token) {
-    cachedIamProxyToken = null;
-    return null;
-  }
-
-  cachedIamProxyToken = {
-    accessToken: token.accessToken,
-    expiresAtMs: now + Math.max(30, token.expiresIn - 30) * 1000,
-  };
-  return cachedIamProxyToken.accessToken;
+  return (await iamProxyToken()?.token()) ?? null;
 }
 
 function buildProxyResponseHeaders(headers: IncomingMessage["headers"]): Headers {
@@ -412,24 +424,33 @@ async function iamOperatorHeader(context: Context<{ Variables: AppVariables }>):
   });
 }
 
+/** Calls Oathweave with the Router's client token. A refused token is renewed and the call retried once. */
 async function requestIamServiceJson(path: string, requestId: string, body?: unknown, method?: string, operator?: string): Promise<ServiceJsonResult | null> {
   const env = loadEnv();
-  const accessToken = await getIamProxyAccessToken();
-  if (!accessToken) return null;
   const targetUrl = new URL(`api/v1/${path.replace(/^\/+/, '')}`, trimSlash(env.HIVE_IAM_INTERNAL_URL) + '/');
-  return requestServiceJson(targetUrl, {
-    method: method ?? (typeof body === 'undefined' ? 'GET' : 'POST'),
-    body,
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      'x-request-id': requestId,
-      'x-hive-request-id': requestId,
-      // Oathweave refuses writes made with the Router's token unless they name the operator.
-      ...(operator ? { 'x-hive-operator': operator } : {}),
-    },
-    allowInsecureTls: env.HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS,
-    tls: iamTlsOptions(targetUrl, env),
-  });
+  for (let attempt = 0; ; attempt += 1) {
+    const accessToken = await getIamProxyAccessToken();
+    if (!accessToken) return null;
+    const response = await requestServiceJson(targetUrl, {
+      method: method ?? (typeof body === 'undefined' ? 'GET' : 'POST'),
+      body,
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'x-request-id': requestId,
+        'x-hive-request-id': requestId,
+        // Oathweave refuses writes made with the Router's token unless they name the operator.
+        ...(operator ? { 'x-hive-operator': operator } : {}),
+      },
+      allowInsecureTls: env.HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS,
+      tls: iamTlsOptions(targetUrl, env),
+    });
+    // Oathweave refuses an unauthenticated request before acting, so one retry is safe.
+    if (response.status === 401) {
+      iamProxyToken()?.reject(accessToken);
+      if (attempt === 0) continue;
+    }
+    return response;
+  }
 }
 
 async function requestIamJson(path: string, requestId: string): Promise<unknown> {
@@ -449,12 +470,17 @@ export function memoryCredential(): HiveMemCredential {
     memoryCredentialState = {
       env,
       credential: createHiveMemCredential({
-        serviceConfigured: Boolean(env.EMBERPATH_HIVEMEM_CLIENT_ID && env.EMBERPATH_HIVEMEM_CLIENT_SECRET),
-        fetchServiceToken: () => requestHiveMemServiceToken(env),
+        service: env.EMBERPATH_HIVEMEM_CLIENT_ID && env.EMBERPATH_HIVEMEM_CLIENT_SECRET
+          ? createOathweaveServiceToken({
+              tokenUrl: env.EMBERPATH_HIVEMEM_TOKEN_URL,
+              clientId: env.EMBERPATH_HIVEMEM_CLIENT_ID,
+              clientSecret: env.EMBERPATH_HIVEMEM_CLIENT_SECRET,
+              scope: env.EMBERPATH_HIVEMEM_SCOPE,
+              env,
+              onEvent: logServiceTokenEvent('HiveMem service credential'),
+            })
+          : undefined,
         staticToken: env.HIVE_ROUTER_MEMORY_PROXY_TOKEN,
-        onEvent: (event) => event.type === 'refreshed'
-          ? log('debug', 'HiveMem service credential refreshed', { expiresAt: new Date(event.expiresAt).toISOString() })
-          : log('warn', 'HiveMem service credential refresh failed', { reason: event.reason }),
       }),
     };
   }

@@ -62,13 +62,6 @@ export interface IamSignInOptions {
   clientIp?: string | undefined;
 }
 
-export interface IamClientCredentialsToken {
-  accessToken: string;
-  expiresIn: number;
-  tokenType: string;
-  scope?: string;
-}
-
 interface HttpResult {
   status: number;
   headers: IncomingMessage['headers'];
@@ -258,56 +251,5 @@ async function completeCodeFlow(
     roles: user.roles ?? loginBody.user?.roles ?? [],
     permissions: user.permissions ?? loginBody.user?.permissions ?? [],
     ...(user.email ? { email: user.email } : {}),
-  };
-}
-
-export async function requestIamClientCredentialsToken(env: Env = loadEnv()): Promise<IamClientCredentialsToken | null> {
-  if (!env.HIVE_ROUTER_IAM_CLIENT_SECRET) return null;
-
-  const form = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: env.HIVE_ROUTER_IAM_CLIENT_ID,
-    client_secret: env.HIVE_ROUTER_IAM_CLIENT_SECRET,
-    scope: env.HIVE_ROUTER_IAM_PROXY_SCOPES,
-  });
-  const token = await requestUrl(endpoint(env.HIVE_IAM_INTERNAL_URL, '/api/v1/oauth/token'), {
-    method: 'POST',
-    env,
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: form.toString(),
-  });
-  const tokenBody = parseJson(oauthTokenSchema, token);
-  if (!tokenBody?.access_token) return null;
-
-  return {
-    accessToken: tokenBody.access_token,
-    expiresIn: tokenBody.expires_in ?? 300,
-    tokenType: tokenBody.token_type ?? 'Bearer',
-    ...(tokenBody.scope ? { scope: tokenBody.scope } : {}),
-  };
-}
-
-/** A short-lived Oathweave service token for HiveMem (client_credentials, audience hivemem). */
-export async function requestHiveMemServiceToken(env: Env = loadEnv()): Promise<IamClientCredentialsToken | null> {
-  if (!env.EMBERPATH_HIVEMEM_CLIENT_ID || !env.EMBERPATH_HIVEMEM_CLIENT_SECRET) return null;
-  const form = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: env.EMBERPATH_HIVEMEM_CLIENT_ID,
-    client_secret: env.EMBERPATH_HIVEMEM_CLIENT_SECRET,
-    scope: env.EMBERPATH_HIVEMEM_SCOPE,
-  });
-  const token = await requestUrl(new URL(env.EMBERPATH_HIVEMEM_TOKEN_URL), {
-    method: 'POST',
-    env,
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: form.toString(),
-  });
-  const tokenBody = parseJson(oauthTokenSchema, token);
-  if (!tokenBody?.access_token) return null;
-  return {
-    accessToken: tokenBody.access_token,
-    expiresIn: tokenBody.expires_in ?? 300,
-    tokenType: tokenBody.token_type ?? 'Bearer',
-    ...(tokenBody.scope ? { scope: tokenBody.scope } : {}),
   };
 }

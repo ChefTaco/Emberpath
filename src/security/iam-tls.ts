@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { ConnectionOptions } from 'node:tls';
 import type { Env } from '../config/env.js';
 
-type IamTlsEnv = Pick<
+export type IamTlsEnv = Pick<
   Env,
   'NODE_ENV' | 'HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS' | 'HIVE_ROUTER_IAM_CA_CERT_PATH'
 >;
@@ -22,20 +22,24 @@ function readPinnedCa(path: string): Buffer {
   return ca;
 }
 
-export function iamTlsOptions(url: URL, env: IamTlsEnv): ConnectionOptions {
-  if (url.protocol !== 'https:') return {};
-  if (env.HIVE_ROUTER_IAM_CA_CERT_PATH) {
-    return {
-      rejectUnauthorized: true,
-      ca: readPinnedCa(env.HIVE_ROUTER_IAM_CA_CERT_PATH),
-    };
-  }
+/**
+ * The CA certificate (PEM) trusted for Oathweave HTTPS, or undefined to use the system trust
+ * store (with NODE_EXTRA_CA_CERTS). Throws for the retired insecure-TLS switch.
+ */
+export function iamTrustedCa(env: IamTlsEnv): Buffer | undefined {
+  if (env.HIVE_ROUTER_IAM_CA_CERT_PATH) return readPinnedCa(env.HIVE_ROUTER_IAM_CA_CERT_PATH);
   if (env.HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS) {
     throw new Error(
       'HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS is unsupported; use HIVE_ROUTER_IAM_CA_CERT_PATH to trust the IAM certificate',
     );
   }
-  return { rejectUnauthorized: true };
+  return undefined;
+}
+
+export function iamTlsOptions(url: URL, env: IamTlsEnv): ConnectionOptions {
+  if (url.protocol !== 'https:') return {};
+  const ca = iamTrustedCa(env);
+  return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
 }
 
 export function hiveMemTlsOptions(url: URL, env: HiveMemTlsEnv): ConnectionOptions {
