@@ -2,7 +2,30 @@
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Oathweave token endpoints must be HTTPS; plain HTTP is accepted only for a loopback address
+  (`127.0.0.0/8`, `::1`, `localhost`), in every `NODE_ENV` (before, only production required
+  HTTPS, and only for the HiveMem client). Startup and `hive-router check` now stop with a
+  message naming the setting when `EMBERPATH_HIVEMEM_CLIENT_ID` is set and
+  `EMBERPATH_HIVEMEM_TOKEN_URL` (default `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token`) is plain
+  HTTP off loopback, or when `HIVE_ROUTER_IAM_CLIENT_SECRET` is set and `HIVE_IAM_INTERNAL_URL`
+  is. Point them at Oathweave over HTTPS (in the Hive suite, `https://oathweave:4200`, which
+  suite installs already use) and trust its certificate with `HIVE_ROUTER_IAM_CA_CERT_PATH` or
+  `NODE_EXTRA_CA_CERTS`. A standalone Oathweave container serving plain HTTP on a Docker network
+  needs TLS first (see the updated container example in the README). No database migration;
+  rolling back to 2.8.0 needs no change either.
+
 ### Changed
+
+- The HiveMem service credential and the IAM proxy's own client token now come from HiveCommon's
+  Oathweave service-token provider (`createServiceTokenProvider`): fetched on first use, shared
+  between concurrent callers, refreshed before expiry while the current token keeps serving,
+  backed off after a failure, and the token response is size- and time-bounded with no redirects
+  followed. `HIVE_ROUTER_IAM_CA_CERT_PATH`, when set, stays the only CA trusted for those
+  requests. The IAM proxy token now also renews itself when Oathweave refuses it (one retry for
+  Emberpath's own IAM reads and writes), and backs off instead of fetching a token per request
+  when a freshly issued one is refused, as the HiveMem credential already did.
 
 - Dependabot now opens one grouped weekly pull request (group `hivemagnus`) for `@hivemagnus/*` package updates, so suite package bumps arrive together. Repository configuration only; nothing to do when upgrading.
 

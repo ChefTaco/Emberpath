@@ -12,8 +12,6 @@
 import { SERVICE_TOKEN_EXPIRY_MARGIN_MS } from '@hivemagnus/hive-common/oathweave';
 import { unverifiedJwtExpiry, type OathweaveServiceToken } from './oathweave-service-token.js';
 
-export { unverifiedJwtExpiry } from './oathweave-service-token.js';
-
 export type HiveMemCredentialSource = 'oathweave' | 'static';
 
 export interface HiveMemAuthorization {
