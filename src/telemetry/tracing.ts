@@ -66,6 +66,7 @@ export interface ProviderAttemptData {
 
 export type TraceEventInput =
   | { type: 'provider.skipped'; phase: 'routing'; message: string }
+  | { type: 'provider.skipped'; phase: 'execution'; message: string; data: { providerId: string; attempt: number; reason: 'queue_full' | 'queue_timeout' } }
   | { type: 'provider.failover'; phase: 'execution'; message: string; data: ProviderAttemptData }
   | { type: 'provider.stream_failover'; phase: 'execution'; message: string; data: ProviderAttemptData & { phase: string } }
   | { type: 'provider.error'; phase: 'execution'; message: string; data: ProviderAttemptData }

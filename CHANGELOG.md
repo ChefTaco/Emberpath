@@ -8,6 +8,21 @@
   `EMBERPATH_TRUSTED_PROXIES` to that proxy (an IP, CIDR range or host name) so admin sign-in
   throttling and the address forwarded to Oathweave use the real client instead of the proxy.
   The default `loopback` trusts `X-Forwarded-For` only from a proxy on the same host.
+- API clients now get only an allowlist of upstream response headers (content and retry
+  headers); the upstream `x-request-id` and `x-ratelimit-*` headers arrive renamed under
+  `x-emberpath-upstream-`, and headers such as `server`, `cf-ray` and
+  `openai-organization` are no longer relayed. Set
+  `EMBERPATH_UPSTREAM_RESPONSE_HEADERS=passthrough` to keep the old behaviour, or list extra
+  names in `EMBERPATH_UPSTREAM_RESPONSE_HEADER_ALLOW`.
+- A routing denial (`403`) no longer returns `route_decision`; the body is
+  `{"error": "<reason>"}` and the full decision stays on the trace.
+- Writes through the IAM proxy need IAM permissions: `/api/iam/groups` needs
+  `iam:groups:write`, `/api/iam/enrollments` `iam:sa:write` (reads `iam:sa:read`),
+  `/api/iam/tokens/introspect` `iam:tokens:introspect`, `/api/iam/tokens/revoke*`
+  `iam:sessions:revoke`, and any other IAM write `iam:admin:write`. Before, these fell through
+  to `router:admin:write`. Full-access roles and OS sign-in are unaffected.
+- Provider circuit breakers now forget failures older than one minute, so occasional
+  failures no longer add up to an open circuit.
 
 ### Added
 
@@ -17,6 +32,31 @@
   `X-Forwarded-For` sent to Oathweave and HiveMem use it; anything a caller wrote into the
   header ahead of the trusted hops is ignored. Before, all of these used the socket peer, so
   every client behind a proxy shared one sign-in throttle.
+
+### Fixed
+
+- A provider's circuit breaker counts failures in a rolling window
+  (`EMBERPATH_CIRCUIT_WINDOW_MS`, default 60 s) instead of until the next success, and has a
+  real half-open state: after the open period (`EMBERPATH_CIRCUIT_OPEN_MS`, default 30 s) one
+  trial request goes through while others skip the provider, and its result closes or reopens
+  the circuit. The threshold is `EMBERPATH_CIRCUIT_FAILURE_THRESHOLD` (default 3).
+- The wait for a provider's `concurrency` slot can be bounded: `EMBERPATH_PROVIDER_QUEUE_MAX`
+  caps the waiting requests and `EMBERPATH_PROVIDER_QUEUE_TIMEOUT_MS` the wait (both default
+  to `0`, no limit). A request turned away tries the next candidate provider without counting
+  against the busy provider's circuit. `/v1/decisions` requests that disconnect while waiting
+  now leave the queue too, and a provider whose `concurrency` changed gets a slot pool of the
+  new size.
+- A routing denial no longer returns the full routing decision (candidate providers, rule
+  names, observations) to the client key.
+- Admin writes to IAM groups, enrollments, tokens and other IAM routes need IAM permissions
+  instead of `router:admin:write`. The default `HIVE_ROUTER_IAM_PROXY_SCOPES` also asks for
+  `iam:groups:read` and `iam:groups:write`.
+- Upstream response headers are relayed from an allowlist (`EMBERPATH_UPSTREAM_RESPONSE_HEADERS`).
+- Ollama's native `/api/chat` and `/api/generate` accept `options.num_predict` (a positive
+  integer) as the explicit output maximum that token budgets require. Native routes that
+  generate nothing (`/api/tags`, `/api/ps`, `/api/show`, `/api/embed`, `/api/embeddings`,
+  `/api/pull`, and vLLM `/tokenize`, `/detokenize`, `/version`) no longer need one and reserve
+  only the request size.
 
 ### Changed
 

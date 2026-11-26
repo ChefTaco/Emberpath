@@ -45,6 +45,21 @@ describe('admin permission mapping', () => {
     expect(requiredPermissionForRequest('POST', '/api/hive/actors/user:abc/disable')).toBe('hive:actors:write');
   });
 
+  it('maps IAM group, enrollment, token and other IAM writes to IAM permissions, never a Router one', () => {
+    expect(requiredPermissionForRequest('GET', '/api/iam/groups')).toBe('iam:groups:read');
+    for (const [method, path] of [['POST', '/api/iam/groups'], ['PATCH', '/api/iam/groups/g1'], ['DELETE', '/api/iam/groups/g1'], ['POST', '/api/iam/groups/g1/members'], ['DELETE', '/api/iam/groups/g1/roles/r1']] as const) {
+      expect(requiredPermissionForRequest(method, path), `${method} ${path}`).toBe('iam:groups:write');
+    }
+    expect(requiredPermissionForRequest('GET', '/api/iam/enrollments')).toBe('iam:sa:read');
+    expect(requiredPermissionForRequest('POST', '/api/iam/enrollments')).toBe('iam:sa:write');
+    expect(requiredPermissionForRequest('POST', '/api/iam/tokens/introspect')).toBe('iam:tokens:introspect');
+    expect(requiredPermissionForRequest('POST', '/api/iam/tokens/revoke')).toBe('iam:sessions:revoke');
+    expect(requiredPermissionForRequest('POST', '/api/iam/oauth/clients')).toBe('iam:admin:write');
+    expect(hasAdminPermission(['router:admin:write'], requiredPermissionForRequest('POST', '/api/iam/groups')!)).toBe(false);
+    expect(hasAdminPermission(['router:admin:write'], requiredPermissionForRequest('POST', '/api/iam/oauth/x')!)).toBe(false);
+    expect(hasAdminPermission(['iam:*'], requiredPermissionForRequest('POST', '/api/iam/groups')!)).toBe(true);
+  });
+
   it('accepts only a recent, plausible operator authentication time for sensitive writes', () => {
     const now = Date.parse('2026-09-07T12:00:00Z');
     expect(hasRecentOperatorAuthentication(now - 14 * 60_000, now)).toBe(true);

@@ -7,7 +7,7 @@ import { withResolvedRouteModel } from '../routing/request-body.js';
 import { postJevDecision } from '../routing/jev-transport.js';
 import { addTraceEvent, type UsageSnapshot } from '../telemetry/tracing.js';
 import { failoverCounter } from '../telemetry/metrics.js';
-import { getSemaphore, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from '../api/provider-guards.js';
+import { abandonProviderTrial, enterProviderCircuit, getSemaphore, isCircuitOpen, markProviderFailure, ProviderSlotUnavailable, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from '../api/provider-guards.js';
 import { deadlineReached, retryTiming, sameProviderRetryDelay, upstreamRetryAfterMs } from '../api/retry-budget.js';
 import { JevResponseMismatch, translateJevResponse } from './jev-translate.js';
 import type { DecisionsPlanEntry } from './backends.js';
@@ -139,19 +139,28 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
       : { type: 'provider.error', phase: 'execution', message: failureError, data: { providerId, attempt, outcome: 'client_aborted', failover: false } });
     return { failureError, upstreamAttempts };
   };
-  for (const [index, entry] of entries.entries()) {
+  entries: for (const [index, entry] of entries.entries()) {
     if (route.signal?.aborted) break;
     const provider = entry.provider;
-    if (isCircuitOpen(provider.id)) {
+    if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
+    if (!enterProviderCircuit(provider.id)) {
       await addTraceEvent(traceId, { type: 'provider.skipped', phase: 'routing', message: `Provider ${provider.slug} skipped because its circuit is open` });
       continue;
     }
-    if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
     const semaphore = getSemaphore(provider);
     const attempts = shouldRetry(route) ? Math.max(1, provider.maxRetries + 1) : 1;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       let failure: { type: 'provider.failover' | 'provider.error'; message: string; status?: number; retryAfterMs?: number | undefined } | undefined;
-      await semaphore.acquire();
+      try {
+        await semaphore.acquire(route.signal);
+      } catch (error) {
+        abandonProviderTrial(provider.id);
+        if (!(error instanceof ProviderSlotUnavailable)) return clientDisconnected(provider.id, attempt, false);
+        // A saturated provider is not a failing one: leave its circuit alone and try the next.
+        failureError = `Provider ${provider.slug} is busy: ${error.message.toLowerCase()}`;
+        await addTraceEvent(traceId, { type: 'provider.skipped', phase: 'execution', message: failureError, data: { providerId: provider.id, attempt, reason: error.reason } });
+        continue entries;
+      }
       try {
         upstreamAttempts += 1;
         const outcome = entry.backend === 'openai' ? await attemptOpenAi(route, entry) : await attemptJev(route, entry);
@@ -174,7 +183,10 @@ export async function executeDecisionsPlan(route: RouteRequest, entries: Decisio
           };
         }
       } catch (error) {
-        if (route.signal?.aborted) return clientDisconnected(provider.id, attempt, false);
+        if (route.signal?.aborted) {
+          abandonProviderTrial(provider.id);
+          return clientDisconnected(provider.id, attempt, false);
+        }
         markProviderFailure(provider.id);
         failureError = error instanceof JevResponseMismatch ? error.message
           : error instanceof Error && error.name === 'TimeoutError' ? `Provider ${provider.slug} timed out`

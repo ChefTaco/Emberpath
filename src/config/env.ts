@@ -83,6 +83,8 @@ const defaultIamProxyScopes = [
   'iam:sa:delete',
   'iam:clients:read',
   'iam:clients:write',
+  'iam:groups:read',
+  'iam:groups:write',
   'iam:audit:read',
   'iam:sessions:revoke',
   'iam:system:login',
@@ -177,6 +179,20 @@ export const envSchema = z.object({
   // Proxies whose X-Forwarded-For names the admin client (sign-in throttling, session records,
   // the address forwarded to Oathweave and HiveMem): IPs, CIDRs, host names, loopback or none.
   EMBERPATH_TRUSTED_PROXIES: z.string().default(DEFAULT_TRUSTED_PROXIES).refine(isValidTrustedProxies, { error: TRUSTED_PROXIES_ERROR }),
+  // Per-provider wait queue for a concurrency slot: at most this many waiting requests and this
+  // long a wait (0 = no limit, the default). A request turned away tries the next candidate.
+  EMBERPATH_PROVIDER_QUEUE_MAX: z.coerce.number().int().min(0).max(1_000_000).default(0),
+  EMBERPATH_PROVIDER_QUEUE_TIMEOUT_MS: z.coerce.number().int().min(0).max(3_600_000).default(0),
+  // Circuit breaker: this many failures within the window open a provider's circuit for the
+  // open period; then one trial request decides whether it closes or opens again.
+  EMBERPATH_CIRCUIT_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(1_000).default(3),
+  EMBERPATH_CIRCUIT_WINDOW_MS: z.coerce.number().int().min(1_000).max(86_400_000).default(60_000),
+  EMBERPATH_CIRCUIT_OPEN_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(30_000),
+  // Upstream response headers relayed to API clients: `allowlist` (content and retry headers,
+  // plus the upstream request ID and rate limits renamed under x-emberpath-upstream-) or
+  // `passthrough` (every header except hop-by-hop ones and cookies, the 2.7.0 behaviour).
+  EMBERPATH_UPSTREAM_RESPONSE_HEADERS: z.enum(['allowlist', 'passthrough']).default('allowlist'),
+  EMBERPATH_UPSTREAM_RESPONSE_HEADER_ALLOW: z.string().default(''),
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrlSchema,
   PROMETHEUS_PREFIX: z.string().default('hive_router_'),
   DEFAULT_TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).default(7),

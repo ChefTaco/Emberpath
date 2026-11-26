@@ -9,12 +9,13 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { decodeInferenceBody } from './request-body.js';
+import { outputAllowance } from './output-allowance.js';
 import type { Context } from 'hono';
 import { ZodError } from 'zod';
 import type { AppVariables } from '../types/app.js';
 import { requestIdMiddleware } from '../utils/request.js';
 import { requireApiKey } from '../security/api-auth.js';
-import { redactHeaders, shouldCopyResponseHeader } from '../security/headers.js';
+import { clientResponseHeaderName, parseHeaderNameList, redactHeaders } from '../security/headers.js';
 import { listProviderRuntimes, getProviderAdapter } from '../providers/index.js';
 import type { EndpointKind, ProviderExecution, ProviderRuntime, RouteDecision, RouteRequest } from '../providers/types.js';
 import { resolveRoute } from '../routing/service.js';
@@ -28,7 +29,7 @@ import { log } from '../telemetry/logger.js';
 import { loadEnv } from '../config/env.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { registerHealthProbes } from '../status/health-probes.js';
-import { getSemaphore, holdUntilBodyDone, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
+import { abandonProviderTrial, enterProviderCircuit, getSemaphore, holdUntilBodyDone, isCircuitOpen, markProviderFailure, ProviderSlotUnavailable, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
 import { deadlineReached, retrySignalFor, retryTiming, RETRY_HEADER, sameProviderRetryDelay, upstreamExhausted, upstreamRetryAfterMs } from './retry-budget.js';
 import { attemptDeadline, readInboundAttribution, type InboundAttribution } from '../telemetry/execution-attribution.js';
 import { decisionsError, decisionsRequestSchema, summarizeDecisionsRequest, type DecisionsErrorBody } from '../decisions-api/schema.js';
@@ -329,9 +330,11 @@ async function runExecutionWithFailover(
     return finish({ failureError: lastFailureError });
   };
 
-  for (const provider of candidateProviders) {
+  candidates: for (const provider of candidateProviders) {
     if (route.signal?.aborted) break;
-    if (isCircuitOpen(provider.id)) {
+    // Failover to a later candidate stops once the request's deadline has passed.
+    if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
+    if (!enterProviderCircuit(provider.id)) {
       await addTraceEvent(traceId, {
         type: 'provider.skipped',
         phase: 'routing',
@@ -339,8 +342,6 @@ async function runExecutionWithFailover(
       });
       continue;
     }
-    // Failover to a later candidate stops once the request's deadline has passed.
-    if (upstreamAttempts > 0 && deadlineReached(deadlineMs)) break;
 
     const adapter = getProviderAdapter(provider.kind);
     const semaphore = getSemaphore(provider);
@@ -350,8 +351,21 @@ async function runExecutionWithFailover(
       let failure: { type: 'provider.failover' | 'provider.stream_failover' | 'provider.error'; outcome: 'http_error' | 'stream_error' | 'network_error'; message: string; status?: number; retryAfterMs?: number | undefined; noRetry?: boolean } | undefined;
       try {
         await semaphore.acquire(route.signal);
-      } catch {
-        return clientDisconnected(provider, attempt, false);
+      } catch (error) {
+        if (!(error instanceof ProviderSlotUnavailable)) {
+          abandonProviderTrial(provider.id);
+          return clientDisconnected(provider, attempt, false);
+        }
+        // A saturated provider is not a failing one: leave its circuit alone and try the next.
+        abandonProviderTrial(provider.id);
+        lastFailureError = `Provider ${provider.slug} is busy: ${error.message.toLowerCase()}`;
+        await addTraceEvent(traceId, {
+          type: 'provider.skipped',
+          phase: 'execution',
+          message: lastFailureError,
+          data: { providerId: provider.id, attempt, reason: error.reason },
+        });
+        continue candidates;
       }
       // The slot is handed to the response body on success and released when it ends.
       let slotReleased = false;
@@ -421,7 +435,10 @@ async function runExecutionWithFailover(
           }
         }
       } catch (error) {
-        if (route.signal?.aborted) return clientDisconnected(provider, attempt, false);
+        if (route.signal?.aborted) {
+          abandonProviderTrial(provider.id);
+          return clientDisconnected(provider, attempt, false);
+        }
         markProviderFailure(provider.id);
         lastUpstreamExhausted = false;
         lastFailureError = error instanceof Error ? error.message : 'Unknown provider execution error';
@@ -470,15 +487,21 @@ async function runExecutionWithFailover(
   });
 }
 
+/** The upstream response headers the client is given (see `clientResponseHeaderName`). */
 function copyResponseHeaders(headers: Headers): Headers {
+  const env = loadEnv();
+  const policy = { mode: env.EMBERPATH_UPSTREAM_RESPONSE_HEADERS, extra: parseHeaderNameList(env.EMBERPATH_UPSTREAM_RESPONSE_HEADER_ALLOW) };
   const copied = new Headers();
   for (const [key, value] of headers.entries()) {
-    if (!shouldCopyResponseHeader(key)) {
-      continue;
-    }
-    copied.set(key, value);
+    const name = clientResponseHeaderName(key, policy);
+    if (name) copied.set(name, value);
   }
   return copied;
+}
+
+/** Headers recorded on the trace (redacted): every upstream header, then what the client got. */
+function traceResponseHeaders(upstream: Headers, sent: Headers): Record<string, string> {
+  return redactHeaders({ ...toHeaderObject(upstream), ...toHeaderObject(sent) });
 }
 
 /**
@@ -538,12 +561,12 @@ async function handleRouteExecution(
     const rawBody = route.requestBodyJson as Record<string, unknown> | undefined;
     const limits = readClientKeyQuota(clientKey.metadataJson);
     const hardTokenLimit = Boolean(limits.dailyTokens || limits.monthlyTokens);
-    const explicitMax = rawBody?.max_completion_tokens ?? rawBody?.max_tokens ?? rawBody?.max_output_tokens;
-    if (hardTokenLimit && endpointKind !== 'v1.embeddings' && (typeof explicitMax !== 'number' || !Number.isSafeInteger(explicitMax) || explicitMax <= 0 || route.modalities.some((mode) => mode !== 'text'))) return context.json({ error: 'Token budgets require a bounded text request with an explicit maximum output token count; multimodal accounting is unavailable' }, 400);
-    const maxOutput = Number(explicitMax ?? (endpointKind === 'v1.embeddings' ? 0 : 4096));
+    const allowance = outputAllowance(route);
+    if (hardTokenLimit && allowance.kind !== 'none' && (allowance.kind !== 'explicit' || route.modalities.some((mode) => mode !== 'text'))) return context.json({ error: 'Token budgets require a bounded text request with an explicit maximum output token count; multimodal accounting is unavailable' }, 400);
+    const maxOutput = allowance.kind === 'none' ? 0 : allowance.kind === 'explicit' ? allowance.tokens : 4096;
     const completions = Number(rawBody?.n ?? 1);
     if (!Number.isSafeInteger(completions) || completions < 1 || completions > 128) return context.json({ error: 'Invalid completion count' }, 400);
-    const tokenReservation = Buffer.byteLength(route.requestBodyText ?? "") + (Number.isSafeInteger(maxOutput) && maxOutput >= 0 ? maxOutput * completions : 4096);
+    const tokenReservation = Buffer.byteLength(route.requestBodyText ?? "") + maxOutput * completions;
     const quota = await reserveClientQuota(context, route, tokenReservation);
     if (quota instanceof Response) return quota;
     quotaReservationId = quota.reservationId;
@@ -596,7 +619,8 @@ async function handleRouteExecution(
       provider: 'denied',
       outcome: 'denied',
     });
-    return context.json({ error: decision.denialReason, route_decision: decision }, 403);
+    // The full decision (candidates, rules, observations) stays in the trace, not with the client.
+    return context.json({ error: decision.denialReason }, 403);
   }
 
   const deadlineMs = attemptDeadline(startedAt, loadEnv().EMBERPATH_REQUEST_DEADLINE_MS, attribution.execution);
@@ -669,7 +693,7 @@ async function handleRouteExecution(
         providerId: provider.id,
         providerKind: provider.kind,
         providerModel: execution.providerModel ?? decision.targetModel ?? route.model,
-        responseHeaders: redactHeaders(toHeaderObject(responseHeaders)),
+        responseHeaders: traceResponseHeaders(execution.response.headers, responseHeaders),
         usage,
         estimatedUsage: execution.usage === undefined && tracePayload.usage === undefined,
         responseBody: tracePayload.responseBody,
@@ -715,7 +739,7 @@ async function handleRouteExecution(
         providerId: provider.id,
         providerKind: provider.kind,
         providerModel: execution.providerModel ?? decision.targetModel ?? route.model,
-        responseHeaders: redactHeaders(toHeaderObject(responseHeaders)),
+        responseHeaders: traceResponseHeaders(execution.response.headers, responseHeaders),
         usage,
         estimatedUsage: execution.usage === undefined && streamUsage === undefined,
         responseBody: text,
@@ -762,7 +786,7 @@ async function handleRouteExecution(
     providerId: provider.id,
     providerKind: provider.kind,
     providerModel: execution.providerModel ?? decision.targetModel ?? route.model,
-    responseHeaders: redactHeaders(toHeaderObject(responseHeaders)),
+    responseHeaders: traceResponseHeaders(execution.response.headers, responseHeaders),
     usage,
     estimatedUsage: execution.usage === undefined,
     responseBody: responseText,
@@ -938,7 +962,7 @@ async function handleDecisionsExecution(context: Context<{ Variables: AppVariabl
     providerId: provider.id,
     providerKind: provider.kind,
     providerModel: entry.model,
-    responseHeaders: redactHeaders(toHeaderObject(responseHeaders)),
+    responseHeaders: traceResponseHeaders(execution.response.headers, responseHeaders),
     usage: execution.usage ?? estimateUsage(route, responseText),
     estimatedUsage: execution.usage === undefined,
     pricing: 'input-only',

@@ -980,6 +980,7 @@ function requiredReadPermission(path: string): string | null {
   if (path.startsWith('/api/iam/clients')) return 'iam:clients:read';
   if (path.startsWith('/api/iam/groups')) return 'iam:groups:read';
   if (path.startsWith('/api/iam/audit')) return 'iam:audit:read';
+  if (path.startsWith('/api/iam/enrollments')) return 'iam:sa:read';
   if (path.startsWith('/api/iam')) return 'iam:admin:read';
   if (path.startsWith('/api/memory')) return 'memory:read';
   if (path.startsWith('/api/hive/actors')) return 'hive:actors:read';
@@ -1006,6 +1007,12 @@ export function requiredPermissionForRequest(method: string, path: string): stri
   if (path.startsWith('/api/iam/sessions')) return 'iam:sessions:revoke';
   if (path.startsWith('/api/iam/system-users')) return verb === 'DELETE' ? 'iam:users:delete' : 'iam:users:write';
   if (path.startsWith('/api/iam/password-policy')) return 'iam:policy:write';
+  if (path.startsWith('/api/iam/groups')) return 'iam:groups:write';
+  if (path.startsWith('/api/iam/enrollments')) return 'iam:sa:write';
+  if (path.startsWith('/api/iam/tokens/introspect')) return 'iam:tokens:introspect';
+  if (path.startsWith('/api/iam/tokens/revoke')) return 'iam:sessions:revoke';
+  // Any other IAM write (OAuth, devices, WebAuthn, ...) needs an IAM permission, never a Router one.
+  if (path.startsWith('/api/iam')) return 'iam:admin:write';
   if (path === '/api/memory/search') return 'memory:read';
   if (path.startsWith('/api/memory')) return 'memory:write';
   if (path.startsWith('/api/hive/actors')) return 'hive:actors:write';

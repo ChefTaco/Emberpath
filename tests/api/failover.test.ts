@@ -180,7 +180,7 @@ describe('provider slots and budgets', () => {
       },
     });
     upstreams.set(PRIMARY, () => new Response(upstream, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
-    const slots = getSemaphore({ id: providerIds.primary, concurrency: 1 } as never);
+    const slots = getSemaphore(await prisma.provider.findUniqueOrThrow({ where: { id: providerIds.primary } }) as never);
 
     push('data: {"choices":[{"delta":{"content":"a"}}]}\n\n');
     const response = await chat({ stream: true });
@@ -198,7 +198,7 @@ describe('provider slots and budgets', () => {
     upstreams.set(PRIMARY, () => new Response(new ReadableStream<Uint8Array>({
       start(controller) { controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n')); },
     }), { status: 200, headers: { 'content-type': 'text/event-stream' } }));
-    const slots = getSemaphore({ id: providerIds.primary, concurrency: 1 } as never);
+    const slots = getSemaphore(await prisma.provider.findUniqueOrThrow({ where: { id: providerIds.primary } }) as never);
 
     const response = await chat({ stream: true });
     const reader = response.body!.getReader();
