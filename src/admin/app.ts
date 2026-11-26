@@ -16,7 +16,7 @@ import { MemoryWriteSchema } from '../contracts/memory-operations.js';
 import { ProviderKind, Prisma, type AdminUser, type ClientApiKey } from '../generated/prisma/client.js';
 import { Hono, type Context, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { getConnInfo } from '@hono/node-server/conninfo';
+import { clientAddress } from '../security/client-address.js';
 import { ZodError } from 'zod';
 import { existsSync } from 'node:fs';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
@@ -262,12 +262,9 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 let cachedIamProxyToken: { accessToken: string; expiresAtMs: number } | null = null;
 
-function socketClientIp(context: Context): string | undefined {
-  try {
-    return getConnInfo(context).remote.address;
-  } catch {
-    return undefined;
-  }
+/** The admin client's address: the socket peer, or behind a trusted proxy its X-Forwarded-For. */
+function requestClientIp(context: Context): Promise<string | undefined> {
+  return clientAddress(context, loadEnv().EMBERPATH_TRUSTED_PROXIES);
 }
 
 function buildProxyRequestHeaders(request: Request, targetUrl: URL, requestId?: string, clientIp?: string): Record<string, string> {
@@ -502,7 +499,7 @@ async function proxyHiveMemRequest(context: Context<{ Variables: AppVariables }>
   const targetUrl = new URL(incomingUrl.pathname + incomingUrl.search, trimSlash(env.HIVEMEM_INTERNAL_URL) + "/");
   const method = context.req.method.toUpperCase();
   const bodyBuffer = method === "GET" || method === "HEAD" ? undefined : Buffer.from(await context.req.raw.arrayBuffer());
-  const headers = buildProxyRequestHeaders(context.req.raw, targetUrl, context.get('requestId'), socketClientIp(context));
+  const headers = buildProxyRequestHeaders(context.req.raw, targetUrl, context.get('requestId'), await requestClientIp(context));
   for (const name of Object.keys(headers)) {
     if (name.toLowerCase() === "cookie") delete headers[name];
   }
@@ -573,7 +570,7 @@ async function proxyIamRequest(context: Context<{ Variables: AppVariables }>): P
   const targetUrl = new URL(`api/v1/${suffix}${incomingUrl.search}`, trimSlash(env.HIVE_IAM_INTERNAL_URL) + "/");
   const method = context.req.method.toUpperCase();
   const bodyBuffer = method === "GET" || method === "HEAD" ? undefined : Buffer.from(await context.req.raw.arrayBuffer());
-  const headers = buildProxyRequestHeaders(context.req.raw, targetUrl, context.get('requestId'), socketClientIp(context));
+  const headers = buildProxyRequestHeaders(context.req.raw, targetUrl, context.get('requestId'), await requestClientIp(context));
   delete headers.authorization;
   delete headers.Authorization;
   delete headers.cookie;
@@ -1743,7 +1740,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.post('/api/auth/login', async (context) => {
     const body = loginSchema.parse(await context.req.json());
-    const clientIp = socketClientIp(context);
+    const clientIp = await requestClientIp(context);
     if (loginThrottle.isLocked(body.username, clientIp)) {
       return context.json({ error: 'Too many failed login attempts. Try again later.' }, 429);
     }
@@ -1769,7 +1766,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   app.post('/api/auth/reauthenticate', requireAdminAuth, async (context) => {
     const current = context.get('adminUser');
     const input = z.object({ password: z.string().min(1).max(1024), mfaCode: mfaCodeSchema }).parse(await context.req.json());
-    const clientIp = socketClientIp(context);
+    const clientIp = await requestClientIp(context);
     const throttleUser = current?.username ?? '';
     if (reauthThrottle.isLocked(throttleUser, clientIp)) {
       return context.json({ error: 'Too many failed reauthentication attempts. Try again later.' }, 429);

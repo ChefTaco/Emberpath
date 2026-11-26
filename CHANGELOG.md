@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- Behind a reverse proxy that is not on the same host (such as Hive's ingress), set
+  `EMBERPATH_TRUSTED_PROXIES` to that proxy (an IP, CIDR range or host name) so admin sign-in
+  throttling and the address forwarded to Oathweave use the real client instead of the proxy.
+  The default `loopback` trusts `X-Forwarded-For` only from a proxy on the same host.
+
+### Added
+
+- `EMBERPATH_TRUSTED_PROXIES` (default `loopback`): the admin listener reads the client
+  address from `X-Forwarded-For`, right to left, when the socket peer is a listed proxy. The
+  sign-in and re-authentication throttles, the admin session's recorded address and the
+  `X-Forwarded-For` sent to Oathweave and HiveMem use it; anything a caller wrote into the
+  header ahead of the trusted hops is ignored. Before, all of these used the socket peer, so
+  every client behind a proxy shared one sign-in throttle.
+
 ### Changed
 
 - CI runs the gates on Node 24 and on Node 26, the runtime major of the published image.
