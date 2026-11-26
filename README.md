@@ -348,6 +348,23 @@ directory. Variables with no default are optional unless marked **required**.
 | `EMBERPATH_API_KEY_CACHE_TTL_MS` | `60000` | A client key that passed its scrypt check is matched by its SHA-256 digest for this long, so the slow check runs about once a minute per key instead of on every request. The key's row is still read on every request: disabling, deleting, expiring or rotating a key applies at once. `0` turns the cache off. |
 | `EMBERPATH_KEY_LAST_USED_INTERVAL_MS` | `60000` | A key's `lastUsedAt` is written at most this often (so it can be up to this much behind). `0` writes it on every request. |
 | `EMBERPATH_MODELS_CACHE_TTL_MS` | `5000` | `GET /v1/models` keeps the live model list of each provider without stored models this long, and concurrent calls share one upstream request. A provider whose settings change is asked again at once. `0` asks on every call. |
+### Response cache (optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `EMBERPATH_RESPONSE_CACHE_TTL_MS` | `0` | Keep answers to deterministic, non-streaming requests this long and answer an identical request from memory. `0` (the default) turns the cache off. |
+| `EMBERPATH_RESPONSE_CACHE_MAX_ENTRIES` | `1000` | Most answers kept; the least recently used goes first. |
+| `EMBERPATH_RESPONSE_CACHE_MAX_BYTES` | `67108864` | Most memory the kept answers may use. |
+
+Only chat completions, completions and Responses API requests with `temperature: 0` (and
+one choice), and embeddings, are cached, never streams. The cache key is the client key,
+the route, the routing trait and the SHA-256 of the exact request body (which names the
+model), so one key never gets another key's answers. Only `200` JSON answers up to 1 MiB are
+kept, in this process's memory. Answers carry `x-emberpath-cache: hit` or `miss`. A hit is
+still authenticated, routed (allowlists and denials apply), counted as a request and traced
+(with a `cache.hit` event and the source trace in `responseMeta.cache`), but it reaches no
+provider, so it costs no tokens or spend. A request with `Cache-Control: no-cache` is always
+sent upstream; `no-store` keeps it out of the cache.
 
 ### Admin authentication
 
