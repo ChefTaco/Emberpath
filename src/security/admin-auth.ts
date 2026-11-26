@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { configuredOathweaveVerifier, linkedLocalId, parseAccountLinks } from './admin-identity.js';
 import { loadEnv } from '../config/env.js';
 import { expandAdminPermissions } from './admin-permissions.js';
-import { authenticateIamOidcUser } from './iam-oidc.js';
+import { authenticateIamOidcUser, type IamMfaRequired, type IamSignInOptions } from './iam-oidc.js';
 import { EXTERNALLY_MANAGED_PASSWORD_HASH, authenticateOsUser, isAllowedAdminUser } from './os-auth.js';
 import { prisma } from '../storage/client.js';
 import type { AppVariables } from '../types/app.js';
@@ -90,13 +90,22 @@ export async function destroyAdminSession(context: Context<{ Variables: AppVaria
   deleteCookie(context, SESSION_COOKIE, { path: '/' });
 }
 
+export function isMfaRequired(result: AuthenticatedAdmin | IamMfaRequired | null): result is IamMfaRequired {
+  return result !== null && 'mfaRequired' in result;
+}
+
 export async function authenticateAdmin(
   username: string,
   password: string,
-): Promise<AuthenticatedAdmin | null> {
+  options: IamSignInOptions = {},
+): Promise<AuthenticatedAdmin | IamMfaRequired | null> {
   const env = loadEnv();
   if (env.HIVE_ROUTER_AUTH_MODE === 'iam-oidc') {
-    const iamUser = await authenticateIamOidcUser(username, password, env);
+    const iamUser = await authenticateIamOidcUser(username, password, env, options);
+    if (iamUser && 'mfaRequired' in iamUser) {
+      // Only the allowlist decides who may continue; do not reveal more to anyone else.
+      return isAllowedAdminUser(username) ? iamUser : null;
+    }
     if (!iamUser || !isAllowedAdminUser(iamUser.username)) {
       return null;
     }

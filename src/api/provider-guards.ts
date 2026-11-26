@@ -8,17 +8,27 @@ class Semaphore {
 
   constructor(private readonly capacity: number) {}
 
-  async acquire(): Promise<void> {
+  /** Wait for a slot. A caller that aborts while queued leaves the queue and never takes one. */
+  async acquire(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (this.current < this.capacity) {
       this.current += 1;
       return;
     }
 
-    await new Promise<void>((resolve) => {
-      this.queue.push(() => {
+    await new Promise<void>((resolve, reject) => {
+      const grant = () => {
+        signal?.removeEventListener('abort', onAbort);
         this.current += 1;
         resolve();
-      });
+      };
+      const onAbort = () => {
+        const index = this.queue.indexOf(grant);
+        if (index >= 0) this.queue.splice(index, 1);
+        reject(signal?.reason instanceof Error ? signal.reason : new Error('Request aborted while waiting for a provider slot'));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.queue.push(grant);
     });
   }
 
@@ -29,6 +39,45 @@ class Semaphore {
       next();
     }
   }
+
+  /** Slots in use and callers waiting, for tests and diagnostics. */
+  get stats(): { active: number; waiting: number } {
+    return { active: this.current, waiting: this.queue.length };
+  }
+}
+
+/**
+ * Keep a provider slot until the response body has been fully read, has failed or has been
+ * cancelled, so `concurrency` bounds running generations and not just header waits. A
+ * response without a body gives the slot back at once. `release` must be idempotent.
+ */
+export function holdUntilBodyDone(response: Response, release: () => void): Response {
+  if (!response.body) {
+    release();
+    return response;
+  }
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      release();
+      await reader.cancel(reason);
+    },
+  }, { highWaterMark: 0 });
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
 const semaphores = new Map<string, Semaphore>();

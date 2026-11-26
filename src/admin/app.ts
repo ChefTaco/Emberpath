@@ -29,7 +29,7 @@ import {
 } from '../telemetry/metrics.js';
 import type { AppVariables } from '../types/app.js';
 import { requestIdMiddleware } from '../utils/request.js';
-import { authenticateAdmin, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession } from '../security/admin-auth.js';
+import { authenticateAdmin, isMfaRequired, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession } from '../security/admin-auth.js';
 import { requestHiveMemServiceToken, requestIamClientCredentialsToken } from '../security/iam-oidc.js';
 import { createHiveMemCredential, type HiveMemCredential } from '../security/hivemem-credential.js';
 import { hiveMemTlsOptions, iamTlsOptions } from '../security/iam-tls.js';
@@ -783,10 +783,31 @@ export async function buildHiveStatus(env: ReturnType<typeof loadEnv>, requestId
   };
 }
 
+const mfaCodeSchema = z.string().trim().min(1).max(64).optional();
+
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
+  /** TOTP or recovery code for an Oathweave account with multi-factor authentication. */
+  mfaCode: mfaCodeSchema,
 });
+
+/**
+ * The answer for an Oathweave account that needs a second factor. The password was right, so
+ * this is not a failed attempt; the caller repeats the request with `mfaCode`, or signs in
+ * through HiveXUI, which runs Oathweave's own sign-in (passkeys need that path).
+ */
+function mfaRequiredResponse(context: Context, methods: string[]): Response {
+  const codeAccepted = methods.length === 0 || methods.includes('totp');
+  return context.json({
+    error: 'MFA_REQUIRED',
+    code: 'MFA_REQUIRED',
+    message: codeAccepted
+      ? 'This account uses multi-factor authentication. Repeat the request with mfaCode set to the current authenticator or recovery code, or sign in through HiveXUI.'
+      : 'This account uses multi-factor authentication. Sign in through HiveXUI, or repeat the request with mfaCode set to a recovery code.',
+    methods,
+  }, 401);
+}
 
 
 const pendingCodexOAuth = new Map<string, CodexDeviceCode>();
@@ -1727,7 +1748,8 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       return context.json({ error: 'Too many failed login attempts. Try again later.' }, 429);
     }
 
-    const principal = await authenticateAdmin(body.username, body.password);
+    const principal = await authenticateAdmin(body.username, body.password, { mfaCode: body.mfaCode, clientIp });
+    if (isMfaRequired(principal)) return mfaRequiredResponse(context, principal.methods);
     if (!principal) {
       loginThrottle.recordFailure(body.username, clientIp);
       return context.json({ error: 'Invalid credentials' }, 401);
@@ -1746,13 +1768,14 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
 
   app.post('/api/auth/reauthenticate', requireAdminAuth, async (context) => {
     const current = context.get('adminUser');
-    const input = z.object({ password: z.string().min(1).max(1024) }).parse(await context.req.json());
+    const input = z.object({ password: z.string().min(1).max(1024), mfaCode: mfaCodeSchema }).parse(await context.req.json());
     const clientIp = socketClientIp(context);
     const throttleUser = current?.username ?? '';
     if (reauthThrottle.isLocked(throttleUser, clientIp)) {
       return context.json({ error: 'Too many failed reauthentication attempts. Try again later.' }, 429);
     }
-    const principal = current ? await authenticateAdmin(current.username, input.password) : null;
+    const principal = current ? await authenticateAdmin(current.username, input.password, { mfaCode: input.mfaCode, clientIp }) : null;
+    if (isMfaRequired(principal)) return mfaRequiredResponse(context, principal.methods);
     if (!principal) {
       reauthThrottle.recordFailure(throttleUser, clientIp);
       return context.json({ error: 'Reauthentication failed' }, 401);

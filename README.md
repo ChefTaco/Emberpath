@@ -28,8 +28,8 @@ Emberpath 2.x ships only as a container image, `ghcr.io/cheftaco/emberpath`, for
 **With the Hive suite.** Emberpath is normally installed by `hive.sh`, the
 [Hive suite controller](https://github.com/ChefTaco/hive#install-the-suite), in both the
 `core` and `full` profiles. The controller pins the image by digest from a signed release
-manifest and writes its configuration, secrets and Oathweave sign-in. Hive 3.12.3 pins
-Emberpath 2.5.3.
+manifest and writes its configuration, secrets and Oathweave sign-in. The current signed
+suite release names the Emberpath version it pins.
 
 **Legacy npm packages.** `@hivemagnus/emberpath`, this source's package name, is not
 published on npm. The npm package `@hivemagnus/hive-router` and the image
@@ -185,7 +185,8 @@ suite does this during the upgrade) and then re-issues the token and updates the
   transcription/translation, image generation, moderations and
   [decisions](#decisions-api) (OpenAI `gpt-6-luna` or Jev).
 - **Many providers**: `OPENAI`, `CODEX`, `OPENAI_GENERIC`, `OPENROUTER`,
-  `ANTHROPIC` (native translation), `OLLAMA` (including native `/api/*`
+  `ANTHROPIC` (native translation of chat completions and responses, streamed or not,
+  including tools and tool results), `OLLAMA` (including native `/api/*`
   passthrough), `LLAMACPP` and `VLLM` (including `/tokenize`, `/detokenize`,
   `/version`).
 - **Routing**: model aliases, route rules, capability filtering, heuristic
@@ -201,7 +202,12 @@ suite does this during the upgrade) and then re-issues the token and updates the
   ([retries and execution traces](#retries-and-execution-traces)).
 - **Client API keys and quotas**: OpenAI-style `sk-...` keys, stored only as
   hashes, with daily and monthly request and token caps (soft warnings, then
-  hard `429`s).
+  hard `429`s). A request that no provider answered (every candidate failed, or
+  none was available) is not charged against the token caps.
+- **Provider limits**: a provider's `timeoutMs` bounds the wait for the response
+  headers and then each wait for the next piece of the body, so long streams run
+  to the end while a stalled one is cut. Its `concurrency` limits running
+  requests: a slot is held until the response body, stream included, has ended.
 - **Observability**: per-request traces (body capture is configurable) that
   link to the agent execution that made the call and list every provider attempt,
   Prometheus metrics, optional OpenTelemetry export, estimated usage when the
@@ -408,9 +414,19 @@ browser-issuer tokens. The suite controller sets these; see
 - **OS mode** (`HIVE_ROUTER_AUTH_MODE=os`): an allowlisted user signs in with
   their OS password, which is checked through PAM. Every OS-mode operator has
   full admin rights.
-- **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`): Emberpath signs the user
-  in against Oathweave with authorization code + PKCE, then checks the username
-  against `HIVE_ROUTER_ADMIN_USERS`. IAM `admin` and `super_admin` roles grant
+- **IAM OIDC mode** (`HIVE_ROUTER_AUTH_MODE=iam-oidc`): `POST /api/auth/login`
+  passes the password to Oathweave, completes an authorization code + PKCE flow,
+  then checks the username against `HIVE_ROUTER_ADMIN_USERS`. The Oathweave sessions
+  this opens are ended once the sign-in is done. An account with multi-factor
+  authentication gets `401` with code `MFA_REQUIRED` and its `methods`; repeat the
+  request with `mfaCode` set to the current authenticator or a recovery code
+  (`/api/auth/reauthenticate` takes `mfaCode` too). Passkey-only accounts sign in
+  through HiveXUI, which uses Oathweave's own browser sign-in
+  ([Oathweave browser sign-in](#oathweave-browser-sign-in)). Emberpath sends the
+  client's address to Oathweave as `X-Forwarded-For`; Oathweave applies its
+  per-address sign-in limits to that address only when Emberpath's address is in
+  Oathweave's `TRUSTED_PROXY_IPS`, otherwise every sign-in through Emberpath counts
+  against Emberpath's own address. IAM `admin` and `super_admin` roles grant
   full access. Other users need a permission for each request, reads included:
   for example `router:providers:read` or `router:providers:write`,
   `iam:users:read`, `memory:read`. Any `:write` grant also covers the matching
@@ -487,6 +503,11 @@ the same database.
 Flags: `--disabled` creates the key disabled, `--json` prints machine-readable
 output, and `--token <value>` supplies `HIVE_ROUTER_CLI_TOKEN` when that is set.
 The plaintext key is printed once; only a hash is stored.
+
+A key's metadata may list `scopes`: `models:read` for `GET` requests,
+`inference:write` for the others, `*` for all. A key without a `scopes` list may do
+everything except `POST /api/pull`, which makes an Ollama backend download a model
+and needs an explicit `ollama:manage` (or `*`) scope.
 
 ## Testing
 

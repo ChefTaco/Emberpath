@@ -5,6 +5,14 @@ import { safeJsonParse } from '../utils/json.js';
 import { verifyHashAsync } from './crypto.js';
 import { log } from '../telemetry/logger.js';
 
+export const OLLAMA_MANAGE_SCOPE = 'ollama:manage';
+
+/** The client key scope a request needs. */
+export function requiredScope(method: string, path: string): string {
+  if (method === 'POST' && path === '/api/pull') return OLLAMA_MANAGE_SCOPE;
+  return method === 'GET' ? 'models:read' : 'inference:write';
+}
+
 export async function requireApiKey(
   context: Context<{ Variables: AppVariables }>,
   next: Next,
@@ -43,8 +51,14 @@ export async function requireApiKey(
       return context.json({ error: 'Invalid API key' }, 401);
     }
   }
-  const permission = context.req.method === 'GET' ? 'models:read' : 'inference:write';
-  if (Array.isArray(metadata.scopes) && !metadata.scopes.includes('*') && !metadata.scopes.includes(permission)) return context.json({ error: 'Client key does not permit this operation' }, 403);
+  const permission = requiredScope(context.req.method, context.req.path);
+  const scopes = Array.isArray(metadata.scopes) ? metadata.scopes : undefined;
+  // A key without a scope list may do everything except manage provider models, which
+  // needs an explicit grant: an Ollama pull downloads arbitrary models onto the backend.
+  const allowed = scopes
+    ? scopes.includes('*') || scopes.includes(permission)
+    : permission !== OLLAMA_MANAGE_SCOPE;
+  if (!allowed) return context.json({ error: 'Client key does not permit this operation' }, 403);
   context.set('clientApiKey', match);
   void prisma.clientApiKey.update({
     where: { id: match.id },

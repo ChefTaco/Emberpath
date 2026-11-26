@@ -91,6 +91,8 @@ export interface FinalizeTraceInput {
    * tokens), so only the provider's declared input price is required.
    */
   pricing?: 'input-and-output' | 'input-only' | undefined;
+  /** No provider produced an answer (all failed, none available): settle the quota reservation at zero. */
+  noProviderAnswer?: boolean | undefined;
 }
 
 export function shouldCaptureTraceBodies(metadataJson: string | null | undefined): boolean {
@@ -189,7 +191,7 @@ export async function finalizeTrace(input: FinalizeTraceInput): Promise<void> {
   const costUsd = input.pricing === 'input-only'
     ? inputOnlyKnown ? (input.usage!.inputTokens! * prices.inputCostPerMillionTokens!) / 1_000_000 : undefined
     : known ? (input.usage!.inputTokens! * prices.inputCostPerMillionTokens! + input.usage!.outputTokens! * prices.outputCostPerMillionTokens!) / 1_000_000 : undefined;
-  await sqliteWrite(() => quotaLedger().settle(input.traceId, input.outcome === TraceOutcome.DENIED ? 0 : input.estimatedUsage ? undefined : input.usage?.totalTokens, { ...(costUsd !== undefined ? { costUsd, source: 'operator-declared-provider-prices' } : {}), estimated: input.estimatedUsage ?? input.usage?.totalTokens === undefined }));
+  await sqliteWrite(() => quotaLedger().settle(input.traceId, input.outcome === TraceOutcome.DENIED || input.noProviderAnswer ? 0 : input.estimatedUsage ? undefined : input.usage?.totalTokens, { ...(costUsd !== undefined ? { costUsd, source: 'operator-declared-provider-prices' } : {}), estimated: input.estimatedUsage ?? input.usage?.totalTokens === undefined }));
   const env = loadEnv();
   const responseBodyHandle = captureBodies && env.CAPTURE_RESPONSE_BODIES && input.responseBody
     ? await storeBody(input.traceId, 'response', 'text/plain', input.responseBody)
