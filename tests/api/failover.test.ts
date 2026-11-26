@@ -21,11 +21,14 @@ const { buildProviderCreateData } = await import('../../src/providers/runtime.js
 const { hashValue } = await import('../../src/security/crypto.js');
 const { createApiApp } = await import('../../src/api/app.js');
 const { ProviderKind } = await import('../../src/generated/prisma/client.js');
-const { isCircuitOpen, resetProviderCircuit } = await import('../../src/api/provider-guards.js');
+const { getSemaphore, isCircuitOpen, resetProviderCircuit } = await import('../../src/api/provider-guards.js');
+const { quotaLedger } = await import('../../src/security/quota.js');
 
 const PRIMARY = 'https://primary.example/v1/chat/completions';
 const SECONDARY = 'https://secondary.example/v1/chat/completions';
 const clientKey = 'ep-failover-00000000000000000000001';
+const budgetKey = 'ep-budget-0000000000000000000000001';
+let budgetKeyId = '';
 
 type Upstream = (init: RequestInit) => Response | Promise<Response>;
 const upstreams = new Map<string, Upstream>();
@@ -61,6 +64,7 @@ beforeAll(async () => {
     providerIds[name] = provider.id;
   }
   await prisma.clientApiKey.create({ data: { name: 'failover', keyPrefix: clientKey.slice(0, 8), keyHash: hashValue(clientKey), metadataJson: '{}' } });
+  budgetKeyId = (await prisma.clientApiKey.create({ data: { name: 'budget', keyPrefix: budgetKey.slice(0, 8), keyHash: hashValue(budgetKey), metadataJson: JSON.stringify({ quota: { dailyTokens: 1_000_000 } }) } })).id;
   const realFetch = globalThis.fetch;
   vi.stubGlobal('fetch', async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -163,5 +167,58 @@ describe('client disconnects', () => {
     for (let attempt = 0; attempt < 3; attempt += 1) expect((await chat()).status).toBe(200);
 
     expect(isCircuitOpen(providerIds.primary)).toBe(true);
+  });
+});
+
+describe('provider slots and budgets', () => {
+  it('holds the provider slot until a stream has been fully relayed', async () => {
+    const encoder = new TextEncoder();
+    let push!: (text: string | null) => void;
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        push = (text) => (text === null ? controller.close() : controller.enqueue(encoder.encode(text)));
+      },
+    });
+    upstreams.set(PRIMARY, () => new Response(upstream, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+    const slots = getSemaphore({ id: providerIds.primary, concurrency: 1 } as never);
+
+    push('data: {"choices":[{"delta":{"content":"a"}}]}\n\n');
+    const response = await chat({ stream: true });
+    const reader = response.body!.getReader();
+    await reader.read();
+    expect(slots.stats.active).toBe(1);
+
+    push('data: [DONE]\n\n');
+    push(null);
+    while (!(await reader.read()).done) { /* drain */ }
+    expect(slots.stats.active).toBe(0);
+  });
+
+  it('gives the slot back when the client abandons a stream', async () => {
+    upstreams.set(PRIMARY, () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n')); },
+    }), { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+    const slots = getSemaphore({ id: providerIds.primary, concurrency: 1 } as never);
+
+    const response = await chat({ stream: true });
+    const reader = response.body!.getReader();
+    await reader.read();
+    expect(slots.stats.active).toBe(1);
+    await reader.cancel();
+    expect(slots.stats.active).toBe(0);
+  });
+
+  it('does not charge the token budget when every provider fails', async () => {
+    upstreams.set(PRIMARY, () => new Response('overloaded', { status: 503 }));
+    upstreams.set(SECONDARY, () => new Response('overloaded', { status: 503 }));
+
+    const response = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${budgetKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'synthetic-model', max_tokens: 500, messages: [{ role: 'user', content: 'hello' }] }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(quotaLedger().usage(budgetKeyId)).toMatchObject({ dayRequests: 1, dayTokens: 0 });
   });
 });

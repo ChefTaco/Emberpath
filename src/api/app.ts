@@ -28,7 +28,7 @@ import { log } from '../telemetry/logger.js';
 import { loadEnv } from '../config/env.js';
 import { buildRouterDependencyReport } from '../status/router-health.js';
 import { registerHealthProbes } from '../status/health-probes.js';
-import { getSemaphore, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
+import { getSemaphore, holdUntilBodyDone, isCircuitOpen, markProviderFailure, resetProviderCircuit, shouldFailoverStatus, shouldRetry } from './provider-guards.js';
 import { deadlineReached, retrySignalFor, retryTiming, RETRY_HEADER, sameProviderRetryDelay, upstreamExhausted, upstreamRetryAfterMs } from './retry-budget.js';
 import { attemptDeadline, readInboundAttribution, type InboundAttribution } from '../telemetry/execution-attribution.js';
 import { decisionsError, decisionsRequestSchema, summarizeDecisionsRequest, type DecisionsErrorBody } from '../decisions-api/schema.js';
@@ -348,7 +348,23 @@ async function runExecutionWithFailover(
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       let failure: { type: 'provider.failover' | 'provider.stream_failover' | 'provider.error'; outcome: 'http_error' | 'stream_error' | 'network_error'; message: string; status?: number; retryAfterMs?: number | undefined; noRetry?: boolean } | undefined;
-      await semaphore.acquire();
+      try {
+        await semaphore.acquire(route.signal);
+      } catch {
+        return clientDisconnected(provider, attempt, false);
+      }
+      // The slot is handed to the response body on success and released when it ends.
+      let slotReleased = false;
+      let slotHandedOff = false;
+      const releaseSlot = () => {
+        if (slotReleased) return;
+        slotReleased = true;
+        semaphore.release();
+      };
+      const holdSlot = (response: Response): Response => {
+        slotHandedOff = true;
+        return holdUntilBodyDone(response, releaseSlot);
+      };
       try {
         upstreamAttempts += 1;
         const execution = await adapter.execute(upstreamRoute, provider);
@@ -396,12 +412,12 @@ async function runExecutionWithFailover(
                 status: execution.response.status,
                 headers: execution.response.headers,
               });
-              return finish({ provider, execution: { ...execution, response: rebuiltResponse } });
+              return finish({ provider, execution: { ...execution, response: holdSlot(rebuiltResponse) } });
             }
           } else {
             resetProviderCircuit(provider.id);
             keepFailureResponse(undefined);
-            return finish({ provider, execution });
+            return finish({ provider, execution: { ...execution, response: holdSlot(execution.response) } });
           }
         }
       } catch (error) {
@@ -411,7 +427,7 @@ async function runExecutionWithFailover(
         lastFailureError = error instanceof Error ? error.message : 'Unknown provider execution error';
         failure = { type: 'provider.error', outcome: 'network_error', message: lastFailureError };
       } finally {
-        semaphore.release();
+        if (!slotHandedOff) releaseSlot();
       }
       if (!failure) break;
 
@@ -604,6 +620,8 @@ async function handleRouteExecution(
       responseBody: errorText,
       estimatedUsage: true,
       usage: estimateUsage(route, errorText),
+      // Nothing reached a model, so the caller's token budget is not charged.
+      noProviderAnswer: true,
       responseMeta: executionResult.failureError ? { error: executionResult.failureError } : {},
     });
     requestCounter.inc({

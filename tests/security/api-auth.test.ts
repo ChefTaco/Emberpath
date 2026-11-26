@@ -44,3 +44,30 @@ describe('client API key metadata expiry', () => {
     expect((await request({ expiresAt: '2026-01-01T12:00:01Z', scopes: ['inference:write'] })).status).toBe(403);
   });
 });
+
+describe('client API key scopes for model management', () => {
+  beforeEach(() => vi.spyOn(prisma.clientApiKey, 'update').mockResolvedValue({} as never));
+  afterEach(() => vi.restoreAllMocks());
+
+  async function pull(metadata: object, path = '/api/pull') {
+    vi.spyOn(prisma.clientApiKey, 'findMany').mockResolvedValue([{
+      id: 'key-1', keyHash: hashValue(key), keyPrefix: key.slice(0, 8), enabled: true,
+      expiresAt: null, metadataJson: JSON.stringify(metadata),
+    }] as never);
+    const app = new Hono<{ Variables: AppVariables }>();
+    app.post('/api/*', requireApiKey, (context) => context.json({ ok: true }));
+    return app.request(path, { method: 'POST', headers: { authorization: `Bearer ${key}` } });
+  }
+
+  it.each([{}, { scopes: ['models:read', 'inference:write'] }])('refuses an Ollama pull for a key without ollama:manage %j', async (metadata) => {
+    expect((await pull(metadata)).status).toBe(403);
+  });
+
+  it.each([{ scopes: ['ollama:manage'] }, { scopes: ['*'] }])('allows an Ollama pull for %j', async (metadata) => {
+    expect((await pull(metadata)).status).toBe(200);
+  });
+
+  it('keeps inference open to a key without a scope list', async () => {
+    expect((await pull({}, '/api/chat')).status).toBe(200);
+  });
+});
