@@ -38,15 +38,26 @@ no UI of its own.
 
 ## Step-up with an ID token
 
-Credential and policy changes need a sign-in from the last 15 minutes
+Credential, identity and policy changes need a sign-in from the last 15 minutes
 (`EMBERPATH_RECENT_AUTH_SECONDS`, default `900`, 60-43200) and otherwise answer `403` with
-`STEP_UP_REQUIRED`. They are the writes (every method but `GET`, `HEAD` and `OPTIONS`) under
-`/api/client-keys`, `/api/iam/clients`, `/api/iam/roles`, `/api/iam/password-policy`,
-`/api/hive/actors` and `/api/hive/upgrades`: issuing, rotating, changing, deleting or revoking a
-key, client secret, role, actor credential or password policy, acknowledging a credential
-receipt, and planning or applying an upgrade. Reads of those paths (listing keys, key usage,
-clients, roles, the password policy, actors, upgrade status) need only the read permission,
-never a step-up: none of them returns secret material. A new key or client secret is shown once,
+`STEP_UP_REQUIRED`. They are the writes (every method but `GET`, `HEAD` and `OPTIONS`) under:
+
+- `/api/client-keys`, `/api/hive/actors` and `/api/hive/upgrades`: issuing, rotating, changing or
+  deleting a key or actor credential, acknowledging a credential receipt, and planning or
+  applying an upgrade;
+- the IAM proxy's `/api/iam/clients`, `/api/iam/roles` and `/api/iam/password-policy`: client
+  secrets, roles and the password policy;
+- the IAM proxy's `/api/iam/users`, `/api/iam/service-accounts`, `/api/iam/system-users`,
+  `/api/iam/groups` and `/api/iam/enrollments`: creating, changing or deleting people, service
+  accounts and system users, their roles, locks and password rotation, service-account key
+  rotation, group members and roles, and agent enrollments.
+
+Not gated, on purpose: revoking sessions or tokens (`/api/iam/sessions`, `/api/iam/tokens/revoke`)
+only takes access away and must stay quick during an incident, and `POST
+/api/iam/system-users/check` is the PAM shim's login check. Reads of all these paths (listing
+keys, key usage, clients, roles, the password policy, people, service accounts, groups,
+enrollments, actors, upgrade status) need only the read permission, never a step-up: none of
+them returns secret material. A new key or client secret is shown once,
 in the answer to the write that issued or rotated it (`Cache-Control: no-store`); lists and
 details carry only the key prefix. For a bearer token the sign-in time is its `auth_time`. To
 confirm a sign-in without a password:

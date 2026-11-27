@@ -4,14 +4,32 @@
 
 ### Upgrade notes
 
+- **Identity writes through the IAM proxy now need a recent sign-in.** Writes under
+  `/api/iam/users`, `/api/iam/service-accounts`, `/api/iam/system-users`, `/api/iam/groups` and
+  `/api/iam/enrollments` on Emberpath's admin API answer `403 STEP_UP_REQUIRED` when the caller's
+  sign-in or step-up is older than `EMBERPATH_RECENT_AUTH_SECONDS` (15 minutes). Automation that
+  drives these through Emberpath with a long-lived admin session must confirm a sign-in first
+  (`POST /api/auth/step-up`, or `POST /api/auth/reauthenticate` in OS mode) or call Oathweave
+  directly with its own credentials. HiveXUI is not affected: it sends `/api/iam/*` to Oathweave,
+  not to Emberpath, and resource tokens were already refused on this proxy
+  (`PRODUCT_API_REQUIRED`).
 - No database migration and no setting to change. Downgrading to 2.10.0 brings back the step-up
-  on reads and ignores `EMBERPATH_RECENT_AUTH_SECONDS`.
+  on reads, drops it from those identity writes and ignores `EMBERPATH_RECENT_AUTH_SECONDS`.
 
 ### Added
 
 - `EMBERPATH_RECENT_AUTH_SECONDS` (default `900`, 60-43200): how long a sign-in or step-up
   counts as recent for credential and policy changes. The default keeps the 15-minute rule; the
   step-up answer's `recentUntil` follows the setting.
+
+### Changed
+
+- Credential and identity writes that were never gated now need a recent sign-in, like client
+  keys, roles and the password policy already did: through the IAM proxy, creating, changing or
+  deleting people, service accounts and system users, assigning or removing their roles, locking
+  and unlocking, password rotation, service-account key rotation, group changes (members, roles)
+  and agent enrollments (enroll, rotate, disable, resume, receipts). Revoking sessions and tokens
+  and the PAM shim's `POST /api/iam/system-users/check` stay ungated; reads stay ungated.
 
 ### Fixed
 

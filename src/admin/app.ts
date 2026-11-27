@@ -1074,16 +1074,29 @@ export function hasRecentOperatorAuthentication(authenticatedAt: number | undefi
   return typeof authenticatedAt === 'number' && authenticatedAt <= now + 30_000 && now - authenticatedAt <= windowMs;
 }
 
-/** Where credentials and security policy live: their writes need a recent sign-in (step-up). */
-const STEP_UP_PATH_PREFIXES = ['/api/client-keys', '/api/iam/clients', '/api/iam/roles', '/api/iam/password-policy', '/api/hive/actors', '/api/hive/upgrades'] as const;
+/**
+ * Where credentials, identities and security policy live: their writes need a recent sign-in
+ * (step-up). Keys, client secrets, actor credentials and enrollments; people, service accounts and
+ * system users (create, change, delete, roles, lock, password rotation); groups (members, roles);
+ * roles and the password policy; upgrades. Revoking sessions or tokens is left out on purpose: it
+ * only takes access away and must stay quick during an incident.
+ */
+const STEP_UP_PATH_PREFIXES = [
+  '/api/client-keys', '/api/hive/actors', '/api/hive/upgrades',
+  '/api/iam/clients', '/api/iam/roles', '/api/iam/password-policy',
+  '/api/iam/users', '/api/iam/service-accounts', '/api/iam/system-users', '/api/iam/groups', '/api/iam/enrollments',
+] as const;
+/** Writes under those paths that are not credential changes: the PAM shim's login check. */
+const STEP_UP_EXEMPT_PATHS = new Set(['/api/iam/system-users/check']);
 
 /**
  * Whether this request needs a recent sign-in: every write (any method but GET, HEAD and OPTIONS)
- * under a credential or policy path. Reads never do: none of them returns secret material (a new
- * key or secret is shown once, in the answer to the write that issued it).
+ * under a credential, identity or policy path. Reads never do: none of them returns secret
+ * material (a new key or secret is shown once, in the answer to the write that issued it).
  */
 export function requiresRecentAuthentication(method: string, pathname: string): boolean {
   if (['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) return false;
+  if (STEP_UP_EXEMPT_PATHS.has(pathname.replace(/\/$/, ''))) return false;
   return STEP_UP_PATH_PREFIXES.some(prefix => pathname.startsWith(prefix));
 }
 

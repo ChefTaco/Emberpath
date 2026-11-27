@@ -496,9 +496,11 @@ browser-issuer tokens. The suite controller sets these; see
   `iam:groups:read` and `iam:groups:write` for groups, `iam:sa:read` and
   `iam:sa:write` for enrollments, and `iam:admin:read` or `iam:admin:write` for IAM
   routes without a permission of their own.
-- Credential and policy changes (writes under `/api/client-keys`, `/api/iam/clients`,
-  `/api/iam/roles`, `/api/iam/password-policy`, `/api/hive/actors` and
-  `/api/hive/upgrades`) need a sign-in from the last 15 minutes
+- Credential, identity and policy changes (writes under `/api/client-keys`,
+  `/api/hive/actors`, `/api/hive/upgrades`, and the IAM proxy's `/api/iam/clients`,
+  `/api/iam/roles`, `/api/iam/password-policy`, `/api/iam/users`,
+  `/api/iam/service-accounts`, `/api/iam/system-users`, `/api/iam/groups` and
+  `/api/iam/enrollments`) need a sign-in from the last 15 minutes
   (`EMBERPATH_RECENT_AUTH_SECONDS`); reading them does not. Confirm it
   with `POST /api/auth/step-up` and a fresh Oathweave ID token (HiveXUI does this for
   you); see [docs/OATHWEAVE.md](docs/OATHWEAVE.md#step-up-with-an-id-token). In OS

@@ -72,16 +72,21 @@ describe('admin permission mapping', () => {
 describe('requiresRecentAuthentication', () => {
   it('asks for a recent sign-in on credential and policy writes only', () => {
     for (const method of ['GET', 'HEAD', 'OPTIONS', 'get']) {
-      for (const path of ['/api/client-keys', '/api/client-keys/k/usage', '/api/iam/clients', '/api/iam/roles', '/api/iam/password-policy', '/api/hive/actors', '/api/hive/upgrades/status']) {
+      for (const path of ['/api/client-keys', '/api/client-keys/k/usage', '/api/iam/clients', '/api/iam/roles', '/api/iam/password-policy', '/api/hive/actors', '/api/hive/upgrades/status', '/api/iam/users', '/api/iam/service-accounts/s', '/api/iam/system-users', '/api/iam/groups/g/members', '/api/iam/enrollments/installations']) {
         expect(requiresRecentAuthentication(method, path)).toBe(false);
       }
     }
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'post']) {
-      for (const path of ['/api/client-keys', '/api/client-keys/k/rotate', '/api/iam/clients/c/rotate-secret', '/api/iam/roles/r', '/api/iam/password-policy', '/api/hive/actors/a/rotate', '/api/hive/upgrades/apply']) {
+      for (const path of ['/api/client-keys', '/api/client-keys/k/rotate', '/api/iam/clients/c/rotate-secret', '/api/iam/roles/r', '/api/iam/password-policy', '/api/hive/actors/a/rotate', '/api/hive/upgrades/apply',
+        '/api/iam/users', '/api/iam/users/u/rotate-password', '/api/iam/users/u/roles', '/api/iam/service-accounts/s/rotate', '/api/iam/system-users/s', '/api/iam/groups/g/members', '/api/iam/enrollments/a/rotate']) {
         expect(requiresRecentAuthentication(method, path)).toBe(true);
       }
     }
     expect(requiresRecentAuthentication('POST', '/api/route-rules')).toBe(false);
+    // Revoking access and the PAM shim's login check stay ungated.
+    for (const [method, path] of [['DELETE', '/api/iam/sessions/s'], ['POST', '/api/iam/tokens/revoke'], ['POST', '/api/iam/system-users/check'], ['POST', '/api/iam/system-users/check/']]) {
+      expect(requiresRecentAuthentication(method!, path!)).toBe(false);
+    }
   });
 
   it('uses the configured window', () => {
