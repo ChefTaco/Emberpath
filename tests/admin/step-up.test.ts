@@ -272,3 +272,129 @@ describe('the Oathweave password relay (iam-oidc mode, EMBERPATH_PASSWORD_RELAY 
     expect(response.headers.get('deprecation')).toBeNull();
   });
 });
+
+describe('recent sign-in is for writes only', () => {
+  // An OS-mode session signed in an hour ago: past the recent-sign-in window. (A resource bearer
+  // token would be sent to the product APIs for /api/iam and /api/hive, so a session it is.)
+  async function staleSession(): Promise<Record<string, string>> {
+    const { SignJWT: Sign } = await import('jose');
+    const secret = new TextEncoder().encode(loadEnv().HIVE_ROUTER_SECRET);
+    const cookieToken = await new Sign({ sid: 'emberpath-session', username: 'admin', roles: ['router-admin'], permissions: ['*'], authMode: 'os' })
+      .setProtectedHeader({ alg: 'HS256' }).setSubject(user.id).setIssuedAt().setExpirationTime('1h').sign(secret);
+    vi.spyOn(prisma.adminSession, 'findFirst').mockResolvedValue({ sessionId: 'emberpath-session', userId: user.id, createdAt: new Date(Date.now() - 60 * 60_000), user } as never);
+    return { cookie: 'hive_router_admin=' + cookieToken, 'content-type': 'application/json', origin: 'https://localhost:9443' };
+  }
+  const storedKey = { id: 'key-1', name: 'Synthetic key', keyPrefix: 'sk-synth', keyHash: 'synthetic-key-hash-never-returned', enabled: true, metadataJson: '{}', lastUsedAt: null, expiresAt: null, createdAt: new Date(), updatedAt: new Date() };
+  const reads: Array<[string, string]> = [
+    ['GET', '/api/client-keys'],
+    ['HEAD', '/api/client-keys'],
+    ['GET', '/api/client-keys/key-1/usage'],
+    ['GET', '/api/hive/actors'],
+    ['GET', '/api/hive/upgrades/status'],
+    ['GET', '/api/iam/clients'],
+    ['GET', '/api/iam/roles'],
+    ['GET', '/api/iam/password-policy'],
+  ];
+  // Every write under the credential and policy paths. The client-key writes run against mocked
+  // storage; the rest have invalid bodies or missing targets, so getting past the gate changes nothing.
+  const clientKeyWrites: Array<[string, string, string?]> = [
+    ['POST', '/api/client-keys', JSON.stringify({ name: 'Synthetic key' })],
+    ['PUT', '/api/client-keys/key-1', JSON.stringify({ name: 'Renamed key' })],
+    ['POST', '/api/client-keys/key-1/rotate'],
+    ['DELETE', '/api/client-keys/key-1'],
+  ];
+  const writes: Array<[string, string, string?]> = [
+    ...clientKeyWrites,
+    ['POST', '/api/client-keys/operations/missing-operation', 'not json'],
+    ['DELETE', '/api/client-keys/operations/missing-operation/receipt'],
+    ['POST', '/api/hive/actors', 'not json'],
+    ['POST', '/api/hive/actors/missing-actor/disable', JSON.stringify({ operationId: 'not-a-guid' })],
+    ['POST', '/api/hive/actors/missing-actor/rotate', JSON.stringify({ operationId: 'not-a-guid' })],
+    ['DELETE', '/api/hive/actors/missing-actor/receipt'],
+    ['DELETE', '/api/hive/actors/missing-actor/operations/not-a-guid/receipt'],
+    ['POST', '/api/hive/upgrades/plan', 'not json'],
+    ['POST', '/api/hive/upgrades/apply', 'not json'],
+    ['POST', '/api/iam/clients', '{}'],
+    ['PATCH', '/api/iam/clients/missing-client', '{}'],
+    ['POST', '/api/iam/clients/missing-client/rotate-secret', '{}'],
+    ['DELETE', '/api/iam/clients/missing-client'],
+    ['POST', '/api/iam/roles', '{}'],
+    ['PATCH', '/api/iam/roles/missing-role', '{}'],
+    ['DELETE', '/api/iam/roles/missing-role'],
+    ['PUT', '/api/iam/password-policy', '{}'],
+    ['PATCH', '/api/iam/password-policy', '{}'],
+  ];
+  const request = (headers: Record<string, string>, method: string, path: string, body?: string) =>
+    app.request(path, { method, headers, ...(body === undefined ? {} : { body }) });
+  const errorOf = async (response: Response) => ((await response.clone().json().catch(() => ({}))) as { error?: string }).error;
+
+  beforeEach(() => {
+    vi.spyOn(prisma.clientApiKey, 'findMany').mockResolvedValue([storedKey] as never);
+    vi.spyOn(prisma.clientApiKey, 'findUnique').mockResolvedValue(storedKey as never);
+    vi.spyOn(prisma.trace, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.clientApiKey, 'create').mockResolvedValue(storedKey as never);
+    vi.spyOn(prisma.clientApiKey, 'update').mockResolvedValue(storedKey as never);
+    vi.spyOn(prisma.clientApiKey, 'delete').mockResolvedValue(storedKey as never);
+  });
+
+  it('serves every credential and policy read to a session signed in long ago', async () => {
+    const headers = await staleSession();
+    for (const [method, path] of reads) {
+      const response = await request(headers, method, path);
+      expect.soft([401, 403], `${method} ${path}`).not.toContain(response.status);
+      expect.soft(await errorOf(response), `${method} ${path}`).not.toBe('STEP_UP_REQUIRED');
+    }
+    for (const path of ['/api/client-keys', '/api/hive/actors', '/api/hive/upgrades/status']) expect((await request(headers, 'GET', path)).status).toBe(200);
+    const list = await request(headers, 'GET', '/api/client-keys');
+    expect(list.status).toBe(200);
+    const text = await list.text();
+    expect(JSON.parse(text)).toMatchObject({ data: [{ id: 'key-1', keyPrefix: 'sk-synth' }] });
+    // No read hands out secret material: the stored hash stays inside, and no key is revealed.
+    expect(text).not.toContain(storedKey.keyHash);
+    expect(text).not.toMatch(/keyHash|apiKey|secret/i);
+    const actors = await request(headers, 'GET', '/api/hive/actors');
+    expect(actors.status).toBe(200);
+    expect(await actors.text()).not.toContain(storedKey.keyHash);
+  });
+
+  it('asks a stale session to step up before every credential or policy write, and lets it through after', async () => {
+    const headers = await staleSession();
+    for (const [method, path, body] of writes) {
+      const response = await request(headers, method, path, body);
+      expect.soft(response.status, `${method} ${path}`).toBe(403);
+      expect.soft(await errorOf(response), `${method} ${path}`).toBe('STEP_UP_REQUIRED');
+    }
+    // Refused at the gate: no handler ran.
+    for (const write of [prisma.clientApiKey.create, prisma.clientApiKey.update, prisma.clientApiKey.delete]) expect(write).not.toHaveBeenCalled();
+
+    expect((await stepUp(proof(() => claims({ sid: undefined })), headers)).status).toBe(200);
+    for (const [method, path, body] of writes) {
+      const response = await request(headers, method, path, body);
+      expect.soft(await errorOf(response), `${method} ${path}`).not.toBe('STEP_UP_REQUIRED');
+    }
+    // The client-key writes now complete; a new or rotated key is revealed once, uncached.
+    for (const [method, path, body] of clientKeyWrites) {
+      const response = await request(headers, method, path, body);
+      expect.soft(response.status, `${method} ${path}`).toBeLessThan(300);
+      if (path === '/api/client-keys' || path.endsWith('/rotate')) {
+        expect((await response.json() as { data: { apiKey: string } }).data.apiKey).toMatch(/^sk-/);
+        expect(response.headers.get('cache-control')).toBe('no-store');
+      }
+    }
+  });
+
+  it('honours EMBERPATH_RECENT_AUTH_SECONDS', async () => {
+    const env = loadEnv();
+    const headers = await staleSession();
+    env.EMBERPATH_RECENT_AUTH_SECONDS = 2 * 60 * 60; // the hour-old sign-in now counts as recent
+    try {
+      expect((await request(headers, 'POST', '/api/client-keys', JSON.stringify({ name: 'Synthetic key' }))).status).toBe(201);
+      env.EMBERPATH_RECENT_AUTH_SECONDS = 60;
+      const response = await stepUp(proof(() => claims({ sid: undefined })), headers);
+      const body = await response.json() as { authTime: string; recentUntil: string };
+      expect(Date.parse(body.recentUntil) - Date.parse(body.authTime)).toBe(60_000);
+    } finally {
+      env.EMBERPATH_RECENT_AUTH_SECONDS = 900;
+    }
+  });
+});

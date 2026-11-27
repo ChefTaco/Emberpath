@@ -27,15 +27,18 @@ export function consoleAdminOpenApi() {
   const security = [{resourceBearer: []}, {adminSession: []}];
   const id = [{name: 'id', in: 'path', required: true, schema: {type: 'string', minLength: 1}}];
   const errors = {'400': {description: 'Invalid request', content: json(ref('ModelAdminError'))},
-    '401': {description: 'Authentication required'}, '403': {description: 'Product permission required; client key operations also require recent interactive authentication'},
+    '401': {description: 'Authentication required'}, '403': {description: 'Product permission required'},
     '409': {description: 'Unique record or routing revision conflict', content: json(ref('ModelAdminError'))}};
+  // Credential writes also need a recent sign-in; reads never do.
+  const stepUpRequired = {description: 'Product permission required, or error STEP_UP_REQUIRED: no sign-in within EMBERPATH_RECENT_AUTH_SECONDS (default 900); confirm one with POST /api/auth/step-up'};
   const paths: Record<string, Record<string, unknown>> = {};
   function operation(path: string, method: string, operationId: string, permission: string, response: unknown, request?: string, status = '200') {
     paths[path] ??= {};
     paths[path][method] = {operationId, summary: operationId.replace(/([A-Z])/g, ' $1').trim(), security,
       'x-permission': permission, ...(path.includes('{id}') ? {parameters: id} : {}),
       ...(request ? {requestBody: {required: true, content: json(ref(request))}} : {}),
-      responses: {[status]: {description: 'Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store', content: json(response)}, ...errors}};
+      responses: {[status]: {description: 'Native response; credential creation and rotation reveal a new API key once with Cache-Control: no-store', content: json(response)}, ...errors,
+        ...(method !== 'get' && path.startsWith('/api/client-keys') ? {'403': stepUpRequired} : {})}};
   }
   for (const [path, label, schema] of [['/api/route-rules', 'RouteRule', 'RouteRule'], ['/api/heuristics', 'Heuristic', 'Heuristic']] as const) {
     operation(path, 'get', 'list' + label + 's', 'router:routing:read', data(array(schema)));
@@ -96,7 +99,7 @@ export function consoleAdminOpenApi() {
   paths['/api/auth/step-up'] = {post: {operationId: 'stepUpWithIdToken', summary: 'Confirm a recent sign-in with a fresh Oathweave ID token',
     description: 'Send the ID token of a fresh Oathweave authorization (prompt=login or max_age, PKCE, the nonce of POST /api/auth/step-up/challenge) issued to a client in EMBERPATH_STEP_UP_AUDIENCES (default hivexui-emberpath). '
       + 'Emberpath verifies the signature, issuer (OATHWEAVE_ISSUER), audience, lifetime, the challenge nonce (single use), that sub and sid are the caller\'s, and that auth_time is within EMBERPATH_STEP_UP_MAX_AGE_SECONDS (default 300) and not before the challenge. '
-      + 'Credential and policy changes of this session then count from that auth_time for 15 minutes. No password is accepted.',
+      + 'Credential and policy changes of this session then count from that auth_time for EMBERPATH_RECENT_AUTH_SECONDS (default 900, 15 minutes); reads never need a step-up. No password is accepted.',
     security, requestBody: {required: true, content: json({type: 'object', required: ['idToken'], additionalProperties: false, properties: {idToken: {type: 'string', minLength: 1, maxLength: 16384}}})},
     responses: {'200': {description: 'Step-up recorded', content: json({type: 'object', required: ['ok', 'authTime', 'recentUntil'], properties: {ok: {const: true}, authTime: {type: 'string', format: 'date-time'}, recentUntil: {type: 'string', format: 'date-time'}}})},
       '400': {description: 'No ID token in the body (REAUTH_REQUIRED)'}, '401': stepUpError, '503': {description: 'Oathweave is not configured (STEP_UP_UNAVAILABLE) or its keys are unavailable (REAUTH_UNAVAILABLE)'}}}};

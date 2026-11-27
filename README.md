@@ -386,6 +386,7 @@ sent upstream; `no-store` keeps it out of the cache.
 | `HIVE_ROUTER_AUTH_MODE` | `os` | `os`: verify the OS password through PAM (`pamtester`). `iam-oidc`: sign in through Oathweave by relaying the password (deprecated; needs `EMBERPATH_PASSWORD_RELAY=true`). |
 | `EMBERPATH_PASSWORD_RELAY` | `false` | Deprecated, removed in the next major. In `iam-oidc` mode, `true` keeps relaying passwords to Oathweave through `POST /api/auth/login` and `POST /api/auth/reauthenticate`; off, both answer `410 Gone`. OS mode is not affected. See [docs/OATHWEAVE.md](docs/OATHWEAVE.md#password-sign-in-is-retired). |
 | `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` | `300` | How recent the `auth_time` of a step-up ID token must be (1-3600). |
+| `EMBERPATH_RECENT_AUTH_SECONDS` | `900` | How long a sign-in or step-up counts as recent for credential and policy changes (60-43200). Reads never need one. |
 | `EMBERPATH_STEP_UP_AUDIENCES` | `hivexui-emberpath` | Comma-separated Oathweave client IDs whose ID tokens `POST /api/auth/step-up` accepts. |
 | `HIVE_ROUTER_OS_AUTH_COMMAND` | | Replaces `pamtester` with another command. Intended for tests and development. |
 | `EMBERPATH_TRUSTED_PROXIES` | `loopback` | Proxies in front of the admin listener whose `X-Forwarded-For` names the client: a comma- or space-separated list of IP addresses, CIDR ranges, host names (resolved through DNS, such as a Compose service), the presets `loopback`, `private` (RFC 1918 and IPv6 unique-local) and `linklocal`, and `none`. The header is read from the right only when the socket peer is listed, skipping further listed hops, so an address a caller wrote itself is never used. The result keys the sign-in throttle, is stored on the admin session and is the single `X-Forwarded-For` address sent to Oathweave and HiveMem. Behind Hive's ingress, list the ingress. |
@@ -495,7 +496,10 @@ browser-issuer tokens. The suite controller sets these; see
   `iam:groups:read` and `iam:groups:write` for groups, `iam:sa:read` and
   `iam:sa:write` for enrollments, and `iam:admin:read` or `iam:admin:write` for IAM
   routes without a permission of their own.
-- Credential and policy changes need a sign-in from the last 15 minutes. Confirm it
+- Credential and policy changes (writes under `/api/client-keys`, `/api/iam/clients`,
+  `/api/iam/roles`, `/api/iam/password-policy`, `/api/hive/actors` and
+  `/api/hive/upgrades`) need a sign-in from the last 15 minutes
+  (`EMBERPATH_RECENT_AUTH_SECONDS`); reading them does not. Confirm it
   with `POST /api/auth/step-up` and a fresh Oathweave ID token (HiveXUI does this for
   you); see [docs/OATHWEAVE.md](docs/OATHWEAVE.md#step-up-with-an-id-token). In OS
   mode, `POST /api/auth/reauthenticate` with the OS password still works. The `iam-oidc`

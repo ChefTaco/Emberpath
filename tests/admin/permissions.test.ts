@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasAdminPermission, hasRecentOperatorAuthentication, requiredPermissionForRequest } from '../../src/admin/app.js';
+import { hasAdminPermission, hasRecentOperatorAuthentication, requiredPermissionForRequest, requiresRecentAuthentication } from '../../src/admin/app.js';
 
 describe('admin permission mapping', () => {
   it('separates execution of inference requests from read-only routing previews', () => {
@@ -66,5 +66,27 @@ describe('admin permission mapping', () => {
     expect(hasRecentOperatorAuthentication(now - 16 * 60_000, now)).toBe(false);
     expect(hasRecentOperatorAuthentication(now + 31_000, now)).toBe(false);
     expect(hasRecentOperatorAuthentication(undefined, now)).toBe(false);
+  });
+});
+
+describe('requiresRecentAuthentication', () => {
+  it('asks for a recent sign-in on credential and policy writes only', () => {
+    for (const method of ['GET', 'HEAD', 'OPTIONS', 'get']) {
+      for (const path of ['/api/client-keys', '/api/client-keys/k/usage', '/api/iam/clients', '/api/iam/roles', '/api/iam/password-policy', '/api/hive/actors', '/api/hive/upgrades/status']) {
+        expect(requiresRecentAuthentication(method, path)).toBe(false);
+      }
+    }
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'post']) {
+      for (const path of ['/api/client-keys', '/api/client-keys/k/rotate', '/api/iam/clients/c/rotate-secret', '/api/iam/roles/r', '/api/iam/password-policy', '/api/hive/actors/a/rotate', '/api/hive/upgrades/apply']) {
+        expect(requiresRecentAuthentication(method, path)).toBe(true);
+      }
+    }
+    expect(requiresRecentAuthentication('POST', '/api/route-rules')).toBe(false);
+  });
+
+  it('uses the configured window', () => {
+    const now = Date.parse('2026-09-07T12:00:00Z');
+    expect(hasRecentOperatorAuthentication(now - 20 * 60_000, now, 30 * 60_000)).toBe(true);
+    expect(hasRecentOperatorAuthentication(now - 2 * 60_000, now, 60_000)).toBe(false);
   });
 });

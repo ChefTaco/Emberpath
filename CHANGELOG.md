@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- No database migration and no setting to change. Downgrading to 2.10.0 brings back the step-up
+  on reads and ignores `EMBERPATH_RECENT_AUTH_SECONDS`.
+
+### Added
+
+- `EMBERPATH_RECENT_AUTH_SECONDS` (default `900`, 60-43200): how long a sign-in or step-up
+  counts as recent for credential and policy changes. The default keeps the 15-minute rule; the
+  step-up answer's `recentUntil` follows the setting.
+
+### Fixed
+
+- Reads no longer ask for a step-up. `GET` and `HEAD` under `/api/client-keys` (list, usage),
+  `/api/iam/clients`, `/api/iam/roles`, `/api/iam/password-policy` and `/api/hive/actors` answered
+  `403 STEP_UP_REQUIRED` once the sign-in was more than 15 minutes old, so opening HiveXUI's API
+  Keys page asked people to verify their identity. They now need only the read permission; none
+  of them returns secret material (a new key is shown once, in the answer to the write that
+  issued or rotated it). Every write on those paths, and upgrade plan and apply, still needs a
+  recent sign-in.
+
 ## [2.10.0] - 2026-11-26
 
 ### Upgrade notes
