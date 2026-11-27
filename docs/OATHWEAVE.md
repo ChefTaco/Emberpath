@@ -38,10 +38,18 @@ no UI of its own.
 
 ## Step-up with an ID token
 
-Credential and policy changes (`/api/client-keys`, `/api/iam/clients`, `/api/iam/roles`,
-`/api/iam/password-policy`, `/api/hive/actors`, `/api/hive/upgrades` writes) need a sign-in from
-the last 15 minutes and otherwise answer `403` with `STEP_UP_REQUIRED`. For a bearer token that
-is its `auth_time`. To confirm a sign-in without a password:
+Credential and policy changes need a sign-in from the last 15 minutes
+(`EMBERPATH_RECENT_AUTH_SECONDS`, default `900`, 60-43200) and otherwise answer `403` with
+`STEP_UP_REQUIRED`. They are the writes (every method but `GET`, `HEAD` and `OPTIONS`) under
+`/api/client-keys`, `/api/iam/clients`, `/api/iam/roles`, `/api/iam/password-policy`,
+`/api/hive/actors` and `/api/hive/upgrades`: issuing, rotating, changing, deleting or revoking a
+key, client secret, role, actor credential or password policy, acknowledging a credential
+receipt, and planning or applying an upgrade. Reads of those paths (listing keys, key usage,
+clients, roles, the password policy, actors, upgrade status) need only the read permission,
+never a step-up: none of them returns secret material. A new key or client secret is shown once,
+in the answer to the write that issued or rotated it (`Cache-Control: no-store`); lists and
+details carry only the key prefix. For a bearer token the sign-in time is its `auth_time`. To
+confirm a sign-in without a password:
 
 1. Start a step-up. The answer holds a single-use `nonce` (valid for 10 minutes), when the
    re-authentication started, the window and the accepted clients:
@@ -75,7 +83,8 @@ equal to the caller's Oathweave session, and `auth_time` at most
 `EMBERPATH_STEP_UP_MAX_AGE_SECONDS` (default 300) old and not earlier than the challenge (30 s of
 clock tolerance): a forced sign-in must be new. An access token is never accepted as an
 ID token. The answer is `{"ok": true, "authTime": "...", "recentUntil": "..."}`; that session's
-credential and policy changes then count from `authTime` for 15 minutes. A refused proof is
+credential and policy changes then count from `authTime` for `EMBERPATH_RECENT_AUTH_SECONDS`
+(15 minutes by default), until `recentUntil`. A refused proof is
 `401` with `error` `REAUTH_REQUIRED`, `REAUTH_STALE` or `REAUTH_INVALID` and a `reason`; `503`
 means Oathweave is not configured (`STEP_UP_UNAVAILABLE`) or its keys are unavailable
 (`REAUTH_UNAVAILABLE`). Step-ups are kept in memory: after a restart, step up again. A session

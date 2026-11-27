@@ -137,6 +137,8 @@ export const envSchema = z.object({
   // Deprecated Oathweave password relay (iam-oidc /api/auth/login, /api/auth/reauthenticate). Off: both answer 410.
   EMBERPATH_PASSWORD_RELAY: z.enum(['true', 'false']).default('false').transform(value => value === 'true'),
   EMBERPATH_STEP_UP_MAX_AGE_SECONDS: z.coerce.number().int().min(1).max(3600).default(300),
+  // How long a sign-in (or step-up) counts as recent for credential and policy changes. Reads never need one.
+  EMBERPATH_RECENT_AUTH_SECONDS: z.coerce.number().int().min(60).max(43200).default(900),
   EMBERPATH_STEP_UP_AUDIENCES: z.string().optional().refine(
     value => value === undefined || value.split(',').map(item => item.trim()).filter(Boolean).every(item => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(item)),
     { error: 'EMBERPATH_STEP_UP_AUDIENCES must be comma-separated Oathweave client IDs' },

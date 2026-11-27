@@ -84,7 +84,11 @@ it('validates real SQLite reads/writes, secret redaction, scoped authorization a
   expect(JSON.stringify(list.body)).not.toContain('keyHash');
   expect((await req('/api/client-keys', 'POST', {name: 'Forbidden key'}, read)).status).toBe(403);
   await prisma.adminSession.updateMany({where: {sessionId: 'fixture'}, data: {createdAt: new Date(Date.now() - 1000000)}});
-  expect((await req('/api/client-keys', 'GET', undefined, read)).status).toBe(403);
+  // A stale sign-in still reads keys; only writes ask for a step-up.
+  expect((await req('/api/client-keys', 'GET', undefined, read)).status).toBe(200);
+  expect((await req('/api/client-keys/' + keyId + '/usage', 'GET', undefined, read)).status).toBe(200);
+  const stale = await req('/api/client-keys/' + keyId + '/rotate', 'POST');
+  expect(stale.status).toBe(403); expect(await stale.json()).toMatchObject({error: 'STEP_UP_REQUIRED'});
   await prisma.adminSession.updateMany({where: {sessionId: 'fixture'}, data: {createdAt: new Date()}});
   await parse('/api/client-keys/' + keyId + '/usage', contracts.modelConsoleSchemas.clientKeyUsage);
   await prisma.trace.create({data: {requestId: 'fixture-request', method: 'POST', path: '/v1/responses', endpointKind: 'v1.responses', routeKey: 'fixture',

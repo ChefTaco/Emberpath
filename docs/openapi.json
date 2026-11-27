@@ -6802,7 +6802,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -6973,7 +6973,7 @@
     },
     "/api/auth/step-up": {
       "post": {
-        "description": "Send the ID token of a fresh Oathweave authorization (prompt=login or max_age, PKCE, the nonce of POST /api/auth/step-up/challenge) issued to a client in EMBERPATH_STEP_UP_AUDIENCES (default hivexui-emberpath). Emberpath verifies the signature, issuer (OATHWEAVE_ISSUER), audience, lifetime, the challenge nonce (single use), that sub and sid are the caller's, and that auth_time is within EMBERPATH_STEP_UP_MAX_AGE_SECONDS (default 300) and not before the challenge. Credential and policy changes of this session then count from that auth_time for 15 minutes. No password is accepted.",
+        "description": "Send the ID token of a fresh Oathweave authorization (prompt=login or max_age, PKCE, the nonce of POST /api/auth/step-up/challenge) issued to a client in EMBERPATH_STEP_UP_AUDIENCES (default hivexui-emberpath). Emberpath verifies the signature, issuer (OATHWEAVE_ISSUER), audience, lifetime, the challenge nonce (single use), that sub and sid are the caller's, and that auth_time is within EMBERPATH_STEP_UP_MAX_AGE_SECONDS (default 300) and not before the challenge. Credential and policy changes of this session then count from that auth_time for EMBERPATH_RECENT_AUTH_SECONDS (default 900, 15 minutes); reads never need a step-up. No password is accepted.",
         "operationId": "stepUpWithIdToken",
         "requestBody": {
           "content": {
@@ -7178,7 +7178,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -7247,7 +7247,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required, or error STEP_UP_REQUIRED: no sign-in within EMBERPATH_RECENT_AUTH_SECONDS (default 900); confirm one with POST /api/auth/step-up"
           },
           "409": {
             "content": {
@@ -7311,7 +7311,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required, or error STEP_UP_REQUIRED: no sign-in within EMBERPATH_RECENT_AUTH_SECONDS (default 900); confirm one with POST /api/auth/step-up"
           },
           "409": {
             "content": {
@@ -7391,7 +7391,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required, or error STEP_UP_REQUIRED: no sign-in within EMBERPATH_RECENT_AUTH_SECONDS (default 900); confirm one with POST /api/auth/step-up"
           },
           "409": {
             "content": {
@@ -7463,7 +7463,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required, or error STEP_UP_REQUIRED: no sign-in within EMBERPATH_RECENT_AUTH_SECONDS (default 900); confirm one with POST /api/auth/step-up"
           },
           "409": {
             "content": {
@@ -7535,7 +7535,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "404": {
             "description": "Client key not found"
@@ -7897,7 +7897,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -8035,7 +8035,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -8104,7 +8104,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -8168,7 +8168,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -8248,7 +8248,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -8283,7 +8283,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Permission, recent authentication or origin check failed"
+            "description": "Permission check failed"
           },
           "409": {
             "description": "Upgrade plan changed or coordinator is unavailable"
@@ -8310,7 +8310,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Permission, recent authentication or origin check failed"
+            "description": "Permission, recent authentication (STEP_UP_REQUIRED) or origin check failed"
           },
           "409": {
             "description": "Upgrade plan changed or coordinator is unavailable"
@@ -8334,7 +8334,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Permission, recent authentication or origin check failed"
+            "description": "Permission, recent authentication (STEP_UP_REQUIRED) or origin check failed"
           },
           "409": {
             "description": "Upgrade plan changed or coordinator is unavailable"
@@ -8358,7 +8358,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Permission, recent authentication or origin check failed"
+            "description": "Permission check failed"
           },
           "409": {
             "description": "Upgrade plan changed or coordinator is unavailable"
@@ -9034,7 +9034,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9095,7 +9095,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9156,7 +9156,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9242,7 +9242,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9311,7 +9311,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9375,7 +9375,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9455,7 +9455,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9524,7 +9524,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9601,7 +9601,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9654,7 +9654,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9715,7 +9715,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9789,7 +9789,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9853,7 +9853,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9928,7 +9928,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -9991,7 +9991,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -10062,7 +10062,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {
@@ -10226,7 +10226,7 @@
             "description": "Authentication required"
           },
           "403": {
-            "description": "Product permission required; client key operations also require recent interactive authentication"
+            "description": "Product permission required"
           },
           "409": {
             "content": {

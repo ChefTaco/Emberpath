@@ -6,8 +6,8 @@
  * the suite's shared verifier: signature, issuer, an audience from EMBERPATH_STEP_UP_AUDIENCES,
  * lifetime, the acting person and session, and `auth_time` within
  * EMBERPATH_STEP_UP_MAX_AGE_SECONDS. A proof that passes counts as that session's latest
- * sign-in: the credential and policy endpoints keep their 15-minute recent-sign-in rule, now
- * measured from the proof's `auth_time`.
+ * sign-in: credential and policy changes keep their recent-sign-in rule (EMBERPATH_RECENT_AUTH_SECONDS,
+ * 15 minutes by default), now measured from the proof's `auth_time`. Reads never need one.
  *
  * Step-ups are remembered in memory only, per Emberpath process: a restart asks for a new one.
  */
@@ -17,8 +17,14 @@ import {
 } from '@hivemagnus/hive-common/oathweave';
 import { randomBytes } from 'node:crypto';
 
-/** How long a sign-in counts as recent for credential and policy changes. */
-export const RECENT_OPERATOR_AUTHENTICATION_MS = 15 * 60_000;
+/** How long a sign-in counts as recent for credential and policy changes, by default (EMBERPATH_RECENT_AUTH_SECONDS). */
+export const DEFAULT_RECENT_AUTH_SECONDS = 900;
+export const RECENT_OPERATOR_AUTHENTICATION_MS = DEFAULT_RECENT_AUTH_SECONDS * 1000;
+
+/** The recent-sign-in window from the environment, in milliseconds. */
+export function recentAuthenticationWindowMs(env: { EMBERPATH_RECENT_AUTH_SECONDS?: number | undefined }): number {
+  return (env.EMBERPATH_RECENT_AUTH_SECONDS ?? DEFAULT_RECENT_AUTH_SECONDS) * 1000;
+}
 /** The suite's HiveXUI browser client for Emberpath: the default step-up audience. */
 export const DEFAULT_STEP_UP_AUDIENCES = ['hivexui-emberpath'] as const;
 export const DEFAULT_STEP_UP_MAX_AGE_SECONDS = 300;
@@ -72,22 +78,22 @@ function stepUpKey(userId: string, sessionKind: 'oathweave' | 'session', session
 }
 
 /** Remember a verified step-up for one admin user and session. `authTimeMs` is the proof's `auth_time`. */
-export function rememberStepUp(userId: string, sessionKind: 'oathweave' | 'session', sessionId: string, authTimeMs: number, now = Date.now()): void {
+export function rememberStepUp(userId: string, sessionKind: 'oathweave' | 'session', sessionId: string, authTimeMs: number, now = Date.now(), windowMs = RECENT_OPERATOR_AUTHENTICATION_MS): void {
   const key = stepUpKey(userId, sessionKind, sessionId);
   stepUps.delete(key);
   stepUps.set(key, authTimeMs);
   if (stepUps.size <= STEP_UP_MEMORY_MAX) return;
-  for (const [entry, at] of stepUps) if (now - at > RECENT_OPERATOR_AUTHENTICATION_MS) stepUps.delete(entry);
+  for (const [entry, at] of stepUps) if (now - at > windowMs) stepUps.delete(entry);
   while (stepUps.size > STEP_UP_MEMORY_MAX) stepUps.delete(stepUps.keys().next().value as string);
 }
 
 /** The latest verified step-up for this user and session, in epoch milliseconds. */
-export function rememberedStepUp(userId: string, sessionKind: 'oathweave' | 'session', sessionId: string | undefined, now = Date.now()): number | undefined {
+export function rememberedStepUp(userId: string, sessionKind: 'oathweave' | 'session', sessionId: string | undefined, now = Date.now(), windowMs = RECENT_OPERATOR_AUTHENTICATION_MS): number | undefined {
   if (!sessionId) return undefined;
   const key = stepUpKey(userId, sessionKind, sessionId);
   const at = stepUps.get(key);
   if (at === undefined) return undefined;
-  if (now - at > RECENT_OPERATOR_AUTHENTICATION_MS) {
+  if (now - at > windowMs) {
     stepUps.delete(key);
     return undefined;
   }

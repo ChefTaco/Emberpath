@@ -32,7 +32,7 @@ import { requestIdMiddleware } from '../utils/request.js';
 import { authenticateAdmin, isMfaRequired, createAdminSession, destroyAdminSession, requireAdminAuth, verifyAdminSession, type AuthenticatedAdmin } from '../security/admin-auth.js';
 import { isRecentAuthenticationError } from '@hivemagnus/hive-common/oathweave';
 import { linkedLocalId, parseAccountLinks } from '../security/admin-identity.js';
-import { RECENT_OPERATOR_AUTHENTICATION_MS, STEP_UP_CHALLENGE_TTL_MS, issueStepUpChallenge, rememberStepUp, rememberedStepUp, stepUpSettingsFromEnvironment, stepUpVerifier, takeStepUpChallenge } from '../security/step-up.js';
+import { STEP_UP_CHALLENGE_TTL_MS, recentAuthenticationWindowMs, issueStepUpChallenge, rememberStepUp, rememberedStepUp, stepUpSettingsFromEnvironment, stepUpVerifier, takeStepUpChallenge } from '../security/step-up.js';
 import { decodeJwt } from 'jose';
 import { createOathweaveServiceToken, oathweaveTokenUrl, type OathweaveServiceToken, type OathweaveTokenEvent } from '../security/oathweave-service-token.js';
 import { createHiveMemCredential, type HiveMemCredential } from '../security/hivemem-credential.js';
@@ -1065,8 +1065,26 @@ export function requiredPermissionForRequest(method: string, path: string): stri
   return 'router:admin:write';
 }
 
-export function hasRecentOperatorAuthentication(authenticatedAt: number | undefined, now = Date.now()): boolean {
-  return typeof authenticatedAt === 'number' && authenticatedAt <= now + 30_000 && now - authenticatedAt <= RECENT_OPERATOR_AUTHENTICATION_MS;
+/** The recent-sign-in window for credential and policy changes (EMBERPATH_RECENT_AUTH_SECONDS, default 900). */
+function recentOperatorAuthenticationMs(): number {
+  return recentAuthenticationWindowMs(loadEnv());
+}
+
+export function hasRecentOperatorAuthentication(authenticatedAt: number | undefined, now = Date.now(), windowMs = recentOperatorAuthenticationMs()): boolean {
+  return typeof authenticatedAt === 'number' && authenticatedAt <= now + 30_000 && now - authenticatedAt <= windowMs;
+}
+
+/** Where credentials and security policy live: their writes need a recent sign-in (step-up). */
+const STEP_UP_PATH_PREFIXES = ['/api/client-keys', '/api/iam/clients', '/api/iam/roles', '/api/iam/password-policy', '/api/hive/actors', '/api/hive/upgrades'] as const;
+
+/**
+ * Whether this request needs a recent sign-in: every write (any method but GET, HEAD and OPTIONS)
+ * under a credential or policy path. Reads never do: none of them returns secret material (a new
+ * key or secret is shown once, in the answer to the write that issued it).
+ */
+export function requiresRecentAuthentication(method: string, pathname: string): boolean {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) return false;
+  return STEP_UP_PATH_PREFIXES.some(prefix => pathname.startsWith(prefix));
 }
 
 const PASSWORD_RELAY_PATHS = new Set(['/api/auth/login', '/api/auth/reauthenticate']);
@@ -1102,7 +1120,7 @@ function passwordRelayRefusal(context: AdminContext, pathname: string): Response
 
 /** A principal's last sign-in: its token or session, or a later verified step-up of the same session. */
 function lastOperatorAuthentication(principal: AuthenticatedAdmin, now = Date.now()): number | undefined {
-  const steppedUp = rememberedStepUp(principal.user.id, principal.resourceAuthorization ? 'oathweave' : 'session', principal.sessionId, now);
+  const steppedUp = rememberedStepUp(principal.user.id, principal.resourceAuthorization ? 'oathweave' : 'session', principal.sessionId, now, recentOperatorAuthenticationMs());
   if (steppedUp === undefined) return principal.authenticatedAt;
   return principal.authenticatedAt === undefined ? steppedUp : Math.max(principal.authenticatedAt, steppedUp);
 }
@@ -1129,7 +1147,7 @@ async function attachAdminSessionAndEnforcePermission(context: AdminContext, nex
   if (required && !hasAdminPermission(principal.permissions, required)) {
     return context.json({ error: 'Forbidden', requiredPermission: required }, 403);
   }
-  const sensitive = required && ((pathname.startsWith('/api/hive/upgrades') && !['GET','HEAD'].includes(context.req.method)) || pathname.startsWith('/api/iam/password-policy') || pathname.startsWith('/api/iam/clients') || pathname.startsWith('/api/iam/roles') || pathname.startsWith('/api/hive/actors') || pathname.startsWith('/api/client-keys'));
+  const sensitive = required !== null && requiresRecentAuthentication(context.req.method, pathname);
   if (sensitive && !hasRecentOperatorAuthentication(lastOperatorAuthentication(principal))) return context.json({ error: 'STEP_UP_REQUIRED', message: 'Sign in again before changing credentials or security policy.' }, 403);
   await next();
 }
@@ -1929,7 +1947,8 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       if (linked !== principal.user.id) return refuse('REAUTH_INVALID', 'not_linked');
     }
     const authTimeMs = proof.authTime * 1000;
-    rememberStepUp(principal.user.id, principal.resourceAuthorization ? 'oathweave' : 'session', principal.sessionId, authTimeMs);
+    const windowMs = recentOperatorAuthenticationMs();
+    rememberStepUp(principal.user.id, principal.resourceAuthorization ? 'oathweave' : 'session', principal.sessionId, authTimeMs, Date.now(), windowMs);
     await recordAuditEvent({
       actorType: 'admin-user',
       adminUserId: principal.user.id,
@@ -1937,7 +1956,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
       entityType: 'admin-session',
       metadata: { audience: proof.audience, authTime: new Date(authTimeMs).toISOString() },
     });
-    return context.json({ ok: true, authTime: new Date(authTimeMs).toISOString(), recentUntil: new Date(authTimeMs + RECENT_OPERATOR_AUTHENTICATION_MS).toISOString() });
+    return context.json({ ok: true, authTime: new Date(authTimeMs).toISOString(), recentUntil: new Date(authTimeMs + windowMs).toISOString() });
   });
   app.post('/api/auth/logout', requireAdminAuth, async (context) => {
     const user = context.get('adminUser');
