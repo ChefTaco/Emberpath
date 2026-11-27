@@ -294,6 +294,12 @@ describe('recent sign-in is for writes only', () => {
     ['GET', '/api/iam/clients'],
     ['GET', '/api/iam/roles'],
     ['GET', '/api/iam/password-policy'],
+    ['GET', '/api/iam/users'],
+    ['GET', '/api/iam/users/missing-user'],
+    ['GET', '/api/iam/service-accounts'],
+    ['GET', '/api/iam/system-users'],
+    ['GET', '/api/iam/groups'],
+    ['GET', '/api/iam/enrollments/installations'],
   ];
   // Every write under the credential and policy paths. The client-key writes run against mocked
   // storage; the rest have invalid bodies or missing targets, so getting past the gate changes nothing.
@@ -323,6 +329,41 @@ describe('recent sign-in is for writes only', () => {
     ['DELETE', '/api/iam/roles/missing-role'],
     ['PUT', '/api/iam/password-policy', '{}'],
     ['PATCH', '/api/iam/password-policy', '{}'],
+    ['POST', '/api/iam/users', '{}'],
+    ['PATCH', '/api/iam/users/missing-user', '{}'],
+    ['DELETE', '/api/iam/users/missing-user'],
+    ['POST', '/api/iam/users/missing-user/roles', '{}'],
+    ['DELETE', '/api/iam/users/missing-user/roles/missing-role'],
+    ['POST', '/api/iam/users/missing-user/lock', '{}'],
+    ['POST', '/api/iam/users/missing-user/unlock', '{}'],
+    ['POST', '/api/iam/users/missing-user/rotate-password', '{}'],
+    ['POST', '/api/iam/service-accounts', '{}'],
+    ['PATCH', '/api/iam/service-accounts/missing-account', '{}'],
+    ['DELETE', '/api/iam/service-accounts/missing-account'],
+    ['POST', '/api/iam/service-accounts/missing-account/rotate', '{}'],
+    ['POST', '/api/iam/system-users', '{}'],
+    ['PATCH', '/api/iam/system-users/missing-user', '{}'],
+    ['DELETE', '/api/iam/system-users/missing-user'],
+    ['POST', '/api/iam/groups', '{}'],
+    ['PATCH', '/api/iam/groups/missing-group', '{}'],
+    ['DELETE', '/api/iam/groups/missing-group'],
+    ['POST', '/api/iam/groups/missing-group/members', '{}'],
+    ['DELETE', '/api/iam/groups/missing-group/members/missing-user'],
+    ['POST', '/api/iam/groups/missing-group/roles', '{}'],
+    ['DELETE', '/api/iam/groups/missing-group/roles/missing-role'],
+    ['POST', '/api/iam/enrollments', '{}'],
+    ['POST', '/api/iam/enrollments/missing-actor/rotate', '{}'],
+    ['POST', '/api/iam/enrollments/missing-actor/disable', '{}'],
+    ['POST', '/api/iam/enrollments/missing-actor/operations/missing-operation/resume', '{}'],
+    ['DELETE', '/api/iam/enrollments/missing-actor/operations/missing-operation/receipt'],
+    ['DELETE', '/api/iam/enrollments/missing-actor/receipt'],
+  ];
+  // Writes that only take access away, or are not credential changes, stay quick.
+  const ungatedWrites: Array<[string, string, string?]> = [
+    ['DELETE', '/api/iam/sessions/missing-session'],
+    ['DELETE', '/api/iam/sessions/user/missing-user'],
+    ['POST', '/api/iam/tokens/revoke', '{}'],
+    ['POST', '/api/iam/system-users/check', '{}'],
   ];
   const request = (headers: Record<string, string>, method: string, path: string, body?: string) =>
     app.request(path, { method, headers, ...(body === undefined ? {} : { body }) });
@@ -363,6 +404,9 @@ describe('recent sign-in is for writes only', () => {
       const response = await request(headers, method, path, body);
       expect.soft(response.status, `${method} ${path}`).toBe(403);
       expect.soft(await errorOf(response), `${method} ${path}`).toBe('STEP_UP_REQUIRED');
+    }
+    for (const [method, path, body] of ungatedWrites) {
+      expect.soft(await errorOf(await request(headers, method, path, body)), `${method} ${path}`).not.toBe('STEP_UP_REQUIRED');
     }
     // Refused at the gate: no handler ran.
     for (const write of [prisma.clientApiKey.create, prisma.clientApiKey.update, prisma.clientApiKey.delete]) expect(write).not.toHaveBeenCalled();
