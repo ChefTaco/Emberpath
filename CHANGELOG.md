@@ -2,19 +2,36 @@
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-11-27
+
 ### Upgrade notes
 
+- **Step-up is only for writes.** Reads under `/api/client-keys` (list, usage),
+  `/api/iam/clients`, `/api/iam/roles`, `/api/iam/password-policy` and `/api/hive/actors` no
+  longer answer `403 STEP_UP_REQUIRED` once the sign-in is more than 15 minutes old; they need
+  only the read permission, so HiveXUI's API Keys page stops asking people to verify their
+  identity. Writes on those paths, and upgrade plan and apply, still need a recent sign-in.
+  Nothing to do.
 - **Identity writes through the IAM proxy now need a recent sign-in.** Writes under
   `/api/iam/users`, `/api/iam/service-accounts`, `/api/iam/system-users`, `/api/iam/groups` and
   `/api/iam/enrollments` on Emberpath's admin API answer `403 STEP_UP_REQUIRED` when the caller's
-  sign-in or step-up is older than `EMBERPATH_RECENT_AUTH_SECONDS` (15 minutes). Automation that
-  drives these through Emberpath with a long-lived admin session must confirm a sign-in first
-  (`POST /api/auth/step-up`, or `POST /api/auth/reauthenticate` in OS mode) or call Oathweave
-  directly with its own credentials. HiveXUI is not affected: it sends `/api/iam/*` to Oathweave,
-  not to Emberpath, and resource tokens were already refused on this proxy
+  sign-in or step-up is older than `EMBERPATH_RECENT_AUTH_SECONDS` (15 minutes by default).
+  Automation that drives these through Emberpath with a long-lived admin session must confirm a
+  sign-in first (`POST /api/auth/step-up`, or `POST /api/auth/reauthenticate` in OS mode) or call
+  Oathweave directly with its own credentials. Revoking sessions and tokens and the PAM shim's
+  `POST /api/iam/system-users/check` stay ungated. HiveXUI is not affected: it sends `/api/iam/*`
+  to Oathweave, not to Emberpath, and resource tokens were already refused on this proxy
   (`PRODUCT_API_REQUIRED`).
-- No database migration and no setting to change. Downgrading to 2.10.0 brings back the step-up
-  on reads, drops it from those identity writes and ignores `EMBERPATH_RECENT_AUTH_SECONDS`.
+- **New setting `EMBERPATH_RECENT_AUTH_SECONDS`** (default `900`, 60-43200). The default keeps
+  the 15-minute rule, so there is nothing to set; a value outside the range fails configuration
+  validation (`hive-router check` reports it and startup refuses it). The Hive suite controller
+  does not need to set it.
+- No database migration: the schema is unchanged from 2.10.0, so a Hive suite upgrade does not
+  need `--allow-migrations` for Emberpath. A downgrade to 2.10.0 keeps working: it brings back the
+  step-up on reads, drops it from those identity writes and ignores
+  `EMBERPATH_RECENT_AUTH_SECONDS` (step-ups held in memory are lost on the restart anyway).
+- Dependencies are unchanged from 2.10.0 (`@hivemagnus/hive-common` 0.10.0, bundled in the
+  image); works with HiveXUI 0.14.0 and Oathweave 2.7.0 as pinned by Hive suite 3.15.1.
 
 ### Added
 
