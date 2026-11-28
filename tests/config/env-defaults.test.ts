@@ -72,6 +72,16 @@ describe('configuration errors', () => {
     expect(problems[0]?.message).toMatch(/NODE_ENV=production.*TLS_CERT_PATH and TLS_KEY_PATH.*openssl req -x509/u);
   });
 
+  it('keeps the production JWKS timings and refuses a stale window over a day', () => {
+    const env = parseEnv({ HIVE_ROUTER_SECRET: secret, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: '300000', HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: '900000' });
+    expect([env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS, env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS]).toEqual([300_000, 900_000]);
+    expect(inspectEnv({ HIVE_ROUTER_SECRET: secret, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: '300000', HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: String(300_000 + 86_400_000) }).problems).toEqual([]);
+    const { env: refused, problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: '300000', HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: String(300_000 + 86_400_001) });
+    expect(refused).toBeNull();
+    expect(problems.map((problem) => problem.variable)).toEqual(['HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS']);
+    expect(problems[0]?.message).toMatch(/at most one day/u);
+  });
+
   it('rejects half a TLS configuration and missing files', () => {
     const { problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, TLS_CERT_PATH: '/nonexistent/server.crt' });
     expect(problems.map((problem) => problem.variable)).toEqual(['TLS_KEY_PATH', 'TLS_CERT_PATH']);
