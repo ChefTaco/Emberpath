@@ -15,6 +15,10 @@ import {
   warnLegacySecurityExporterSettings,
   type SecurityExporterAuthorizerOptions,
 } from '../../src/security/security-exporter-auth.js';
+import {
+  getSecurityExporterJwksStatus,
+  resetSecurityExporterJwksStatusForTests,
+} from '../../src/security/security-exporter-jwks-status.js';
 
 const expectedClaims = {
   actorType: 'SERVICE_ACCOUNT',
@@ -188,6 +192,86 @@ describe('Security exporter Oathweave authorization', () => {
     expect(reportRefreshFailure).toHaveBeenLastCalledWith('ECONNREFUSED');
     vi.setSystemTime(Date.now() + 31_000);
     await expect(authorize(token)).resolves.toEqual({ status: 'unavailable' });
+  });
+
+  it('keeps working with the production JWKS timings and issuers, and never trusts keys past the maximum age', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    resetSecurityExporterJwksStatusForTests();
+    const { jwks, sign } = await signingFixture();
+    const down = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) });
+    const endpoint = jwksEndpoint(jwks, down);
+    const reportRefreshFailure = vi.fn();
+    const reportTrustedKeys = vi.fn();
+    const onConfigurationProblem = vi.fn();
+    const production = { ...baseEnv, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: 300_000, HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: 900_000 };
+    const authorize = authorizer(endpoint.fetch, {
+      env: production,
+      source: { HIVE_ROUTER_IAM_ISSUER: 'hive-iam', OATHWEAVE_ISSUER: BROWSER_ISSUER },
+      reportRefreshFailure,
+      reportTrustedKeys,
+      onConfigurationProblem,
+    });
+    const start = Date.now();
+    await expect(authorize(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    await expect(authorize(await sign(expectedClaims, { issuer: BROWSER_ISSUER }))).resolves.toMatchObject({ status: 'authorized' });
+    expect(reportTrustedKeys).toHaveBeenCalledWith(start, ['test-key']);
+    expect(getSecurityExporterJwksStatus(production.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS)).toMatchObject({ trustedKeyCount: 1, fetchedAt: new Date(start).toISOString() });
+    expect(endpoint.requests).toHaveLength(1);
+    // A refresh that fails 599 s after the fetch keeps the keys (599 + 300 <= 900)...
+    vi.setSystemTime(start + 599_000);
+    // Tokens live five minutes, so each step signs a fresh one.
+    await expect(authorize(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    expect(reportRefreshFailure).toHaveBeenLastCalledWith('ECONNREFUSED');
+    expect(endpoint.requests).toHaveLength(2);
+    // ...for one more refresh interval, without another request; the key age keeps growing.
+    vi.setSystemTime(start + 898_000);
+    await expect(authorize(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    expect(endpoint.requests).toHaveLength(2);
+    expect(getSecurityExporterJwksStatus(production.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS, start + 898_000)).toMatchObject({ state: 'critical', fetchedAt: new Date(start).toISOString() });
+    // At the maximum age the exporter fails closed.
+    vi.setSystemTime(start + 900_000);
+    await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
+    expect(reportTrustedKeys).toHaveBeenCalledTimes(1);
+    expect(onConfigurationProblem).not.toHaveBeenCalled();
+  });
+
+  it('refuses a first failed refresh later than the maximum age less one refresh interval', async () => {
+    // With sparse traffic the first refresh after the keys expire can come late: 650 s after the
+    // fetch is past 900 - 300 s, so the keys are not used, though they are younger than 900 s.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const { jwks, sign } = await signingFixture();
+    const endpoint = jwksEndpoint(jwks, new TypeError('fetch failed'));
+    const authorize = authorizer(endpoint.fetch, {
+      env: { ...baseEnv, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: 300_000, HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: 900_000 },
+    });
+    await expect(authorize(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    vi.setSystemTime(Date.now() + 650_000);
+    await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
+  });
+
+  it('answers unavailable and names the settings when the stale window would exceed a day', async () => {
+    const { jwks, sign } = await signingFixture();
+    const endpoint = jwksEndpoint(jwks);
+    const onConfigurationProblem = vi.fn();
+    const authorize = authorizer(endpoint.fetch, {
+      env: { ...baseEnv, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: 300_000, HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: 300_000 + 86_400_001 },
+      onConfigurationProblem,
+    });
+    await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
+    expect(endpoint.requests).toHaveLength(0);
+    expect(onConfigurationProblem).toHaveBeenCalledWith(expect.stringMatching(/HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS less HIVE_ROUTER_IAM_JWKS_REFRESH_MS/u));
+  });
+
+  it('verifies native-issuer service tokens without any https issuer', async () => {
+    const { jwks, sign } = await signingFixture();
+    const onConfigurationProblem = vi.fn();
+    const authorize = authorizer(jwksEndpoint(jwks).fetch, { onConfigurationProblem });
+    await expect(authorize(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    // No placeholder issuer stands in: an https-issued token is not accepted.
+    for (const issuer of [BROWSER_ISSUER, 'https://oathweave.invalid/']) {
+      await expect(authorize(await sign(expectedClaims, { issuer }))).resolves.toEqual({ status: 'invalid' });
+    }
+    expect(onConfigurationProblem).not.toHaveBeenCalled();
   });
 
   it('accepts a newly published rotation and reports trusted key IDs', async () => {

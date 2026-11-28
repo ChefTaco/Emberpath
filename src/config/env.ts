@@ -1,3 +1,4 @@
+import { OATHWEAVE_JWKS_MAX_STALE_MS } from '@hivemagnus/hive-common/oathweave';
 import { config as loadDotEnv } from 'dotenv';
 import { DEFAULT_TRUSTED_PROXIES, isValidTrustedProxies, TRUSTED_PROXIES_ERROR } from '../security/client-address.js';
 import { oathweaveTokenUrl, oathweaveTokenUrlProblem } from '../security/oathweave-service-token.js';
@@ -344,6 +345,11 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
   }
   if (env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS > env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS) {
     add('HIVE_ROUTER_IAM_JWKS_REFRESH_MS', 'HIVE_ROUTER_IAM_JWKS_REFRESH_MS must not exceed HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS. Lower the refresh interval or raise the maximum age.');
+  }
+  // The last good keys serve a failed refresh for the maximum age less one refresh interval, and
+  // HiveCommon's verifier allows that for a day at most (OATHWEAVE_JWKS_MAX_STALE_MS).
+  if (env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS - env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS > OATHWEAVE_JWKS_MAX_STALE_MS) {
+    add('HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS', 'HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS may exceed HIVE_ROUTER_IAM_JWKS_REFRESH_MS by at most one day (86400000 ms): the security exporter never trusts keys from a failed refresh for longer. Lower the maximum age or raise the refresh interval.');
   }
   if (env.HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS && env.NODE_ENV === 'production') {
     add('HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS', 'HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS is forbidden in production. Set it to false and trust the IAM certificate with HIVE_ROUTER_IAM_CA_CERT_PATH.');

@@ -5,13 +5,19 @@
  * lifetime, `jti`, the service-principal claim rules, `redirect: 'error'`, a request timeout
  * and cached keys with a rotation cooldown).
  *
+ * Keys are refreshed every HIVE_ROUTER_IAM_JWKS_REFRESH_MS (the verifier's `jwksCacheMaxAgeMs`).
+ * When a refresh fails, the verifier keeps the last good keys while they are at most
+ * HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS - HIVE_ROUTER_IAM_JWKS_REFRESH_MS old (`jwksStaleIfErrorMs`)
+ * and trusts them for one more refresh interval, so a key set is never trusted longer than
+ * HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS after its fetch. Its refresh reports (`onJwksRefresh`,
+ * `onJwksError`) feed the refresh and rotation metrics and the key-age status shown by health and
+ * metrics.
+ *
  * Emberpath adds on top, in the JWKS fetch the verifier uses:
  * - the transport: HIVE_ROUTER_IAM_CA_CERT_PATH, when set, is the only CA trusted for the JWKS
  *   (as for the Oathweave token requests); otherwise the system trust store is used;
  * - a bounded, strictly validated key set (RS256 RSA signing keys with safe key IDs, at most
- *   32), the refresh and rotation metrics, and the key-age status shown by health and metrics;
- * - keys are refreshed every HIVE_ROUTER_IAM_JWKS_REFRESH_MS; when a refresh fails, the last good
- *   keys stay trusted until HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS after they were fetched.
+ *   32), stricter than the verifier's own key-set check.
  *
  * Settings: OATHWEAVE_ISSUER (the https issuer), OATHWEAVE_NATIVE_ISSUERS (Oathweave's native
  * issuer, its JWT_ISSUER, which signs client_credentials tokens) and OATHWEAVE_JWKS_URL. The
@@ -23,6 +29,7 @@
 import {
   createOathweaveVerifier,
   isOathweaveError,
+  OATHWEAVE_JWKS_MAX_STALE_MS,
   statusForReason,
   type OathweaveVerifier,
 } from '@hivemagnus/hive-common/oathweave';
@@ -46,12 +53,15 @@ const MAX_JWKS_KEYS = 32;
 const MAX_KID_LENGTH = 128;
 const MAX_RSA_PARAMETER_LENGTH = 2_048;
 const JWKS_REFRESH_COOLDOWN_MS = 30_000;
+
 /**
- * HiveCommon's verifier needs at least one https issuer. Without OATHWEAVE_ISSUER (a standalone
- * Emberpath that only knows the native issuer) this reserved name (RFC 2606 `.invalid`) stands
- * in: Oathweave never issues it, so only the native issuer is accepted, as before.
+ * How long the last good keys may serve a failed refresh: the maximum age less one refresh
+ * interval, because the verifier trusts what it gets for another interval. The env check refuses
+ * settings where this exceeds HiveCommon's cap (`OATHWEAVE_JWKS_MAX_STALE_MS`, a day).
  */
-const NO_HTTPS_ISSUER = 'https://oathweave.invalid/';
+function securityExporterJwksStaleMs(env: Pick<Env, 'HIVE_ROUTER_IAM_JWKS_REFRESH_MS' | 'HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS'>): number {
+  return Math.max(0, env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS - env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS);
+}
 
 export type SecurityExporterAuthResult =
   | { status: 'authorized'; payload: JWTPayload }
@@ -203,46 +213,23 @@ export function validateJwks(payload: unknown): { jwks: { keys: Array<Record<str
   return { jwks: { keys: trusted }, keyIds: [...keyIds] };
 }
 
-interface JwksFetchOptions {
-  base: typeof fetch;
-  maxAgeMs: number;
-  refreshMs: number;
-  reportTrustedKeys: (refreshedAt: number, keyIds: string[]) => void;
-  reportRefreshFailure: (reason: string) => void;
-  reportRejectedRotation: (reason: string) => void;
-}
-
 /**
- * The fetch the verifier loads keys with: bounded and validated, with metrics, and the last good
- * key set kept for a failed refresh while it is younger than the maximum age. Those keys are
- * served only when they stay inside the maximum age for the next refresh interval too, because
- * the verifier trusts what it gets for that long.
+ * The fetch the verifier loads keys with: Emberpath's transport (the pinned CA), a 200 answer,
+ * and a bounded, strictly validated key set. A failure throws with a coded error the metrics
+ * read; the verifier decides whether the last good keys serve instead. `onKeyIds` gets the key
+ * IDs of each accepted set, for the trusted-key metric.
  */
-function securityExporterJwksFetch(options: JwksFetchOptions): typeof fetch {
-  let lastGood: { body: string; fetchedAt: number } | undefined;
+function securityExporterJwksFetch(base: typeof fetch, onKeyIds: (keyIds: string[]) => void): typeof fetch {
   return async (input, init) => {
-    try {
-      const response = await options.base(input, init);
-      if (response.status !== 200) {
-        await response.body?.cancel().catch(() => undefined);
-        throw codedError('Expected 200 OK from JWKS endpoint', 'ERR_JWKS_HTTP_STATUS');
-      }
-      const signal = init?.signal ?? undefined;
-      const { jwks, keyIds } = validateJwks(await readJsonBounded(response, MAX_JWKS_RESPONSE_BYTES, signal ? { signal } : {}));
-      const fetchedAt = Date.now();
-      lastGood = { body: JSON.stringify(jwks), fetchedAt };
-      recordSecurityExporterJwksRefresh(fetchedAt, keyIds.length);
-      options.reportTrustedKeys(fetchedAt, keyIds);
-      return new Response(lastGood.body, { status: 200, headers: { 'content-type': 'application/json' } });
-    } catch (error) {
-      const reason = failureReason(error);
-      options.reportRefreshFailure(reason);
-      if (reason.startsWith('ERR_JWKS_INVALID')) options.reportRejectedRotation(reason);
-      if (lastGood && Date.now() - lastGood.fetchedAt + options.refreshMs <= options.maxAgeMs) {
-        return new Response(lastGood.body, { status: 200, headers: { 'content-type': 'application/json' } });
-      }
-      throw error;
+    const response = await base(input, init);
+    if (response.status !== 200) {
+      await response.body?.cancel().catch(() => undefined);
+      throw codedError('Expected 200 OK from JWKS endpoint', 'ERR_JWKS_HTTP_STATUS');
     }
+    const signal = init?.signal ?? undefined;
+    const { jwks, keyIds } = validateJwks(await readJsonBounded(response, MAX_JWKS_RESPONSE_BYTES, signal ? { signal } : {}));
+    onKeyIds(keyIds);
+    return new Response(JSON.stringify(jwks), { status: 200, headers: { 'content-type': 'application/json' } });
   };
 }
 
@@ -265,11 +252,24 @@ export function createSecurityExporterAuthorizer(
   const { env } = options;
   const settings = securityExporterVerifierSettings(env, options.source);
   const clientId = env.HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID ?? SECURITY_EXPORTER_CLIENT_ID;
+  const reportTrustedKeys = options.reportTrustedKeys ?? reportSecurityExporterTrustedKeys;
+  const reportRefreshFailure = options.reportRefreshFailure
+    ?? ((reason: string) => securityExporterJwksRefreshFailures.inc({ reason }));
+  const reportRejectedRotation = options.reportRejectedRotation
+    ?? ((reason: string) => securityExporterRejectedRotations.inc({ reason }));
+  // The key IDs of the set the fetch just accepted, read by the refresh report that follows it.
+  let acceptedKeyIds: string[] = [];
   let verifier: OathweaveVerifier | undefined;
   let problem: string | undefined;
   try {
+    const staleMs = securityExporterJwksStaleMs(env);
+    if (staleMs > OATHWEAVE_JWKS_MAX_STALE_MS) {
+      throw new Error('HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS less HIVE_ROUTER_IAM_JWKS_REFRESH_MS must be at most one day');
+    }
     verifier = createOathweaveVerifier({
-      issuer: settings.issuers.length ? settings.issuers : [NO_HTTPS_ISSUER],
+      // Without an https issuer (a standalone Emberpath that only knows the native issuer) the
+      // verifier is service-only for native-issuer tokens.
+      ...(settings.issuers.length ? { issuer: settings.issuers } : {}),
       nativeIssuers: settings.nativeIssuers,
       nativeIssuerAccept: 'service',
       audience: settings.audience,
@@ -280,16 +280,18 @@ export function createSecurityExporterAuthorizer(
       clientIdClaim: 'clientId',
       jwksCacheMaxAgeMs: env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS,
       jwksCooldownMs: JWKS_REFRESH_COOLDOWN_MS,
-      fetch: securityExporterJwksFetch({
-        base: options.fetch ?? oathweaveFetch(env),
-        maxAgeMs: env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS,
-        refreshMs: env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS,
-        reportTrustedKeys: options.reportTrustedKeys ?? reportSecurityExporterTrustedKeys,
-        reportRefreshFailure: options.reportRefreshFailure
-          ?? ((reason) => securityExporterJwksRefreshFailures.inc({ reason })),
-        reportRejectedRotation: options.reportRejectedRotation
-          ?? ((reason) => securityExporterRejectedRotations.inc({ reason })),
-      }),
+      jwksStaleIfErrorMs: staleMs,
+      onJwksRefresh: ({ keys, fetchedAt }) => {
+        const keyIds = acceptedKeyIds.length === keys ? acceptedKeyIds : [];
+        recordSecurityExporterJwksRefresh(fetchedAt, keys);
+        reportTrustedKeys(fetchedAt, keyIds);
+      },
+      onJwksError: ({ error }) => {
+        const reason = failureReason(error);
+        reportRefreshFailure(reason);
+        if (reason.startsWith('ERR_JWKS_INVALID')) reportRejectedRotation(reason);
+      },
+      fetch: securityExporterJwksFetch(options.fetch ?? oathweaveFetch(env), (keyIds) => { acceptedKeyIds = keyIds; }),
     });
   } catch (error) {
     // HiveCommon's configuration errors name the setting's role, never its value.

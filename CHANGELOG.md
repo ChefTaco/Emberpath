@@ -23,6 +23,10 @@
   otherwise from `HIVE_IAM_INTERNAL_URL`'s `/api/v1/oauth/jwks` as before. A plain-HTTP key set
   URL (loopback included) no longer starts a fetch: `GET /api/security/events` answers `503` and
   Emberpath logs the problem once. Startup is not affected, since the exporter is optional.
+- **`HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` may exceed `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` by at most one
+  day** (86 400 000 ms), HiveCommon's cap on serving keys after a failed refresh. Startup (and
+  `hive-router check`) refuses a larger gap and names `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS`. The defaults
+  (300 000 / 900 000) and every gap up to a day are unaffected.
 
 ### Changed
 
@@ -35,6 +39,18 @@
   `permissions` and `roles`, and the key set request never follows a redirect. It now also accepts
   `OATHWEAVE_ISSUER`, besides the native issuer, for the exporter client. A token whose key is not
   in the key set after a failed refresh is refused (`401`) rather than answered with `503`.
+- `@hivemagnus/hive-common` is now `^0.11.1`. The security exporter's key refresh is HiveCommon's:
+  keys are refetched every `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` (`jwksCacheMaxAgeMs`), and a failed
+  refresh serves the last good keys while they are at most `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS -
+  HIVE_ROUTER_IAM_JWKS_REFRESH_MS` old (`jwksStaleIfErrorMs`), then trusts them one more interval, so
+  no key set is trusted past `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS`, as before. Emberpath's own last-good
+  key cache is gone; the refresh-failure, rejected-rotation, trusted-key and key-age metrics and the
+  health status are fed from the verifier's `onJwksRefresh`/`onJwksError` reports with the same names,
+  labels and reasons. Emberpath's stricter key set check (RS256 RSA keys only, at most 32, safe key
+  IDs, 256 KiB) and the `HIVE_ROUTER_IAM_CA_CERT_PATH` pinning stay in its JWKS fetch.
+- Without an https issuer (no `OATHWEAVE_ISSUER` and a native `HIVE_ROUTER_IAM_ISSUER`), the exporter's
+  verifier is a service-only verifier of native-issuer tokens; the `https://oathweave.invalid/`
+  placeholder issuer is gone. Which tokens are accepted does not change.
 
 ## [2.11.0] - 2026-11-27
 

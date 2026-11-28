@@ -411,7 +411,7 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 | `HIVE_ROUTER_IAM_AUDIENCE` | `hive-router` | Audience required on security exporter tokens (exactly this one audience). |
 | `HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID` | `security-exporter` | Oathweave machine client accepted for the security event exporter (`GET /api/security/events`). Its client_credentials token must be signed by `OATHWEAVE_ISSUER` or a native issuer, carry `router:security-events:read`, live at most 15 minutes and carry no session. The key set must be HTTPS; otherwise the exporter answers `503`. |
 | `HIVE_ROUTER_IAM_CA_CERT_PATH` | | CA certificate trusted for IAM HTTPS (OIDC, JWKS, proxy, and the client-credentials token requests for the IAM proxy and HiveMem). When set it is the only CA trusted there; otherwise the system store, including `NODE_EXTRA_CA_CERTS`, is used. |
-| `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | Security exporter JWKS refresh interval and the maximum age of cached keys. A failed refresh keeps the last keys only while they stay within the maximum age; then the exporter answers `503`. |
+| `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | Security exporter JWKS refresh interval and the maximum age of cached keys. A failed refresh keeps the last keys only while they stay within the maximum age; then the exporter answers `503`. The maximum age may exceed the refresh interval by at most one day. |
 | `HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
 ### HiveMem integration (optional)
