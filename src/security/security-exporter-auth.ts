@@ -1,39 +1,64 @@
-import { request as httpsRequest } from 'node:https';
-import { request as httpRequest } from 'node:http';
+/**
+ * Authorization of the security event exporter (`GET /api/security/events`): an Oathweave
+ * client_credentials token of the security-exporter client, verified with HiveCommon's
+ * Oathweave verifier (RS256 against the JWKS, exact issuer, exactly one audience, bounded
+ * lifetime, `jti`, the service-principal claim rules, `redirect: 'error'`, a request timeout
+ * and cached keys with a rotation cooldown).
+ *
+ * Emberpath adds on top, in the JWKS fetch the verifier uses:
+ * - the transport: HIVE_ROUTER_IAM_CA_CERT_PATH, when set, is the only CA trusted for the JWKS
+ *   (as for the Oathweave token requests); otherwise the system trust store is used;
+ * - a bounded, strictly validated key set (RS256 RSA signing keys with safe key IDs, at most
+ *   32), the refresh and rotation metrics, and the key-age status shown by health and metrics;
+ * - keys are refreshed every HIVE_ROUTER_IAM_JWKS_REFRESH_MS; when a refresh fails, the last good
+ *   keys stay trusted until HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS after they were fetched.
+ *
+ * Settings: OATHWEAVE_ISSUER (the https issuer), OATHWEAVE_NATIVE_ISSUERS (Oathweave's native
+ * issuer, its JWT_ISSUER, which signs client_credentials tokens) and OATHWEAVE_JWKS_URL. The
+ * legacy HIVE_ROUTER_IAM_ISSUER still works in place of the issuer settings (a native name such
+ * as the default `hive-iam`, or an https URL), and the JWKS URL defaults to
+ * HIVE_IAM_INTERNAL_URL's. HIVE_ROUTER_IAM_AUDIENCE and HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID
+ * keep their names.
+ */
 import {
-  createLocalJWKSet,
-  decodeProtectedHeader,
-  jwtVerify,
-  type JSONWebKeySet,
-  type JWTVerifyGetKey,
-  type JWTPayload,
-} from 'jose';
+  createOathweaveVerifier,
+  isOathweaveError,
+  statusForReason,
+  type OathweaveVerifier,
+} from '@hivemagnus/hive-common/oathweave';
+import { isBoundedFetchError, readJsonBounded } from '@hivemagnus/hive-common/fetch';
+import type { JWTPayload } from 'jose';
 import { loadEnv, type Env } from '../config/env.js';
+import { log } from '../telemetry/logger.js';
 import {
   reportSecurityExporterTrustedKeys,
   securityExporterJwksRefreshFailures,
   securityExporterRejectedRotations,
 } from '../telemetry/metrics.js';
-import { iamTlsOptions } from './iam-tls.js';
+import { oathweaveFetch } from './oathweave-service-token.js';
 import { recordSecurityExporterJwksRefresh } from './security-exporter-jwks-status.js';
 
 export const SECURITY_EXPORTER_CLIENT_ID = 'security-exporter';
 export const SECURITY_EXPORTER_PERMISSION = 'router:security-events:read';
-export const SECURITY_EXPORTER_TOKEN_TYPE = 'access';
-export const SECURITY_EXPORTER_ALGORITHMS = ['RS256'] as const;
 export const SECURITY_EXPORTER_RETRY_AFTER_SECONDS = 5;
 const MAX_JWKS_RESPONSE_BYTES = 256 * 1024;
 const MAX_JWKS_KEYS = 32;
 const MAX_KID_LENGTH = 128;
 const MAX_RSA_PARAMETER_LENGTH = 2_048;
 const JWKS_REFRESH_COOLDOWN_MS = 30_000;
+/**
+ * HiveCommon's verifier needs at least one https issuer. Without OATHWEAVE_ISSUER (a standalone
+ * Emberpath that only knows the native issuer) this reserved name (RFC 2606 `.invalid`) stands
+ * in: Oathweave never issues it, so only the native issuer is accepted, as before.
+ */
+const NO_HTTPS_ISSUER = 'https://oathweave.invalid/';
 
 export type SecurityExporterAuthResult =
   | { status: 'authorized'; payload: JWTPayload }
   | { status: 'invalid' }
   | { status: 'unavailable' };
 
-type SecurityExporterEnv = Pick<
+export type SecurityExporterEnv = Pick<
   Env,
   | 'NODE_ENV'
   | 'HIVE_IAM_INTERNAL_URL'
@@ -45,32 +70,98 @@ type SecurityExporterEnv = Pick<
   | 'HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS'
 > & Partial<Pick<Env, 'HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID'>>;
 
-interface TrustedJwks {
-  key: JWTVerifyGetKey;
-  keyIds: Set<string>;
-  fetchedAt: number;
+/** The raw environment, for the Oathweave settings and to tell a set legacy name from its default. */
+export type SettingSource = Readonly<Record<string, string | undefined>>;
+
+export interface SecurityExporterVerifierSettings {
+  /** Accepted https issuers. */
+  issuers: string[];
+  /** Accepted native issuer identifiers (service tokens only). */
+  nativeIssuers: string[];
+  jwksUrl: string;
+  audience: string;
+  /** Legacy settings in use without their current name: `[legacy, current]`. */
+  legacy: Array<[string, string]>;
 }
 
-interface SecurityExporterAuthorizerOptions {
-  env: SecurityExporterEnv;
-  loadJwks?: () => Promise<unknown>;
-  now?: () => number;
-  reportTrustedKeys?: (refreshedAt: number, keyIds: string[]) => void;
-  reportRefreshFailure?: (reason: string) => void;
-  reportRejectedRotation?: (reason: string) => void;
+function setting(source: SettingSource, name: string): string | undefined {
+  const value = source[name]?.trim();
+  return value ? value : undefined;
+}
+
+/** Where the exporter's issuers, keys and audience come from. */
+export function securityExporterVerifierSettings(
+  env: SecurityExporterEnv,
+  source: SettingSource = process.env,
+): SecurityExporterVerifierSettings {
+  const legacy: Array<[string, string]> = [];
+  const legacyIssuer = env.HIVE_ROUTER_IAM_ISSUER;
+  const legacyIssuerSet = setting(source, 'HIVE_ROUTER_IAM_ISSUER') !== undefined;
+  const issuer = setting(source, 'OATHWEAVE_ISSUER');
+  const native = (setting(source, 'OATHWEAVE_NATIVE_ISSUERS') ?? '')
+    .split(',').map(item => item.trim()).filter(Boolean);
+  const issuers = issuer ? [issuer] : [];
+  const nativeIssuers = [...native];
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(legacyIssuer)) {
+    if (!issuer) {
+      issuers.push(legacyIssuer);
+      if (legacyIssuerSet) legacy.push(['HIVE_ROUTER_IAM_ISSUER', 'OATHWEAVE_ISSUER']);
+    }
+  } else if (!native.length) {
+    nativeIssuers.push(legacyIssuer);
+    if (legacyIssuerSet) legacy.push(['HIVE_ROUTER_IAM_ISSUER', 'OATHWEAVE_NATIVE_ISSUERS']);
+  }
+  return {
+    issuers,
+    nativeIssuers,
+    jwksUrl: setting(source, 'OATHWEAVE_JWKS_URL')
+      ?? `${env.HIVE_IAM_INTERNAL_URL.replace(/\/+$/u, '')}/api/v1/oauth/jwks`,
+    audience: env.HIVE_ROUTER_IAM_AUDIENCE,
+    legacy,
+  };
+}
+
+let legacyWarned = false;
+
+/** Log, once per process, each legacy exporter setting that is in use without its current name. */
+export function warnLegacySecurityExporterSettings(
+  env: SecurityExporterEnv,
+  source: SettingSource = process.env,
+  warn: (message: string, fields: Record<string, unknown>) => void = (message, fields) => log('warn', message, fields),
+): void {
+  if (legacyWarned) return;
+  const { legacy } = securityExporterVerifierSettings(env, source);
+  if (!legacy.length) return;
+  legacyWarned = true;
+  for (const [name, current] of legacy) {
+    warn(`${name} is deprecated for the security exporter; set ${current} instead (the old name keeps working for now)`, { setting: name, replacement: current });
+  }
+}
+
+export function resetLegacySecurityExporterWarningForTests(): void {
+  legacyWarned = false;
 }
 
 function codedError(message: string, code: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
-function errorCode(error: unknown): string {
-  return error instanceof Error && 'code' in error && typeof error.code === 'string'
-    ? error.code
-    : 'unknown';
+/** A short, bounded reason for the refresh-failure metric. */
+function failureReason(error: unknown): string {
+  if (isBoundedFetchError(error, 'response_too_large')) return 'ERR_JWKS_RESPONSE_TOO_LARGE';
+  if (isBoundedFetchError(error)) return 'ERR_JWKS_INVALID';
+  if (!(error instanceof Error)) return 'unknown';
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return 'ERR_JWKS_TIMEOUT';
+  const code = 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+  const cause = error.cause instanceof Error && 'code' in error.cause && typeof error.cause.code === 'string'
+    ? error.cause.code
+    : undefined;
+  const reason = code ?? cause ?? 'unknown';
+  return /^[A-Za-z0-9_]{1,64}$/u.test(reason) ? reason : 'unknown';
 }
 
-function validateJwks(payload: unknown): { jwks: JSONWebKeySet; keyIds: string[] } {
+/** Accept only RS256 RSA signing keys with safe key IDs; any other key refuses the whole set. */
+export function validateJwks(payload: unknown): { jwks: { keys: Array<Record<string, unknown>> }; keyIds: string[] } {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw codedError('JWKS payload must be an object', 'ERR_JWKS_INVALID');
   }
@@ -78,8 +169,7 @@ function validateJwks(payload: unknown): { jwks: JSONWebKeySet; keyIds: string[]
   if (!Array.isArray(keys) || keys.length === 0 || keys.length > MAX_JWKS_KEYS) {
     throw codedError('JWKS key count is invalid', 'ERR_JWKS_INVALID_KEY_COUNT');
   }
-
-  const trustedKeys: JSONWebKeySet['keys'] = [];
+  const trusted: Array<Record<string, unknown>> = [];
   const keyIds = new Set<string>();
   for (const candidate of keys) {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
@@ -108,205 +198,134 @@ function validateJwks(payload: unknown): { jwks: JSONWebKeySet; keyIds: string[]
       throw codedError('JWKS contains an untrusted key descriptor', 'ERR_JWKS_INVALID_KEY');
     }
     keyIds.add(kid);
-    trustedKeys.push(candidate as JSONWebKeySet['keys'][number]);
+    trusted.push(jwk);
   }
-  return { jwks: { keys: trustedKeys }, keyIds: [...keyIds] };
+  return { jwks: { keys: trusted }, keyIds: [...keyIds] };
 }
 
-function fetchBoundedJwks(url: URL, env: SecurityExporterEnv): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const handleResponse = (response: import('node:http').IncomingMessage) => {
-      if (response.statusCode !== 200) {
-        response.resume();
-        reject(codedError('Expected 200 OK from JWKS endpoint', 'ERR_JWKS_HTTP_STATUS'));
-        return;
+interface JwksFetchOptions {
+  base: typeof fetch;
+  maxAgeMs: number;
+  refreshMs: number;
+  reportTrustedKeys: (refreshedAt: number, keyIds: string[]) => void;
+  reportRefreshFailure: (reason: string) => void;
+  reportRejectedRotation: (reason: string) => void;
+}
+
+/**
+ * The fetch the verifier loads keys with: bounded and validated, with metrics, and the last good
+ * key set kept for a failed refresh while it is younger than the maximum age. Those keys are
+ * served only when they stay inside the maximum age for the next refresh interval too, because
+ * the verifier trusts what it gets for that long.
+ */
+function securityExporterJwksFetch(options: JwksFetchOptions): typeof fetch {
+  let lastGood: { body: string; fetchedAt: number } | undefined;
+  return async (input, init) => {
+    try {
+      const response = await options.base(input, init);
+      if (response.status !== 200) {
+        await response.body?.cancel().catch(() => undefined);
+        throw codedError('Expected 200 OK from JWKS endpoint', 'ERR_JWKS_HTTP_STATUS');
       }
-      const chunks: Buffer[] = [];
-      let totalBytes = 0;
-      response.on('data', (chunk: Buffer) => {
-        totalBytes += chunk.length;
-        if (totalBytes > MAX_JWKS_RESPONSE_BYTES) {
-          request.destroy(codedError(
-            'JWKS response exceeded the size limit',
-            'ERR_JWKS_RESPONSE_TOO_LARGE',
-          ));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      response.on('end', () => {
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown);
-        } catch {
-          reject(codedError('JWKS response was not valid JSON', 'ERR_JWKS_INVALID'));
-        }
-      });
-    };
-    const request = url.protocol === 'https:'
-      ? httpsRequest(url, {
-          method: 'GET',
-          headers: { accept: 'application/json' },
-          ...iamTlsOptions(url, env),
-        }, handleResponse)
-      : httpRequest(url, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    }, handleResponse);
-    request.setTimeout(3_000, () => request.destroy(
-      codedError('JWKS request timed out', 'ERR_JWKS_TIMEOUT'),
-    ));
-    request.on('error', reject);
-    request.end();
-  });
+      const signal = init?.signal ?? undefined;
+      const { jwks, keyIds } = validateJwks(await readJsonBounded(response, MAX_JWKS_RESPONSE_BYTES, signal ? { signal } : {}));
+      const fetchedAt = Date.now();
+      lastGood = { body: JSON.stringify(jwks), fetchedAt };
+      recordSecurityExporterJwksRefresh(fetchedAt, keyIds.length);
+      options.reportTrustedKeys(fetchedAt, keyIds);
+      return new Response(lastGood.body, { status: 200, headers: { 'content-type': 'application/json' } });
+    } catch (error) {
+      const reason = failureReason(error);
+      options.reportRefreshFailure(reason);
+      if (reason.startsWith('ERR_JWKS_INVALID')) options.reportRejectedRotation(reason);
+      if (lastGood && Date.now() - lastGood.fetchedAt + options.refreshMs <= options.maxAgeMs) {
+        return new Response(lastGood.body, { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw error;
+    }
+  };
 }
 
-function isJwksInfrastructureFailure(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const code = errorCode(error);
-  return (code.startsWith('ERR_JWKS_') && code !== 'ERR_JWKS_NO_MATCHING_KEY')
-    || new Set([
-      'ABORT_ERR',
-      'EAI_AGAIN',
-      'ECONNREFUSED',
-      'ECONNRESET',
-      'ENETUNREACH',
-      'ENOTFOUND',
-      'ETIMEDOUT',
-      'DEPTH_ZERO_SELF_SIGNED_CERT',
-      'ERR_TLS_CERT_ALTNAME_INVALID',
-      'SELF_SIGNED_CERT_IN_CHAIN',
-      'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-    ]).has(code)
-    || error.name === 'AbortError';
-}
-
-function isJwtShaped(token: string): boolean {
-  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(token);
+export interface SecurityExporterAuthorizerOptions {
+  env: SecurityExporterEnv;
+  /** The raw environment for the Oathweave settings; defaults to `process.env`. */
+  source?: SettingSource;
+  /** The transport for JWKS requests; defaults to `oathweaveFetch(env)` (HIVE_ROUTER_IAM_CA_CERT_PATH). */
+  fetch?: typeof fetch;
+  reportTrustedKeys?: (refreshedAt: number, keyIds: string[]) => void;
+  reportRefreshFailure?: (reason: string) => void;
+  reportRejectedRotation?: (reason: string) => void;
+  /** Called once when the settings cannot make a verifier (the exporter then answers 503). */
+  onConfigurationProblem?: (message: string) => void;
 }
 
 export function createSecurityExporterAuthorizer(
   options: SecurityExporterAuthorizerOptions,
 ): (token: string) => Promise<SecurityExporterAuthResult> {
-  const now = options.now ?? Date.now;
-  const jwksUrl = new URL(
-    `${options.env.HIVE_IAM_INTERNAL_URL.replace(/\/$/u, '')}/api/v1/oauth/jwks`,
-  );
-  const loadJwks = options.loadJwks ?? (() => fetchBoundedJwks(jwksUrl, options.env));
-  const reportTrustedKeys = options.reportTrustedKeys ?? reportSecurityExporterTrustedKeys;
-  const reportRefreshFailure = options.reportRefreshFailure
-    ?? ((reason) => securityExporterJwksRefreshFailures.inc({ reason }));
-  const reportRejectedRotation = options.reportRejectedRotation
-    ?? ((reason) => securityExporterRejectedRotations.inc({ reason }));
-  let trusted: TrustedJwks | null = null;
-  let refreshInFlight: Promise<TrustedJwks> | null = null;
-  let lastRefreshAttemptAt = Number.NEGATIVE_INFINITY;
-
-  const refresh = async (force = false): Promise<TrustedJwks> => {
-    if (refreshInFlight) return refreshInFlight;
-    if (
-      !force
-      && trusted
-      && now() - lastRefreshAttemptAt < JWKS_REFRESH_COOLDOWN_MS
-    ) return trusted;
-    lastRefreshAttemptAt = now();
-    refreshInFlight = (async () => {
-      try {
-        const { jwks, keyIds } = validateJwks(await loadJwks());
-        const refreshed = {
-          key: createLocalJWKSet(jwks),
-          keyIds: new Set(keyIds),
-          fetchedAt: now(),
-        };
-        trusted = refreshed;
-        recordSecurityExporterJwksRefresh(refreshed.fetchedAt, keyIds.length);
-        reportTrustedKeys(refreshed.fetchedAt, keyIds);
-        return refreshed;
-      } catch (error) {
-        const reason = errorCode(error);
-        reportRefreshFailure(reason);
-        if (reason.startsWith('ERR_JWKS_INVALID')) reportRejectedRotation(reason);
-        throw error;
-      } finally {
-        refreshInFlight = null;
-      }
-    })();
-    return refreshInFlight;
-  };
-
-  const resolveKey: JWTVerifyGetKey = async (protectedHeader, token) => {
-    const kid = protectedHeader.kid;
-    if (
-      protectedHeader.alg !== 'RS256'
-      || (
-        kid !== undefined
-        && (
-          typeof kid !== 'string'
-          || kid.length === 0
-          || kid.length > MAX_KID_LENGTH
-        )
-      )
-    ) {
-      throw codedError('JWT key descriptor is invalid', 'ERR_JWKS_NO_MATCHING_KEY');
-    }
-
-    let current = trusted;
-    const age = current ? now() - current.fetchedAt : Number.POSITIVE_INFINITY;
-    if (!current || age >= options.env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS) {
-      try {
-        current = await refresh(age >= options.env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS);
-      } catch (error) {
-        if (
-          !current
-          || age >= options.env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS
-          || (kid !== undefined ? !current.keyIds.has(kid) : current.keyIds.size !== 1)
-        ) throw error;
-      }
-    }
-
-    if (kid === undefined) {
-      if (current.keyIds.size !== 1) {
-        reportRejectedRotation('ERR_JWKS_AMBIGUOUS_KEY');
-        throw codedError('JWT without kid requires exactly one trusted key', 'ERR_JWKS_NO_MATCHING_KEY');
-      }
-      return current.key(protectedHeader, token);
-    }
-
-    if (!current.keyIds.has(kid)) {
-      current = await refresh();
-      if (!current.keyIds.has(kid)) {
-        reportRejectedRotation('ERR_JWKS_NO_MATCHING_KEY');
-        throw codedError('No matching key found in JWKS', 'ERR_JWKS_NO_MATCHING_KEY');
-      }
-    }
-    return current.key(protectedHeader, token);
-  };
+  const { env } = options;
+  const settings = securityExporterVerifierSettings(env, options.source);
+  const clientId = env.HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID ?? SECURITY_EXPORTER_CLIENT_ID;
+  let verifier: OathweaveVerifier | undefined;
+  let problem: string | undefined;
+  try {
+    verifier = createOathweaveVerifier({
+      issuer: settings.issuers.length ? settings.issuers : [NO_HTTPS_ISSUER],
+      nativeIssuers: settings.nativeIssuers,
+      nativeIssuerAccept: 'service',
+      audience: settings.audience,
+      jwksUrl: settings.jwksUrl,
+      accept: 'service',
+      // The exporter has never tolerated clock skew, and needs Oathweave's own `clientId` claim.
+      clockToleranceSec: 0,
+      clientIdClaim: 'clientId',
+      jwksCacheMaxAgeMs: env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS,
+      jwksCooldownMs: JWKS_REFRESH_COOLDOWN_MS,
+      fetch: securityExporterJwksFetch({
+        base: options.fetch ?? oathweaveFetch(env),
+        maxAgeMs: env.HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS,
+        refreshMs: env.HIVE_ROUTER_IAM_JWKS_REFRESH_MS,
+        reportTrustedKeys: options.reportTrustedKeys ?? reportSecurityExporterTrustedKeys,
+        reportRefreshFailure: options.reportRefreshFailure
+          ?? ((reason) => securityExporterJwksRefreshFailures.inc({ reason })),
+        reportRejectedRotation: options.reportRejectedRotation
+          ?? ((reason) => securityExporterRejectedRotations.inc({ reason })),
+      }),
+    });
+  } catch (error) {
+    // HiveCommon's configuration errors name the setting's role, never its value.
+    problem = error instanceof Error ? error.message : 'invalid configuration';
+  }
+  let problemReported = false;
 
   return async (token: string): Promise<SecurityExporterAuthResult> => {
-    if (!isJwtShaped(token)) return { status: 'invalid' };
+    if (!verifier) {
+      if (!problemReported) {
+        problemReported = true;
+        (options.onConfigurationProblem ?? ((message) => log('warn', 'Security exporter authorization is unavailable', { problem: message })))(problem ?? 'invalid configuration');
+      }
+      return { status: 'unavailable' };
+    }
     try {
-      const protectedHeader = decodeProtectedHeader(token);
-      if (protectedHeader.alg !== 'RS256') return { status: 'invalid' };
-      const { payload } = await jwtVerify(token, resolveKey, {
-        issuer: options.env.HIVE_ROUTER_IAM_ISSUER,
-        audience: options.env.HIVE_ROUTER_IAM_AUDIENCE,
-        algorithms: [...SECURITY_EXPORTER_ALGORITHMS],
-        requiredClaims: ['sub', 'iss', 'aud', 'iat', 'exp', 'jti'],
-      });
-      const clientId = options.env.HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID ?? SECURITY_EXPORTER_CLIENT_ID;
-      const authorized = payload.sub === clientId
-        && payload['clientId'] === clientId
-        && payload['actorType'] === 'SERVICE_ACCOUNT'
-        && payload['token_type'] === SECURITY_EXPORTER_TOKEN_TYPE
-        && Array.isArray(payload['permissions'])
-        && payload['permissions'].includes(SECURITY_EXPORTER_PERMISSION);
-      return authorized ? { status: 'authorized', payload } : { status: 'invalid' };
+      const principal = await verifier.verifyService(token);
+      const authorized = principal.subject === clientId
+        && principal.clientId === clientId
+        && principal.permissions.includes(SECURITY_EXPORTER_PERMISSION);
+      return authorized ? { status: 'authorized', payload: principal.claims } : { status: 'invalid' };
     } catch (error) {
-      return { status: isJwksInfrastructureFailure(error) ? 'unavailable' : 'invalid' };
+      return isOathweaveError(error) && statusForReason(error.reason) === 503
+        ? { status: 'unavailable' }
+        : { status: 'invalid' };
     }
   };
 }
 
-const exporterEnv = loadEnv();
-export const authorizeSecurityExporterToken = createSecurityExporterAuthorizer({
-  env: exporterEnv,
-});
+let defaultAuthorizer: { env: Env; authorize: (token: string) => Promise<SecurityExporterAuthResult> } | undefined;
+
+/** The exporter check for the loaded configuration, made on first use. */
+export function authorizeSecurityExporterToken(token: string): Promise<SecurityExporterAuthResult> {
+  const env = loadEnv();
+  if (defaultAuthorizer?.env !== env) {
+    defaultAuthorizer = { env, authorize: createSecurityExporterAuthorizer({ env }) };
+  }
+  return defaultAuthorizer.authorize(token);
+}

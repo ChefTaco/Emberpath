@@ -54,7 +54,7 @@ describe('hive-router check', () => {
         HIVE_HOME: home,
         HIVE_ROUTER_AUTH_MODE: 'iam-oidc',
         HIVE_ROUTER_IAM_CLIENT_SECRET: 'iam-client-secret-0123456789abcdef',
-        HIVE_IAM_INTERNAL_URL: 'http://127.0.0.1:4200',
+        HIVE_IAM_INTERNAL_URL: 'https://127.0.0.1:4200',
         HIVEMEM_INTERNAL_URL: 'http://127.0.0.1:18790',
         HIVE_ROUTER_MEMORY_PROXY_TOKEN: 'memory-token-0123456789',
       },
@@ -66,7 +66,7 @@ describe('hive-router check', () => {
       },
     });
 
-    expect(probed).toEqual(['http://127.0.0.1:4200/api/v1/health/ready', 'http://127.0.0.1:18790/v1/health/ready']);
+    expect(probed).toEqual(['https://127.0.0.1:4200/api/v1/health/ready', 'http://127.0.0.1:18790/v1/health/ready']);
     expect(report.checks.find((check) => check.name === 'iam')?.status).toBe('fail');
     expect(report.checks.find((check) => check.name === 'memory')?.status).toBe('warn');
     expect(report.ok).toBe(false);
@@ -85,7 +85,7 @@ describe('hive-router check', () => {
     expect(await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now + 30 * 86_400_000) })).toMatchObject({ status: 'ok' });
     expect(await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now + 3 * 86_400_000) })).toMatchObject({ status: 'warn', message: expect.stringMatching(/expires at 2026-11-23/u) });
     expect(await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now - 1000) })).toMatchObject({ status: 'warn', message: expect.stringMatching(/expired at/u) });
-    const renewing = await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now - 1000), EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem', EMBERPATH_HIVEMEM_CLIENT_SECRET: 'fake-hivemem-client-secret-0123456789abcdef' });
+    const renewing = await credential({ HIVE_ROUTER_MEMORY_PROXY_TOKEN: jwt(now - 1000), EMBERPATH_HIVEMEM_CLIENT_ID: 'fake-emberpath-hivemem', EMBERPATH_HIVEMEM_CLIENT_SECRET: 'fake-hivemem-client-secret-0123456789abcdef', HIVE_IAM_INTERNAL_URL: 'https://127.0.0.1:4200' });
     expect(renewing).toMatchObject({ status: 'ok', message: expect.stringMatching(/self-renewing/u) });
     expect(JSON.stringify(renewing)).not.toContain('fake-hivemem-client-secret');
   });

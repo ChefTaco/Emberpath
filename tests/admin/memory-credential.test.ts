@@ -1,4 +1,6 @@
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import { loopbackTls } from '../fixtures/loopback-tls.js';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { SignJWT } from 'jose';
@@ -23,18 +25,20 @@ async function body(request: IncomingMessage): Promise<string> {
   for await (const chunk of request) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8');
 }
-async function listen(server: Server): Promise<string> {
+async function listen(server: Server, scheme: 'http' | 'https' = 'http'): Promise<string> {
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return `${scheme}://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
+// Emberpath sends its HiveMem client secret to Oathweave over HTTPS only.
+const tls = loopbackTls();
 
 let app: { request: (path: string, init?: RequestInit) => Response | Promise<Response> };
 let cookie = '';
 const staticToken = jwt({ sub: 'fake-router', role: 'admin', exp: Math.floor(Date.now() / 1000) - 60 });
 
 beforeAll(async () => {
-  const oathweave = await listen(createServer(async (request, response) => {
+  const oathweave = await listen(createHttpsServer({ cert: tls.cert, key: tls.key }, async (request, response) => {
     const form = new URLSearchParams(await body(request));
     response.setHeader('content-type', 'application/json');
     if (!oathweaveUp) { response.statusCode = 503; response.end('{}'); return; }
@@ -43,8 +47,8 @@ beforeAll(async () => {
     }
     issued += 1;
     response.end(JSON.stringify({ access_token: jwt({ n: issued, sub: clientId, aud: 'hivemem', exp: Math.floor(Date.now() / 1000) + lifetimeSeconds }), token_type: 'Bearer', expires_in: lifetimeSeconds }));
-  }));
-  const hivemem = await listen(createServer((request, response) => {
+  }), 'https');
+  const hivemem = await listen(createHttpServer((request, response) => {
     response.setHeader('content-type', 'application/json');
     const token = String(request.headers.authorization ?? '').replace(/^Bearer /u, '');
     seen.push(token);
@@ -57,6 +61,7 @@ beforeAll(async () => {
   Object.assign(process.env, {
     HIVEMEM_INTERNAL_URL: hivemem,
     HIVE_IAM_INTERNAL_URL: oathweave,
+    HIVE_ROUTER_IAM_CA_CERT_PATH: tls.caPath,
     EMBERPATH_HIVEMEM_CLIENT_ID: clientId,
     EMBERPATH_HIVEMEM_CLIENT_SECRET: clientSecret,
     HIVE_ROUTER_MEMORY_PROXY_TOKEN: staticToken,
@@ -77,8 +82,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   vi.restoreAllMocks();
-  for (const name of ['HIVEMEM_INTERNAL_URL', 'HIVE_IAM_INTERNAL_URL', 'EMBERPATH_HIVEMEM_CLIENT_ID', 'EMBERPATH_HIVEMEM_CLIENT_SECRET', 'HIVE_ROUTER_MEMORY_PROXY_TOKEN']) delete process.env[name];
+  for (const name of ['HIVEMEM_INTERNAL_URL', 'HIVE_IAM_INTERNAL_URL', 'HIVE_ROUTER_IAM_CA_CERT_PATH', 'EMBERPATH_HIVEMEM_CLIENT_ID', 'EMBERPATH_HIVEMEM_CLIENT_SECRET', 'HIVE_ROUTER_MEMORY_PROXY_TOKEN']) delete process.env[name];
   await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+  tls.cleanup();
 });
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

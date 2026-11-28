@@ -4,6 +4,8 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.stubEnv('EMBERPATH_PASSWORD_RELAY', 'true');
 vi.stubEnv('HIVE_ROUTER_AUTH_MODE', 'iam-oidc');
 vi.stubEnv('HIVE_ROUTER_IAM_CLIENT_SECRET', 'fake-router-client-secret-0123456789');
+// The client secret goes to Oathweave over HTTPS only (iam-oidc is mocked; nothing connects).
+vi.stubEnv('HIVE_IAM_INTERNAL_URL', 'https://127.0.0.1:4200');
 
 const authenticateIamOidcUser = vi.fn();
 vi.mock('../../src/security/iam-oidc.js', async (importOriginal) => ({

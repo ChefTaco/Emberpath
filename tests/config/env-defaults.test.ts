@@ -112,7 +112,7 @@ describe('configuration errors', () => {
       const { env, problems } = inspectEnv({ HIVE_ROUTER_SECRET: secret, NODE_ENV, ...hiveMemClient, EMBERPATH_HIVEMEM_TOKEN_URL: 'http://oathweave:4200/api/v1/oauth/token' });
       expect(env).toBeNull();
       expect(problems.map((problem) => problem.variable)).toEqual(['EMBERPATH_HIVEMEM_TOKEN_URL']);
-      expect(problems[0]?.message).toMatch(/^EMBERPATH_HIVEMEM_TOKEN_URL must use HTTPS \(plain HTTP is allowed only for a loopback address/u);
+      expect(problems[0]?.message).toMatch(/^EMBERPATH_HIVEMEM_TOKEN_URL must use HTTPS \(plain HTTP is refused, also on a loopback address/u);
       expect(problems[0]?.message).not.toContain('http://oathweave');
       expect(problems[0]?.message).not.toContain(hiveMemClient.EMBERPATH_HIVEMEM_CLIENT_SECRET);
     }
@@ -130,11 +130,17 @@ describe('configuration errors', () => {
     expect(inspectEnv({ HIVE_ROUTER_SECRET: secret, HIVE_IAM_INTERNAL_URL: 'http://oathweave:4200' }).problems).toEqual([]);
   });
 
-  it('accepts plain HTTP on loopback, including the default Oathweave URL', () => {
+  it('refuses plain HTTP on loopback too, including the default Oathweave URL, once a client secret is set', () => {
     for (const url of [undefined, 'http://127.0.0.1:4200', 'http://localhost:4200', 'http://[::1]:4200']) {
       const source = { HIVE_ROUTER_SECRET: secret, ...hiveMemClient, ...iamClient, ...(url ? { HIVE_IAM_INTERNAL_URL: url } : {}) };
-      expect(inspectEnv(source).problems, String(url)).toEqual([]);
+      const { env, problems } = inspectEnv(source);
+      expect(env, String(url)).toBeNull();
+      expect(problems.map((problem) => problem.variable), String(url)).toEqual(['EMBERPATH_HIVEMEM_TOKEN_URL', 'HIVE_IAM_INTERNAL_URL']);
+      expect(problems[1]?.message).toMatch(/^HIVE_IAM_INTERNAL_URL must use HTTPS \(plain HTTP is refused, also on a loopback address/u);
     }
+    // Without a client secret nothing secret is sent, so the loopback default still starts.
+    expect(inspectEnv({ HIVE_ROUTER_SECRET: secret }).problems).toEqual([]);
+    expect(inspectEnv({ HIVE_ROUTER_SECRET: secret, ...hiveMemClient, ...iamClient, HIVE_IAM_INTERNAL_URL: 'https://127.0.0.1:4200' }).problems).toEqual([]);
   });
 
   it('accepts the Hive suite configuration: HTTPS Oathweave on the suite network with the suite CA', () => {

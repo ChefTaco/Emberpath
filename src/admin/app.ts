@@ -80,6 +80,7 @@ import { computeClientKeyUsage, quotaLedger, evaluateQuota, readClientKeyQuota }
 import {
   authorizeSecurityExporterToken,
   SECURITY_EXPORTER_RETRY_AFTER_SECONDS,
+  warnLegacySecurityExporterSettings,
   type SecurityExporterAuthResult,
 } from '../security/security-exporter-auth.js';
 import {
@@ -1790,6 +1791,7 @@ export function createAdminApp(dependencies: AdminAppDependencies = {}): Hono<{ 
   const app = new Hono<{ Variables: AppVariables }>();
   app.use('*', async (c,next)=>{if(maintenanceActive(new URL(c.req.url).pathname))return c.json({error:'Hive is undergoing maintenance'},503);await next();});
   const authorizeExporter = dependencies.authorizeSecurityExporterToken ?? authorizeSecurityExporterToken;
+  if (!dependencies.authorizeSecurityExporterToken) warnLegacySecurityExporterSettings(env);
 
   app.use('*', requestIdMiddleware({ trustInbound: true }));
   app.use('*', async (context, next) => {

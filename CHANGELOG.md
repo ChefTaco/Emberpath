@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Upgrade notes
+
+- **Oathweave client secrets go over HTTPS only, loopback included.** With
+  `HIVE_ROUTER_IAM_CLIENT_SECRET` or `EMBERPATH_HIVEMEM_CLIENT_ID` set, startup (and
+  `hive-router check`) now refuses a plain-HTTP `HIVE_IAM_INTERNAL_URL` or
+  `EMBERPATH_HIVEMEM_TOKEN_URL` even on a loopback address such as `http://127.0.0.1:4200`, which
+  is also the default of `HIVE_IAM_INTERNAL_URL`. Up to 2.11 plain HTTP was accepted on loopback.
+  Serve Oathweave over HTTPS and point these settings at it (trust its certificate with
+  `HIVE_ROUTER_IAM_CA_CERT_PATH` or `NODE_EXTRA_CA_CERTS`). The Hive suite already uses
+  `https://oathweave:4200`, so suite installs have nothing to do.
+- **`HIVE_ROUTER_IAM_ISSUER` is deprecated** for the security exporter. Set
+  `OATHWEAVE_NATIVE_ISSUERS` (comma-separated native issuer names, such as `hive-iam`) instead, or
+  `OATHWEAVE_ISSUER` for an https issuer. The old name keeps working while its replacement is
+  unset, and Emberpath logs a one-time warning at startup when it is set. Unset, the default
+  `hive-iam` still applies. `HIVE_ROUTER_IAM_AUDIENCE`, `HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID`
+  and the `HIVE_ROUTER_IAM_JWKS_*`, `_CA_CERT_PATH` and `_ALLOW_INSECURE_TLS` settings keep their
+  names.
+- **The security exporter's key set must be HTTPS.** It is read from `OATHWEAVE_JWKS_URL` when set,
+  otherwise from `HIVE_IAM_INTERNAL_URL`'s `/api/v1/oauth/jwks` as before. A plain-HTTP key set
+  URL (loopback included) no longer starts a fetch: `GET /api/security/events` answers `503` and
+  Emberpath logs the problem once. Startup is not affected, since the exporter is optional.
+
+### Changed
+
+- The security exporter (`GET /api/security/events`) verifies its Oathweave tokens with HiveCommon's
+  shared verifier (`@hivemagnus/hive-common/oathweave`) instead of its own JWT and JWKS code. The
+  key set validation, the refresh and rotation metrics, the key-age health status, the CA pinning
+  through `HIVE_ROUTER_IAM_CA_CERT_PATH`, and the refresh interval and maximum key age stay. The
+  check is stricter in a few ways a real Oathweave token already meets: exactly one audience (an
+  audience list is refused), a lifetime of at most 15 minutes, no `sessionId` claim, string
+  `permissions` and `roles`, and the key set request never follows a redirect. It now also accepts
+  `OATHWEAVE_ISSUER`, besides the native issuer, for the exporter client. A token whose key is not
+  in the key set after a failed refresh is refused (`401`) rather than answered with `503`.
+
 ## [2.11.0] - 2026-11-27
 
 ### Upgrade notes
