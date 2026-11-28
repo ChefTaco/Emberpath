@@ -363,8 +363,9 @@ export function inspectEnv(source: NodeJS.ProcessEnv = process.env): { env: Env 
     add(missing, `${missing} is not set. Set EMBERPATH_HIVEMEM_CLIENT_ID and EMBERPATH_HIVEMEM_CLIENT_SECRET together to the Oathweave machine client Emberpath uses for HiveMem, or neither.`);
   }
   // Emberpath sends Oathweave client secrets (and, for sign-in, passwords) to these endpoints,
-  // so they must be HTTPS; plain HTTP is accepted only for a loopback address. Values are
-  // never echoed: a URL may carry credentials.
+  // so they must be HTTPS. Plain HTTP was accepted for a loopback address up to 2.11 and is
+  // refused now, as HiveCommon's service-token provider does. Values are never echoed: a URL
+  // may carry credentials.
   const hiveMemTokenUrlProblem = env.EMBERPATH_HIVEMEM_CLIENT_ID ? oathweaveTokenUrlProblem(env.EMBERPATH_HIVEMEM_TOKEN_URL) : undefined;
   if (hiveMemTokenUrlProblem) {
     add('EMBERPATH_HIVEMEM_TOKEN_URL', `EMBERPATH_HIVEMEM_TOKEN_URL ${hiveMemTokenUrlProblem}, because Emberpath sends its HiveMem client secret there. Point it, or HIVE_IAM_INTERNAL_URL, at the Oathweave HTTPS endpoint (for example https://oathweave:4200/api/v1/oauth/token) and trust its certificate with HIVE_ROUTER_IAM_CA_CERT_PATH or NODE_EXTRA_CA_CERTS.`);

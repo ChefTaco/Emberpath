@@ -1,7 +1,9 @@
 // Oathweave refuses writes made with the Router's own client token unless they carry the
 // operator (x-hive-operator). Actor containment (disable) must send it.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
+import type { IncomingHttpHeaders } from 'node:http';
+import { createServer, type Server } from 'node:https';
+import { loopbackTls } from '../fixtures/loopback-tls.js';
 import type { AddressInfo } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +12,8 @@ import { randomBytes } from 'node:crypto';
 import { SignJWT } from 'jose';
 
 const seen: Array<{ method: string; url: string; headers: IncomingHttpHeaders }> = [];
-const server: Server = createServer((request, response) => {
+const tls = loopbackTls();
+const server: Server = createServer({ cert: tls.cert, key: tls.key }, (request, response) => {
   seen.push({ method: request.method ?? '', url: request.url ?? '', headers: request.headers });
   request.resume();
   request.on('end', () => {
@@ -20,7 +23,7 @@ const server: Server = createServer((request, response) => {
   });
 });
 await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+const baseUrl = `https://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
 const directory = mkdtempSync(join(tmpdir(), 'emberpath-actor-operator-'));
 const secret = randomBytes(48).toString('hex');
@@ -31,6 +34,8 @@ vi.stubEnv('TRACE_DIR', join(directory, 'traces'));
 vi.stubEnv('HIVE_ROUTER_SECRET', secret);
 vi.stubEnv('HIVE_IAM_INTERNAL_URL', baseUrl);
 vi.stubEnv('HIVEMEM_INTERNAL_URL', baseUrl);
+vi.stubEnv('HIVE_ROUTER_IAM_CA_CERT_PATH', tls.caPath);
+vi.stubEnv('HIVEMEM_CA_CERT_PATH', tls.caPath);
 vi.stubEnv('HIVE_ROUTER_IAM_CLIENT_SECRET', 'synthetic-router-client-secret-0123456789');
 vi.stubEnv('HIVE_ROUTER_MEMORY_PROXY_TOKEN', 'synthetic-memory-proxy-token');
 
@@ -55,6 +60,7 @@ afterAll(async () => {
   globalThis.__hiveRouterPrisma = undefined;
   vi.unstubAllEnvs();
   rmSync(directory, { recursive: true, force: true });
+  tls.cleanup();
 });
 
 describe('actor lifecycle writes to Oathweave', () => {

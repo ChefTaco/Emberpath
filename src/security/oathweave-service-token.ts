@@ -4,7 +4,7 @@
  * one request between concurrent callers and backs off after a failure.
  *
  * What Emberpath adds on top:
- * - where a client secret may go: HTTPS, or plain HTTP only to a loopback address;
+ * - where a client secret may go: HTTPS only (plain HTTP is refused, loopback included);
  * - the transport: HIVE_ROUTER_IAM_CA_CERT_PATH, when set, is the only CA trusted for the token
  *   endpoint; otherwise the system trust store (including NODE_EXTRA_CA_CERTS) is used;
  * - a refused token (the resource answered 401) is replaced, except right after issue, which
@@ -22,12 +22,16 @@ import {
 import { createCaFetch } from '@hivemagnus/hive-common/registry';
 import { iamTrustedCa, type IamTlsEnv } from './iam-tls.js';
 
-/** Why Emberpath must not send an Oathweave client secret to `url`, or undefined when it may. */
-export function oathweaveTokenUrlProblem(url: string): string | undefined {
-  const problem = endpointProblem(url, { allowInsecureLoopback: true });
+/**
+ * Why Emberpath must not send an Oathweave client secret to `url`, or undefined when it may.
+ * HTTPS only: up to 2.11 plain HTTP was accepted for a loopback address; that is refused now.
+ * `allowInsecureLoopback` is for tests.
+ */
+export function oathweaveTokenUrlProblem(url: string, options: { allowInsecureLoopback?: boolean } = {}): string | undefined {
+  const problem = endpointProblem(url, options.allowInsecureLoopback ? { allowInsecureLoopback: true } : {});
   if (!problem) return undefined;
   return problem.includes('https')
-    ? 'must use HTTPS (plain HTTP is allowed only for a loopback address such as 127.0.0.1)'
+    ? 'must use HTTPS (plain HTTP is refused, also on a loopback address such as 127.0.0.1)'
     : problem;
 }
 
@@ -73,6 +77,8 @@ export interface OathweaveServiceTokenOptions {
   now?: () => number;
   /** Delay before another fetch after a failure, or after a fresh token is refused. 5000 ms. */
   failureBackoffMs?: number;
+  /** Tests only: accept a plain-HTTP token URL on a loopback address. */
+  allowInsecureLoopback?: boolean;
   onEvent?: (event: OathweaveTokenEvent) => void;
 }
 
@@ -108,11 +114,12 @@ export function unverifiedJwtExpiry(token: string): number | null {
 }
 
 /**
- * One Oathweave machine client. Throws (a configuration error) when `tokenUrl` is not HTTPS
- * and not a loopback address; `inspectEnv` reports the same at startup.
+ * One Oathweave machine client. Throws (a configuration error) when `tokenUrl` is not HTTPS;
+ * `inspectEnv` reports the same at startup.
  */
 export function createOathweaveServiceToken(options: OathweaveServiceTokenOptions): OathweaveServiceToken {
-  const problem = oathweaveTokenUrlProblem(options.tokenUrl);
+  const allowInsecureLoopback = options.allowInsecureLoopback === true;
+  const problem = oathweaveTokenUrlProblem(options.tokenUrl, { allowInsecureLoopback });
   if (problem) throw new TypeError(`The Oathweave token URL ${problem}`);
   const now = options.now ?? (() => Date.now());
   const backoffMs = options.failureBackoffMs ?? SERVICE_TOKEN_FAILURE_BACKOFF_MS;
@@ -124,7 +131,7 @@ export function createOathweaveServiceToken(options: OathweaveServiceTokenOption
     fetch: options.fetch ?? oathweaveFetch(options.env),
     now,
     failureBackoffMs: backoffMs,
-    allowInsecureLoopback: true,
+    ...(allowInsecureLoopback ? { allowInsecureLoopback: true } : {}),
   });
   let current: { token: string; obtainedAt: number; expiresAt: number | null } | null = null;
   let refusedUntil = 0;

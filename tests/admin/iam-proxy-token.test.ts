@@ -2,7 +2,8 @@
 // cached, renewed and retried once when Oathweave refuses it, and not fetched per request
 // when a fresh token is refused.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { createServer, type Server } from 'node:https';
+import { loopbackTls } from '../fixtures/loopback-tls.js';
 import type { AddressInfo } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,7 +17,8 @@ const iamCalls: Array<{ url: string; token: string }> = [];
 const refused = new Set<string>();
 let issued = 0;
 
-const server: Server = createServer((request, response) => {
+const tls = loopbackTls();
+const server: Server = createServer({ cert: tls.cert, key: tls.key }, (request, response) => {
   const chunks: Buffer[] = [];
   request.on('data', (chunk: Buffer) => chunks.push(chunk));
   request.on('end', () => {
@@ -36,7 +38,7 @@ const server: Server = createServer((request, response) => {
   });
 });
 await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+const baseUrl = `https://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
 const directory = mkdtempSync(join(tmpdir(), 'emberpath-iam-proxy-token-'));
 const secret = randomBytes(48).toString('hex');
@@ -47,6 +49,8 @@ vi.stubEnv('TRACE_DIR', join(directory, 'traces'));
 vi.stubEnv('HIVE_ROUTER_SECRET', secret);
 vi.stubEnv('HIVE_IAM_INTERNAL_URL', baseUrl);
 vi.stubEnv('HIVEMEM_INTERNAL_URL', baseUrl);
+vi.stubEnv('HIVE_ROUTER_IAM_CA_CERT_PATH', tls.caPath);
+vi.stubEnv('HIVEMEM_CA_CERT_PATH', tls.caPath);
 vi.stubEnv('HIVE_ROUTER_IAM_CLIENT_SECRET', clientSecret);
 vi.stubEnv('HIVE_ROUTER_IAM_PROXY_SCOPES', 'iam:users:read iam:sa:read');
 
@@ -69,6 +73,7 @@ afterAll(async () => {
   globalThis.__hiveRouterPrisma = undefined;
   vi.unstubAllEnvs();
   rmSync(directory, { recursive: true, force: true });
+  tls.cleanup();
 });
 
 const listActors = async () => {

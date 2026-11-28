@@ -1,9 +1,19 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:https';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { exportJWK, generateKeyPair, SignJWT, type JSONWebKeySet } from 'jose';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createSecurityExporterAuthorizer,
+  resetLegacySecurityExporterWarningForTests,
+  securityExporterVerifierSettings,
   SECURITY_EXPORTER_CLIENT_ID,
   SECURITY_EXPORTER_PERMISSION,
+  warnLegacySecurityExporterSettings,
+  type SecurityExporterAuthorizerOptions,
 } from '../../src/security/security-exporter-auth.js';
 
 const expectedClaims = {
@@ -25,6 +35,8 @@ const baseEnv = {
   HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: 200,
 };
 
+const BROWSER_ISSUER = 'https://id.example.test';
+
 async function signingFixture(kid = 'test-key') {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
   const jwk = await exportJWK(publicKey);
@@ -36,19 +48,15 @@ async function signingFixture(kid = 'test-key') {
     claims: Record<string, unknown> = expectedClaims,
     options: {
       issuer?: string;
-      audience?: string;
+      audience?: string | string[];
       subject?: string;
       expiresIn?: number;
-      algorithm?: 'RS256';
       includeKid?: boolean;
     } = {},
   ) => {
     const now = Math.floor(Date.now() / 1000);
     return new SignJWT(claims)
-      .setProtectedHeader({
-        alg: options.algorithm ?? 'RS256',
-        ...(options.includeKid === false ? {} : { kid }),
-      })
+      .setProtectedHeader({ alg: 'RS256', ...(options.includeKid === false ? {} : { kid }) })
       .setSubject(options.subject ?? SECURITY_EXPORTER_CLIENT_ID)
       .setIssuer(options.issuer ?? 'hive-iam')
       .setAudience(options.audience ?? 'hive-router')
@@ -60,43 +68,61 @@ async function signingFixture(kid = 'test-key') {
   return { jwks, sign };
 }
 
-function authorizer(loadJwks: () => Promise<unknown>) {
+/** A JWKS endpoint: a key set (or a thrown error) per request, with the requests recorded. */
+function jwksEndpoint(...answers: Array<unknown>) {
+  const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+  let index = 0;
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(input instanceof Request ? input.url : input), init });
+    const answer = answers[Math.min(index, answers.length - 1)];
+    index += 1;
+    if (answer instanceof Error) throw answer;
+    if (answer instanceof Response) return answer;
+    return Response.json(answer);
+  }) as unknown as typeof globalThis.fetch;
+  return { fetch, requests };
+}
+
+function authorizer(fetch: typeof globalThis.fetch, overrides: Partial<SecurityExporterAuthorizerOptions> = {}) {
   return createSecurityExporterAuthorizer({
     env: baseEnv,
-    loadJwks,
+    source: {},
+    fetch,
     reportTrustedKeys: vi.fn(),
     reportRefreshFailure: vi.fn(),
     reportRejectedRotation: vi.fn(),
+    onConfigurationProblem: vi.fn(),
+    ...overrides,
   });
 }
 
-describe('Security exporter exporter IAM authorization', () => {
-  it('accepts a fully claimed RS256 exporter token', async () => {
+describe('Security exporter Oathweave authorization', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('accepts a fully claimed RS256 exporter token on the native issuer', async () => {
     const { jwks, sign } = await signingFixture();
-    await expect(authorizer(async () => jwks)(await sign())).resolves.toMatchObject({
-      status: 'authorized',
-    });
+    const endpoint = jwksEndpoint(jwks);
+    await expect(authorizer(endpoint.fetch)(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    expect(endpoint.requests[0]?.url).toBe('https://127.0.0.1:4200/api/v1/oauth/jwks');
+    // The verifier never follows a redirect for the keys.
+    expect(endpoint.requests[0]?.init?.redirect).toBe('error');
   });
 
   it('accepts only the configured exporter client id', async () => {
     const { jwks, sign } = await signingFixture();
-    const custom = createSecurityExporterAuthorizer({
+    const custom = authorizer(jwksEndpoint(jwks).fetch, {
       env: { ...baseEnv, HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID: 'legacy-exporter' },
-      loadJwks: async () => jwks,
-      reportTrustedKeys: vi.fn(),
-      reportRefreshFailure: vi.fn(),
-      reportRejectedRotation: vi.fn(),
     });
     await expect(custom(await sign(
       { ...expectedClaims, clientId: 'legacy-exporter' },
       { subject: 'legacy-exporter' },
     ))).resolves.toMatchObject({ status: 'authorized' });
-    await expect(custom(await sign())).resolves.not.toMatchObject({ status: 'authorized' });
+    await expect(custom(await sign())).resolves.toEqual({ status: 'invalid' });
   });
 
   it('accepts a legacy IAM token without kid when exactly one key is trusted', async () => {
     const { jwks, sign } = await signingFixture();
-    await expect(authorizer(async () => jwks)(await sign(expectedClaims, {
+    await expect(authorizer(jwksEndpoint(jwks).fetch)(await sign(expectedClaims, {
       includeKid: false,
     }))).resolves.toMatchObject({ status: 'authorized' });
   });
@@ -104,30 +130,30 @@ describe('Security exporter exporter IAM authorization', () => {
   it.each([
     ['wrong issuer', { issuer: 'other-iam' }, expectedClaims],
     ['wrong audience', { audience: 'other-service' }, expectedClaims],
+    ['several audiences', { audience: ['hive-router', 'other-service'] }, expectedClaims],
     ['wrong subject', { subject: 'other-client' }, expectedClaims],
     ['expired', { expiresIn: -1 }, expectedClaims],
+    ['too long-lived', { expiresIn: 3_600 }, expectedClaims],
     ['wrong client', {}, { ...expectedClaims, clientId: 'other-client' }],
+    ['client only as client_id', {}, { ...expectedClaims, clientId: undefined, client_id: SECURITY_EXPORTER_CLIENT_ID }],
     ['wrong token type', {}, { ...expectedClaims, token_type: 'refresh' }],
+    ['user actor', {}, { ...expectedClaims, actorType: 'USER' }],
+    ['session-bound', {}, { ...expectedClaims, sessionId: 'session-1' }],
     ['missing exact permission', {}, { ...expectedClaims, permissions: ['router:*'] }],
+    ['non-string permissions', {}, { ...expectedClaims, permissions: [SECURITY_EXPORTER_PERMISSION, 1] }],
   ])('rejects %s tokens as invalid credentials', async (_name, options, claims) => {
     const { jwks, sign } = await signingFixture();
-    await expect(authorizer(async () => jwks)(await sign(claims, options))).resolves.toEqual({
+    await expect(authorizer(jwksEndpoint(jwks).fetch)(await sign(claims, options))).resolves.toEqual({
       status: 'invalid',
     });
   });
 
-  it('rejects opaque credentials without consulting JWKS', async () => {
-    const loadJwks = vi.fn(async () => { throw new TypeError('fetch failed'); });
-    await expect(authorizer(loadJwks)('not-a-jwt')).resolves.toEqual({ status: 'invalid' });
-    expect(loadJwks).not.toHaveBeenCalled();
-  });
-
-  it('keeps JWT-shaped but undecodable credentials in the invalid class', async () => {
-    const loadJwks = vi.fn(async () => { throw new Error('must not load'); });
-    await expect(authorizer(loadJwks)('invalid.jwt.value')).resolves.toEqual({
-      status: 'invalid',
-    });
-    expect(loadJwks).not.toHaveBeenCalled();
+  it('rejects opaque and undecodable credentials without consulting JWKS', async () => {
+    const endpoint = jwksEndpoint(new TypeError('must not load'));
+    const authorize = authorizer(endpoint.fetch);
+    await expect(authorize('not-a-jwt')).resolves.toEqual({ status: 'invalid' });
+    await expect(authorize('invalid.jwt.value')).resolves.toEqual({ status: 'invalid' });
+    expect(endpoint.requests).toHaveLength(0);
   });
 
   it('rejects tokens signed with an unapproved algorithm before JWKS resolution', async () => {
@@ -141,57 +167,37 @@ describe('Security exporter exporter IAM authorization', () => {
       .setExpirationTime(now + 300)
       .setJti('test-jti')
       .sign(new TextEncoder().encode('test-secret-that-is-long-enough-for-hs256'));
-    const loadJwks = vi.fn(async () => { throw new Error('must not load'); });
-    await expect(authorizer(loadJwks)(token)).resolves.toEqual({ status: 'invalid' });
-    expect(loadJwks).not.toHaveBeenCalled();
+    const endpoint = jwksEndpoint(new TypeError('must not load'));
+    await expect(authorizer(endpoint.fetch)(token)).resolves.toEqual({ status: 'invalid' });
+    expect(endpoint.requests).toHaveLength(0);
   });
 
-  it('uses a stale known key only inside the maximum cached-key age', async () => {
+  it('uses the last good keys after a failed refresh only inside the maximum cached-key age', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const { jwks, sign } = await signingFixture();
-    let now = 1_000;
-    const loadJwks = vi.fn()
-      .mockResolvedValueOnce(jwks)
-      .mockRejectedValue(Object.assign(new Error('connection refused'), {
-        code: 'ECONNREFUSED',
-      }));
-    const authorize = createSecurityExporterAuthorizer({
-      env: {
-        ...baseEnv,
-        HIVE_ROUTER_IAM_JWKS_REFRESH_MS: 10_000,
-        HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: 60_000,
-      },
-      loadJwks,
-      now: () => now,
-      reportTrustedKeys: vi.fn(),
-      reportRefreshFailure: vi.fn(),
-      reportRejectedRotation: vi.fn(),
+    const endpoint = jwksEndpoint(jwks, Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }) }));
+    const reportRefreshFailure = vi.fn();
+    const authorize = authorizer(endpoint.fetch, {
+      env: { ...baseEnv, HIVE_ROUTER_IAM_JWKS_REFRESH_MS: 10_000, HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS: 60_000 },
+      reportRefreshFailure,
     });
     const token = await sign();
     await expect(authorize(token)).resolves.toMatchObject({ status: 'authorized' });
-    now += 31_000;
+    vi.setSystemTime(Date.now() + 31_000);
     await expect(authorize(token)).resolves.toMatchObject({ status: 'authorized' });
-    now += 31_000;
+    expect(reportRefreshFailure).toHaveBeenLastCalledWith('ECONNREFUSED');
+    vi.setSystemTime(Date.now() + 31_000);
     await expect(authorize(token)).resolves.toEqual({ status: 'unavailable' });
   });
 
-  it('accepts a newly published bounded rotation and reports trusted key IDs', async () => {
+  it('accepts a newly published rotation and reports trusted key IDs', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const first = await signingFixture('first-key');
     const second = await signingFixture('second-key');
     const reportTrustedKeys = vi.fn();
-    let now = 1_000;
-    const loadJwks = vi.fn()
-      .mockResolvedValueOnce(first.jwks)
-      .mockResolvedValueOnce(second.jwks);
-    const authorize = createSecurityExporterAuthorizer({
-      env: baseEnv,
-      loadJwks,
-      now: () => now,
-      reportTrustedKeys,
-      reportRefreshFailure: vi.fn(),
-      reportRejectedRotation: vi.fn(),
-    });
+    const authorize = authorizer(jwksEndpoint(first.jwks, second.jwks).fetch, { reportTrustedKeys });
     await expect(authorize(await first.sign())).resolves.toMatchObject({ status: 'authorized' });
-    now += 31_000;
+    vi.setSystemTime(Date.now() + 31_000);
     await expect(authorize(await second.sign())).resolves.toMatchObject({ status: 'authorized' });
     expect(reportTrustedKeys).toHaveBeenLastCalledWith(expect.any(Number), ['second-key']);
   });
@@ -199,10 +205,8 @@ describe('Security exporter exporter IAM authorization', () => {
   it('accepts old and new keyed tokens during a published overlap', async () => {
     const oldKey = await signingFixture('old-key');
     const activeKey = await signingFixture('active-key');
-    const overlap: JSONWebKeySet = {
-      keys: [...activeKey.jwks.keys, ...oldKey.jwks.keys],
-    };
-    const authorize = authorizer(async () => overlap);
+    const overlap: JSONWebKeySet = { keys: [...activeKey.jwks.keys, ...oldKey.jwks.keys] };
+    const authorize = authorizer(jwksEndpoint(overlap).fetch);
     await expect(authorize(await activeKey.sign())).resolves.toMatchObject({ status: 'authorized' });
     await expect(authorize(await oldKey.sign())).resolves.toMatchObject({ status: 'authorized' });
   });
@@ -210,10 +214,8 @@ describe('Security exporter exporter IAM authorization', () => {
   it('rejects legacy no-kid tokens once an overlap contains multiple keys', async () => {
     const oldKey = await signingFixture('old-key');
     const activeKey = await signingFixture('active-key');
-    const overlap: JSONWebKeySet = {
-      keys: [...activeKey.jwks.keys, ...oldKey.jwks.keys],
-    };
-    await expect(authorizer(async () => overlap)(await oldKey.sign(expectedClaims, {
+    const overlap: JSONWebKeySet = { keys: [...activeKey.jwks.keys, ...oldKey.jwks.keys] };
+    await expect(authorizer(jwksEndpoint(overlap).fetch)(await oldKey.sign(expectedClaims, {
       includeKid: false,
     }))).resolves.toEqual({ status: 'invalid' });
   });
@@ -222,31 +224,45 @@ describe('Security exporter exporter IAM authorization', () => {
     const { sign } = await signingFixture();
     const reportRefreshFailure = vi.fn();
     const reportRejectedRotation = vi.fn();
-    const authorize = createSecurityExporterAuthorizer({
-      env: baseEnv,
-      loadJwks: async () => ({
-        keys: Array.from({ length: 33 }, (_, index) => ({
-          kid: `key-${index}`,
-          kty: 'RSA',
-          alg: 'RS256',
-        })),
-      }),
-      reportTrustedKeys: vi.fn(),
-      reportRefreshFailure,
-      reportRejectedRotation,
-    });
+    const authorize = authorizer(jwksEndpoint({
+      keys: Array.from({ length: 33 }, (_, index) => ({ kid: `key-${index}`, kty: 'RSA', alg: 'RS256' })),
+    }).fetch, { reportRefreshFailure, reportRejectedRotation });
     await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
     expect(reportRefreshFailure).toHaveBeenCalledWith('ERR_JWKS_INVALID_KEY_COUNT');
     expect(reportRejectedRotation).toHaveBeenCalledWith('ERR_JWKS_INVALID_KEY_COUNT');
+  });
+
+  it('refuses a key set with a non-RS256 key as a whole', async () => {
+    const { jwks, sign } = await signingFixture();
+    const reportRejectedRotation = vi.fn();
+    const mixed = { keys: [...jwks.keys, { kid: 'ec-key', kty: 'EC', alg: 'ES256', crv: 'P-256', x: 'AA', y: 'AA' }] };
+    await expect(authorizer(jwksEndpoint(mixed).fetch, { reportRejectedRotation })(await sign()))
+      .resolves.toEqual({ status: 'unavailable' });
+    expect(reportRejectedRotation).toHaveBeenCalledWith('ERR_JWKS_INVALID_KEY');
+  });
+
+  it('refuses an oversized key set without parsing it', async () => {
+    const { sign } = await signingFixture();
+    const reportRefreshFailure = vi.fn();
+    const huge = new Response('x'.repeat(256 * 1024 + 1), { status: 200 });
+    await expect(authorizer(jwksEndpoint(huge).fetch, { reportRefreshFailure })(await sign()))
+      .resolves.toEqual({ status: 'unavailable' });
+    expect(reportRefreshFailure).toHaveBeenCalledWith('ERR_JWKS_RESPONSE_TOO_LARGE');
+  });
+
+  it('classifies a non-200 JWKS answer as unavailable', async () => {
+    const { sign } = await signingFixture();
+    const reportRefreshFailure = vi.fn();
+    await expect(authorizer(jwksEndpoint(new Response('nope', { status: 502 })).fetch, { reportRefreshFailure })(await sign()))
+      .resolves.toEqual({ status: 'unavailable' });
+    expect(reportRefreshFailure).toHaveBeenCalledWith('ERR_JWKS_HTTP_STATUS');
   });
 
   it.each(['ECONNREFUSED', 'ERR_TLS_CERT_ALTNAME_INVALID', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'])(
     'classifies %s JWKS transport failures as unavailable',
     async (code) => {
       const { sign } = await signingFixture();
-      const authorize = authorizer(async () => {
-        throw Object.assign(new Error('JWKS transport failed'), { code });
-      });
+      const authorize = authorizer(jwksEndpoint(Object.assign(new Error('JWKS transport failed'), { code })).fetch);
       await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
     },
   );
@@ -254,8 +270,144 @@ describe('Security exporter exporter IAM authorization', () => {
   it('keeps a missing signing key in the invalid-credential class', async () => {
     const signer = await signingFixture('requested-key');
     const other = await signingFixture('trusted-key');
-    await expect(authorizer(async () => other.jwks)(await signer.sign())).resolves.toEqual({
-      status: 'invalid',
+    await expect(authorizer(jwksEndpoint(other.jwks).fetch)(await signer.sign())).resolves.toEqual({ status: 'invalid' });
+  });
+
+  it('accepts the https issuer and the native issuer from the Oathweave settings, and OATHWEAVE_JWKS_URL', async () => {
+    const { jwks, sign } = await signingFixture();
+    const endpoint = jwksEndpoint(jwks);
+    const authorize = authorizer(endpoint.fetch, {
+      env: { ...baseEnv, HIVE_ROUTER_IAM_ISSUER: 'legacy-ignored' },
+      source: {
+        OATHWEAVE_ISSUER: BROWSER_ISSUER,
+        OATHWEAVE_NATIVE_ISSUERS: 'oathweave-native',
+        OATHWEAVE_JWKS_URL: 'https://oathweave:4200/api/v1/oauth/jwks',
+      },
     });
+    await expect(authorize(await sign(expectedClaims, { issuer: BROWSER_ISSUER }))).resolves.toMatchObject({ status: 'authorized' });
+    await expect(authorize(await sign(expectedClaims, { issuer: 'oathweave-native' }))).resolves.toMatchObject({ status: 'authorized' });
+    // OATHWEAVE_NATIVE_ISSUERS replaces the legacy name.
+    await expect(authorize(await sign(expectedClaims, { issuer: 'legacy-ignored' }))).resolves.toEqual({ status: 'invalid' });
+    expect(endpoint.requests[0]?.url).toBe('https://oathweave:4200/api/v1/oauth/jwks');
+  });
+
+  it('keeps the legacy native issuer next to OATHWEAVE_ISSUER while OATHWEAVE_NATIVE_ISSUERS is unset', async () => {
+    const { jwks, sign } = await signingFixture();
+    const authorize = authorizer(jwksEndpoint(jwks).fetch, { source: { OATHWEAVE_ISSUER: BROWSER_ISSUER } });
+    await expect(authorize(await sign())).resolves.toMatchObject({ status: 'authorized' });
+    await expect(authorize(await sign(expectedClaims, { issuer: BROWSER_ISSUER }))).resolves.toMatchObject({ status: 'authorized' });
+  });
+
+  it('accepts a legacy https HIVE_ROUTER_IAM_ISSUER as the https issuer', async () => {
+    const { jwks, sign } = await signingFixture();
+    const authorize = authorizer(jwksEndpoint(jwks).fetch, { env: { ...baseEnv, HIVE_ROUTER_IAM_ISSUER: BROWSER_ISSUER } });
+    await expect(authorize(await sign(expectedClaims, { issuer: BROWSER_ISSUER }))).resolves.toMatchObject({ status: 'authorized' });
+    await expect(authorize(await sign())).resolves.toEqual({ status: 'invalid' });
+  });
+
+  it('answers unavailable, without fetching, when the JWKS URL is not HTTPS, and reports it once', async () => {
+    const { sign } = await signingFixture();
+    for (const url of ['http://oathweave:4200', 'http://127.0.0.1:4200']) {
+      const endpoint = jwksEndpoint(new TypeError('must not load'));
+      const onConfigurationProblem = vi.fn();
+      const authorize = authorizer(endpoint.fetch, { env: { ...baseEnv, HIVE_IAM_INTERNAL_URL: url }, onConfigurationProblem });
+      await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
+      await expect(authorize(await sign())).resolves.toEqual({ status: 'unavailable' });
+      expect(endpoint.requests).toHaveLength(0);
+      expect(onConfigurationProblem).toHaveBeenCalledTimes(1);
+      expect(onConfigurationProblem.mock.calls[0]?.[0]).toMatch(/jwksUrl must use https/u);
+      expect(onConfigurationProblem.mock.calls[0]?.[0]).not.toContain(url);
+    }
+  });
+});
+
+describe('Security exporter settings', () => {
+  beforeEach(() => resetLegacySecurityExporterWarningForTests());
+
+  it('default to the native hive-iam issuer and the HIVE_IAM_INTERNAL_URL key set, without a warning', () => {
+    expect(securityExporterVerifierSettings(baseEnv, {})).toEqual({
+      issuers: [],
+      nativeIssuers: ['hive-iam'],
+      jwksUrl: 'https://127.0.0.1:4200/api/v1/oauth/jwks',
+      audience: 'hive-router',
+      legacy: [],
+    });
+    const warn = vi.fn();
+    warnLegacySecurityExporterSettings(baseEnv, {}, warn);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warn once when only the legacy issuer name is set', () => {
+    const warn = vi.fn();
+    const source = { HIVE_ROUTER_IAM_ISSUER: 'hive-iam', OATHWEAVE_ISSUER: BROWSER_ISSUER };
+    warnLegacySecurityExporterSettings(baseEnv, source, warn);
+    warnLegacySecurityExporterSettings(baseEnv, source, warn);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/^HIVE_ROUTER_IAM_ISSUER is deprecated .* set OATHWEAVE_NATIVE_ISSUERS instead/u),
+      { setting: 'HIVE_ROUTER_IAM_ISSUER', replacement: 'OATHWEAVE_NATIVE_ISSUERS' },
+    );
+    const httpsLegacy = { ...baseEnv, HIVE_ROUTER_IAM_ISSUER: BROWSER_ISSUER };
+    expect(securityExporterVerifierSettings(httpsLegacy, { HIVE_ROUTER_IAM_ISSUER: BROWSER_ISSUER }).legacy)
+      .toEqual([['HIVE_ROUTER_IAM_ISSUER', 'OATHWEAVE_ISSUER']]);
+  });
+
+  it('do not warn when the current name is set too', () => {
+    const warn = vi.fn();
+    warnLegacySecurityExporterSettings(baseEnv, { HIVE_ROUTER_IAM_ISSUER: 'hive-iam', OATHWEAVE_NATIVE_ISSUERS: 'hive-iam' }, warn);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('Security exporter JWKS with a pinned CA', () => {
+  let directory = '';
+  let server: Server;
+  let jwksBase = '';
+  let serverCa = '';
+  let otherCa = '';
+  let fixture: Awaited<ReturnType<typeof signingFixture>>;
+
+  function certificate(name: string): { cert: string; key: string } {
+    const cert = join(directory, `${name}.crt`);
+    const key = join(directory, `${name}.key`);
+    const config = join(directory, `${name}.cnf`);
+    writeFileSync(config, '[req]\ndistinguished_name=dn\nx509_extensions=v3\nprompt=no\n[dn]\nCN=localhost\n[v3]\nsubjectAltName=DNS:localhost\nbasicConstraints=critical,CA:TRUE\n');
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', key, '-out', cert, '-days', '2', '-config', config], { stdio: 'ignore' });
+    return { cert, key };
+  }
+
+  beforeAll(async () => {
+    fixture = await signingFixture();
+    directory = mkdtempSync(join(tmpdir(), 'emberpath-exporter-ca-'));
+    const served = certificate('oathweave');
+    serverCa = served.cert;
+    otherCa = certificate('other').cert;
+    server = createServer({ cert: readFileSync(served.cert), key: readFileSync(served.key) }, (_request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify(fixture.jwks));
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    jwksBase = `https://localhost:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const authorizeWith = (caPath: string) => createSecurityExporterAuthorizer({
+    env: { ...baseEnv, HIVE_IAM_INTERNAL_URL: jwksBase, HIVE_ROUTER_IAM_CA_CERT_PATH: caPath },
+    source: {},
+    reportTrustedKeys: vi.fn(),
+    reportRefreshFailure: vi.fn(),
+    reportRejectedRotation: vi.fn(),
+  });
+
+  it('trusts the JWKS endpoint signed by HIVE_ROUTER_IAM_CA_CERT_PATH', async () => {
+    await expect(authorizeWith(serverCa)(await fixture.sign())).resolves.toMatchObject({ status: 'authorized' });
+  });
+
+  it('answers unavailable when the pinned CA did not sign the JWKS certificate', async () => {
+    await expect(authorizeWith(otherCa)(await fixture.sign())).resolves.toEqual({ status: 'unavailable' });
   });
 });

@@ -16,13 +16,16 @@ const client = { clientId: 'fake-emberpath-hivemem', clientSecret: 'fake-hivemem
 const tlsEnv = (caPath?: string, allowInsecure = false) => ({ NODE_ENV: 'test' as const, HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS: allowInsecure, HIVE_ROUTER_IAM_CA_CERT_PATH: caPath });
 
 describe('Oathweave token URLs', () => {
-  it('accept HTTPS anywhere and plain HTTP only on loopback', () => {
-    for (const url of ['https://oathweave:4200/api/v1/oauth/token', 'https://id.example.com/api/v1/oauth/token', 'http://127.0.0.1:4200/api/v1/oauth/token', 'http://localhost:4200/api/v1/oauth/token', 'http://[::1]:4200/api/v1/oauth/token']) {
+  it('accept HTTPS only, refusing plain HTTP also on loopback', () => {
+    for (const url of ['https://oathweave:4200/api/v1/oauth/token', 'https://id.example.com/api/v1/oauth/token', 'https://127.0.0.1:4200/api/v1/oauth/token']) {
       expect(oathweaveTokenUrlProblem(url), url).toBeUndefined();
     }
-    for (const url of ['http://oathweave:4200/api/v1/oauth/token', 'http://192.0.2.10:4200/api/v1/oauth/token', 'http://10.0.0.5/api/v1/oauth/token']) {
-      expect(oathweaveTokenUrlProblem(url), url).toMatch(/must use HTTPS \(plain HTTP is allowed only for a loopback address/u);
+    for (const url of ['http://oathweave:4200/api/v1/oauth/token', 'http://192.0.2.10:4200/api/v1/oauth/token', 'http://10.0.0.5/api/v1/oauth/token', 'http://127.0.0.1:4200/api/v1/oauth/token', 'http://localhost:4200/api/v1/oauth/token', 'http://[::1]:4200/api/v1/oauth/token']) {
+      expect(oathweaveTokenUrlProblem(url), url).toMatch(/must use HTTPS \(plain HTTP is refused, also on a loopback address/u);
     }
+    // Tests may still talk to a loopback fake.
+    expect(oathweaveTokenUrlProblem('http://127.0.0.1:4200/api/v1/oauth/token', { allowInsecureLoopback: true })).toBeUndefined();
+    expect(oathweaveTokenUrlProblem('http://oathweave:4200/api/v1/oauth/token', { allowInsecureLoopback: true })).toMatch(/must use HTTPS/u);
     expect(oathweaveTokenUrlProblem('ftp://oathweave/token')).toMatch(/must use HTTPS/u);
     expect(oathweaveTokenUrlProblem('https://user:pass@oathweave:4200/api/v1/oauth/token')).toMatch(/credentials/u);
     expect(oathweaveTokenUrlProblem('not a url')).toMatch(/valid URL/u);
@@ -33,10 +36,11 @@ describe('Oathweave token URLs', () => {
     expect(oathweaveTokenUrl('https://hive.example.com/api/oathweave/')).toBe('https://hive.example.com/api/oathweave/api/v1/oauth/token');
   });
 
-  it('refuse to build a client that would send its secret over plain HTTP off loopback', () => {
+  it('refuse to build a client that would send its secret over plain HTTP, loopback included', () => {
     const build = (tokenUrl: string) => createOathweaveServiceToken({ tokenUrl, ...client, env: tlsEnv() });
     expect(() => build('http://oathweave:4200/api/v1/oauth/token')).toThrow(/must use HTTPS/u);
-    expect(() => build('http://127.0.0.1:4200/api/v1/oauth/token')).not.toThrow();
+    expect(() => build('http://127.0.0.1:4200/api/v1/oauth/token')).toThrow(/must use HTTPS/u);
+    expect(() => createOathweaveServiceToken({ tokenUrl: 'http://127.0.0.1:4200/api/v1/oauth/token', ...client, env: tlsEnv(), allowInsecureLoopback: true })).not.toThrow();
     expect(() => build('https://oathweave:4200/api/v1/oauth/token')).not.toThrow();
   });
 });

@@ -85,8 +85,8 @@ export const routerEnvCatalog: EnvVarSpec[] = [
   { name: 'HIVE_ROUTER_IAM_CLIENT_SECRET', required: false, secret: true, generate: 'hex32', description: 'Secret of that IAM client (at least 24 characters). Required when HIVE_ROUTER_AUTH_MODE=iam-oidc; also enables the /api/iam/* console proxy. Must equal SEED_HIVE_ROUTER_CLIENT_SECRET in Hive IAM.' },
   { name: 'HIVE_ROUTER_IAM_REDIRECT_URI', required: false, secret: false, default: '$PUBLIC_ADMIN_URL/api/auth/oidc/callback', description: 'OIDC redirect URI registered for the Router client in Hive IAM.' },
   { name: 'HIVE_ROUTER_IAM_CA_CERT_PATH', required: false, secret: false, description: 'CA certificate trusted for IAM HTTPS (OIDC, JWKS, proxy).' },
-  { name: 'HIVE_ROUTER_IAM_ISSUER', required: false, secret: false, default: 'hive-iam', description: 'Issuer required on IAM tokens.' },
-  { name: 'HIVE_ROUTER_IAM_AUDIENCE', required: false, secret: false, default: 'hive-router', description: 'Audience required on IAM tokens.' },
+  { name: 'HIVE_ROUTER_IAM_ISSUER', required: false, secret: false, default: 'hive-iam', description: 'Deprecated: issuer of security exporter tokens, used while OATHWEAVE_NATIVE_ISSUERS (for a native name) or OATHWEAVE_ISSUER (for an https URL) is unset.' },
+  { name: 'HIVE_ROUTER_IAM_AUDIENCE', required: false, secret: false, default: 'hive-router', description: 'Audience required on security exporter tokens (exactly this one).' },
   { name: 'HIVEMEM_INTERNAL_URL', required: false, secret: false, default: 'http://127.0.0.1:18790', description: 'HiveMem base URL as the Router reaches it (console Memory pages and the /v1/* compatibility proxy).' },
   { name: 'HIVEMEM_PUBLIC_URL', required: false, secret: false, default: '$PUBLIC_ADMIN_URL', description: 'HiveMem URL shown to users and agents.' },
   { name: 'HIVEMEM_CA_CERT_PATH', required: false, secret: false, description: 'CA certificate trusted for HiveMem HTTPS.' },
@@ -94,7 +94,7 @@ export const routerEnvCatalog: EnvVarSpec[] = [
   { name: 'EMBERPATH_HIVEMEM_CLIENT_ID', required: false, secret: false, description: 'Oathweave machine client for HiveMem. With EMBERPATH_HIVEMEM_CLIENT_SECRET, Emberpath fetches short-lived client_credentials tokens (audience hivemem) and renews them before they expire, so no HiveMem token needs re-issuing. HiveMem must link the client in HIVEMEM_OATHWEAVE_SERVICES_JSON.' },
   { name: 'EMBERPATH_HIVEMEM_CLIENT_SECRET', required: false, secret: true, description: 'Secret of EMBERPATH_HIVEMEM_CLIENT_ID (at least 32 characters). Never sent to browsers or HiveMem.' },
   { name: 'EMBERPATH_HIVEMEM_SCOPE', required: false, secret: false, default: 'hivemem:admin:all', description: 'Permissions requested for HiveMem service tokens.' },
-  { name: 'EMBERPATH_HIVEMEM_TOKEN_URL', required: false, secret: false, default: '$HIVE_IAM_INTERNAL_URL/api/v1/oauth/token', description: 'Oathweave token endpoint for the HiveMem service credential. HTTPS; plain HTTP only on a loopback address.' },
+  { name: 'EMBERPATH_HIVEMEM_TOKEN_URL', required: false, secret: false, default: '$HIVE_IAM_INTERNAL_URL/api/v1/oauth/token', description: 'Oathweave token endpoint for the HiveMem service credential. HTTPS only; plain HTTP is refused, also on a loopback address.' },
 ];
 
 export function buildEnvSchemaDocument(): EnvSchemaDocument {

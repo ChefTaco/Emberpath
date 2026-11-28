@@ -52,7 +52,7 @@ answers `410 Gone` in this mode unless the deprecated `EMBERPATH_PASSWORD_RELAY=
 (see [docs/OATHWEAVE.md](docs/OATHWEAVE.md#password-sign-in-is-retired)). Emberpath sends the
 client secret (and, with the relay on, sign-in passwords) to Oathweave, so Oathweave must serve HTTPS here (see
 its [TLS](https://github.com/ChefTaco/Oathweave/blob/main/apps/iam-core/README.md#tls)
-section) with a certificate for the name `oathweave`; plain HTTP is accepted only on a loopback
+section) with a certificate for the name `oathweave`; plain HTTP is refused, also on a loopback
 address. Put a certificate and key for the listeners in `tls/` as `server.crt` and
 `server.key`, and the CA certificate that signed Oathweave's certificate as `tls/oathweave-ca.crt`,
 all readable by the container's `node` user (uid 1000).
@@ -400,17 +400,18 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 
 | Variable | Default | Description |
 |---|---|---|
-| `HIVE_IAM_INTERNAL_URL` | `http://127.0.0.1:4200` | IAM base URL as Emberpath reaches it. With `HIVE_ROUTER_IAM_CLIENT_SECRET` set it must be HTTPS (plain HTTP only on a loopback address); otherwise startup stops. |
+| `HIVE_IAM_INTERNAL_URL` | `http://127.0.0.1:4200` | IAM base URL as Emberpath reaches it. With `HIVE_ROUTER_IAM_CLIENT_SECRET` set it must be HTTPS (plain HTTP is refused, also on a loopback address); otherwise startup stops. Its `/api/v1/oauth/jwks` is the security exporter's key set unless `OATHWEAVE_JWKS_URL` is set. |
 | `HIVE_IAM_PUBLIC_URL` | `PUBLIC_ADMIN_URL/iam` | IAM URL shown to users. |
 | `HIVE_ROUTER_IAM_CLIENT_ID` | `hive-router` | OAuth client Emberpath uses. |
 | `HIVE_ROUTER_IAM_CLIENT_SECRET` | | Secret for that client. Required when `HIVE_ROUTER_AUTH_MODE=iam-oidc`; also enables the `/api/iam/*` proxy. |
 | `HIVE_ROUTER_IAM_REDIRECT_URI` | `PUBLIC_ADMIN_URL/api/auth/oidc/callback` | OIDC redirect URI. |
 | `HIVE_ROUTER_IAM_SCOPES` | `openid profile email` | Scopes requested at sign-in. |
 | `HIVE_ROUTER_IAM_PROXY_SCOPES` | IAM admin scopes | Permissions requested for the server-side proxy token. |
-| `HIVE_ROUTER_IAM_ISSUER` / `HIVE_ROUTER_IAM_AUDIENCE` | `hive-iam` / `hive-router` | Claims required on IAM tokens presented to Emberpath. |
-| `HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID` | `security-exporter` | IAM client id accepted for the security event exporter. |
+| `HIVE_ROUTER_IAM_ISSUER` | `hive-iam` | Deprecated: the issuer of security exporter tokens. A native name (Oathweave's `JWT_ISSUER`) stands for `OATHWEAVE_NATIVE_ISSUERS`, an https URL for `OATHWEAVE_ISSUER`; it is used only while that setting is unset, and Emberpath logs a deprecation warning at startup when it is set. |
+| `HIVE_ROUTER_IAM_AUDIENCE` | `hive-router` | Audience required on security exporter tokens (exactly this one audience). |
+| `HIVE_ROUTER_SECURITY_EXPORTER_CLIENT_ID` | `security-exporter` | Oathweave machine client accepted for the security event exporter (`GET /api/security/events`). Its client_credentials token must be signed by `OATHWEAVE_ISSUER` or a native issuer, carry `router:security-events:read`, live at most 15 minutes and carry no session. The key set must be HTTPS; otherwise the exporter answers `503`. |
 | `HIVE_ROUTER_IAM_CA_CERT_PATH` | | CA certificate trusted for IAM HTTPS (OIDC, JWKS, proxy, and the client-credentials token requests for the IAM proxy and HiveMem). When set it is the only CA trusted there; otherwise the system store, including `NODE_EXTRA_CA_CERTS`, is used. |
-| `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | JWKS refresh interval and the maximum age of cached keys. When the maximum is exceeded, Emberpath rejects tokens. |
+| `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` / `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS` | `300000` / `900000` | Security exporter JWKS refresh interval and the maximum age of cached keys. A failed refresh keeps the last keys only while they stay within the maximum age; then the exporter answers `503`. |
 | `HIVE_ROUTER_IAM_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
 
 ### HiveMem integration (optional)
@@ -422,7 +423,7 @@ These settings keep their Hive IAM names. For HiveXUI single sign-on see
 | `HIVEMEM_CA_CERT_PATH` | | Certificate trusted for HiveMem HTTPS. |
 | `EMBERPATH_HIVEMEM_CLIENT_ID` / `EMBERPATH_HIVEMEM_CLIENT_SECRET` | | Oathweave machine client for HiveMem. Emberpath fetches short-lived client credentials tokens (audience `hivemem`) and renews them in-process before they expire. Set both or neither. |
 | `EMBERPATH_HIVEMEM_SCOPE` | `hivemem:admin:all` | Permissions requested for HiveMem service tokens. |
-| `EMBERPATH_HIVEMEM_TOKEN_URL` | `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token` | Oathweave token endpoint for the service credential. Must be HTTPS (plain HTTP only on a loopback address) when the client is set; otherwise startup stops. |
+| `EMBERPATH_HIVEMEM_TOKEN_URL` | `HIVE_IAM_INTERNAL_URL/api/v1/oauth/token` | Oathweave token endpoint for the service credential. Must be HTTPS (plain HTTP is refused, also on a loopback address) when the client is set; otherwise startup stops. |
 | `HIVE_ROUTER_MEMORY_PROXY_TOKEN` | | Server-side HiveMem admin token for `/api/memory/*`, minted with `hivemem-server issue-token --subject emberpath --role admin`. It is never sent to the browser. With the Oathweave client set, it is only a fallback and is never sent after its own expiry. |
 | `HIVE_SKILLS_INTERNAL_URL` / `HIVE_SKILLS_PUBLIC_URL` | | Optional Hive Skills registry reported by the admin API. |
 | `HIVE_STATUS_ALLOW_INSECURE_TLS` | `false` | Legacy option: keep false. Certificate verification cannot be disabled; configure the corresponding CA path for private certificates. |
@@ -435,7 +436,8 @@ browser-issuer tokens. The suite controller sets these; see
 
 | Variable | Default | Description |
 |---|---|---|
-| `OATHWEAVE_ISSUER` / `OATHWEAVE_JWKS_URL` / `OATHWEAVE_USERINFO_URL` | | Oathweave browser issuer and its HTTPS JWKS and userinfo endpoints. Set all three or none. |
+| `OATHWEAVE_ISSUER` / `OATHWEAVE_JWKS_URL` / `OATHWEAVE_USERINFO_URL` | | Oathweave browser issuer and its HTTPS JWKS and userinfo endpoints. Set all three or none. The security exporter accepts `OATHWEAVE_ISSUER` and reads its keys from `OATHWEAVE_JWKS_URL` too. |
+| `OATHWEAVE_NATIVE_ISSUERS` | | Comma-separated native issuer names (Oathweave's `JWT_ISSUER`, such as `hive-iam`) accepted on security exporter tokens, which Oathweave signs with its native issuer. Unset, the legacy `HIVE_ROUTER_IAM_ISSUER` (default `hive-iam`) is used. |
 | `EMBERPATH_OATHWEAVE_IDENTITIES_JSON` | | Explicit issuer/subject links to existing admin accounts. Unlinked subjects are denied. |
 | `EMBERPATH_INITIAL_ADMIN_IDENTITIES_JSON` | | Fresh suite installs only: preallocated admin account IDs (see [Fresh suite initialization](#fresh-suite-initialization)). |
 
