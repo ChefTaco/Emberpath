@@ -39,7 +39,7 @@
   `permissions` and `roles`, and the key set request never follows a redirect. It now also accepts
   `OATHWEAVE_ISSUER`, besides the native issuer, for the exporter client. A token whose key is not
   in the key set after a failed refresh is refused (`401`) rather than answered with `503`.
-- `@hivemagnus/hive-common` is now `^0.11.0`. The security exporter's key refresh is HiveCommon's:
+- `@hivemagnus/hive-common` is now `^0.11.1`. The security exporter's key refresh is HiveCommon's:
   keys are refetched every `HIVE_ROUTER_IAM_JWKS_REFRESH_MS` (`jwksCacheMaxAgeMs`), and a failed
   refresh serves the last good keys while they are at most `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS -
   HIVE_ROUTER_IAM_JWKS_REFRESH_MS` old (`jwksStaleIfErrorMs`), then trusts them one more interval, so
