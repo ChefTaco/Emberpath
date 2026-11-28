@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-11-28
+
 ### Upgrade notes
 
 - **Oathweave client secrets go over HTTPS only, loopback included.** With
@@ -27,6 +29,12 @@
   day** (86 400 000 ms), HiveCommon's cap on serving keys after a failed refresh. Startup (and
   `hive-router check`) refuses a larger gap and names `HIVE_ROUTER_IAM_JWKS_MAX_AGE_MS`. The defaults
   (300 000 / 900 000) and every gap up to a day are unaffected.
+- No database migration: the schema is unchanged from 2.11.0, so a Hive suite upgrade does not
+  need `--allow-migrations` for Emberpath. The Hive suite controller writes
+  `OATHWEAVE_NATIVE_ISSUERS` only for Emberpath 2.12.0 and later. A downgrade to 2.11.0 ignores
+  `OATHWEAVE_NATIVE_ISSUERS` and falls back to `HIVE_ROUTER_IAM_ISSUER` (default `hive-iam`).
+- `@hivemagnus/hive-common` moves from 0.10.0 to 0.11.1 (bundled in the image); works with
+  HiveXUI 0.15.0 and Oathweave 2.7.0 as pinned by Hive suite 3.15.3.
 
 ### Changed
 
